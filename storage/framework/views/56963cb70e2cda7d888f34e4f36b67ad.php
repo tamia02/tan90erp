@@ -1,0 +1,4 @@
+<svg width="6" height="10" viewBox="0 0 6 10" fill="none" xmlns="http://www.w3.org/2000/svg" <?php echo e($attributes); ?>>
+    <path d="M0.875 9.25L5.125 5L0.875 0.75" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+<?php /**PATH C:\Users\tasmi\AppData\Local\Packages\5319275A.WhatsAppDesktop_cv1g1gvanyjgm\LocalState\sessions\C58B0E0E1F1E5561213D0701C5EBD37C2F6DB401\transfers\2026-28\tan90-mod1-current-code-20260708-103300\full_project\vendor\laravel\framework\src\Illuminate\Foundation\resources\exceptions\renderer\components\icons\chevron-right.blade.php ENDPATH**/ ?>

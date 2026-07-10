@@ -1,0 +1,267 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens ported from the React prototype so this reads as the same
+   product — indigo brand, status colors, card radius/shadow conventions. */
+:root {
+    --brand: #4f46e5;
+    --brand-hover: #4338ca;
+    --brand-bg: #eef2ff;
+
+    --surface-1: #ffffff;
+    --surface-2: #f8fafc;
+    --surface-3: #ffffff;
+
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+
+    --border: #e5e7eb;
+    --border-strong: #cbd5e1;
+
+    --status-good: #0ca30c;
+    --status-good-bg: #e6f6e6;
+    --status-warning: #fab219;
+    --status-warning-bg: #fef3e0;
+    --status-critical: #dc2626;
+    --status-critical-bg: #fde8e8;
+
+    --radius: 0.625rem;
+    --shadow-hover: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.tan90-login-shell {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+    background:
+        radial-gradient(circle at top left, rgba(79, 70, 229, 0.28), transparent 34rem),
+        radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.18), transparent 30rem),
+        #07111f;
+    color: #f8fafc;
+}
+
+.tan90-login-hero,
+.tan90-login-panel {
+    min-height: 100vh;
+}
+
+.tan90-login-hero {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(2rem, 6vw, 6rem);
+    position: relative;
+    overflow: hidden;
+}
+
+.tan90-login-hero::after {
+    content: "";
+    position: absolute;
+    inset: auto 6rem 5rem auto;
+    width: 17rem;
+    aspect-ratio: 1;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(250, 204, 21, 0.10));
+    filter: blur(0.2px);
+}
+
+.tan90-brand-mark {
+    width: 4.7rem;
+    height: 4.7rem;
+    display: grid;
+    place-items: center;
+    border-radius: 1.35rem;
+    font-weight: 900;
+    letter-spacing: 0;
+    color: #07111f;
+    background: linear-gradient(135deg, #67e8f9, #a78bfa 52%, #facc15);
+    box-shadow: 0 1.5rem 4rem rgba(14, 165, 233, 0.28);
+}
+
+.tan90-eyebrow {
+    margin-top: 2rem;
+    color: #93c5fd;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.78rem;
+}
+
+.tan90-login-hero h1 {
+    margin-top: 0.9rem;
+    font-size: clamp(3.2rem, 7vw, 6.4rem);
+    line-height: 0.95;
+    font-weight: 950;
+}
+
+.tan90-lead {
+    margin-top: 1.5rem;
+    max-width: 44rem;
+    color: #cbd5e1;
+    font-size: clamp(1.05rem, 2vw, 1.32rem);
+    line-height: 1.7;
+}
+
+.tan90-health-grid {
+    margin-top: 2.5rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    max-width: 42rem;
+}
+
+.tan90-health-grid div,
+.tan90-login-panel {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.62);
+    box-shadow: 0 1.6rem 5rem rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(18px);
+}
+
+.tan90-health-grid div {
+    border-radius: 1.1rem;
+    padding: 1rem;
+}
+
+.tan90-health-grid strong {
+    display: block;
+    color: #ffffff;
+    font-size: 1.75rem;
+}
+
+.tan90-health-grid span {
+    display: block;
+    margin-top: 0.2rem;
+    color: #94a3b8;
+    font-size: 0.86rem;
+}
+
+.tan90-login-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(1.4rem, 4vw, 4rem);
+    border-width: 0 0 0 1px;
+}
+
+.tan90-panel-heading p {
+    color: #38bdf8;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.75rem;
+}
+
+.tan90-panel-heading h2 {
+    margin-top: 0.45rem;
+    font-size: clamp(1.8rem, 3vw, 3rem);
+    line-height: 1.08;
+    font-weight: 900;
+}
+
+.tan90-role-grid {
+    margin-top: 1.6rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.tan90-role-card {
+    min-height: 6.25rem;
+    text-align: left;
+    border-radius: 1.1rem;
+    padding: 1rem;
+    border: 1px solid rgba(125, 211, 252, 0.22);
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.9));
+    color: #e0f2fe;
+    transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.tan90-role-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(56, 189, 248, 0.68);
+    background: linear-gradient(145deg, rgba(14, 116, 144, 0.44), rgba(30, 41, 59, 0.96));
+}
+
+.tan90-role-card span {
+    display: block;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.tan90-role-card small {
+    display: block;
+    margin-top: 0.45rem;
+    color: #a5b4fc;
+    line-height: 1.35;
+}
+
+.tan90-divider {
+    margin: 1.65rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+
+.tan90-divider::before,
+.tan90-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: rgba(148, 163, 184, 0.24);
+}
+
+.tan90-manual-form {
+    display: grid;
+    gap: 1rem;
+    color: #e2e8f0;
+}
+
+.tan90-manual-form input[type="email"],
+.tan90-manual-form input[type="password"] {
+    min-height: 3.1rem;
+    color: #0f172a;
+}
+
+.tan90-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 980px) {
+    .tan90-login-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .tan90-login-hero,
+    .tan90-login-panel {
+        min-height: auto;
+    }
+
+    .tan90-login-panel {
+        border-width: 1px 0 0;
+    }
+}
+
+@media (max-width: 560px) {
+    .tan90-login-hero {
+        padding: 1.25rem;
+    }
+
+    .tan90-login-panel {
+        padding: 1.25rem;
+    }
+
+    .tan90-health-grid,
+    .tan90-role-grid {
+        grid-template-columns: 1fr;
+    }
+}
