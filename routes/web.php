@@ -11,15 +11,20 @@ use App\Http\Controllers\ClaudeOAuthController;
 Route::redirect('/', '/login');
 Route::redirect('public', '/login');
 
-Route::get('role-login/{role}', function (string $role) {
-    $role = Role::from($role);
-    $user = User::where('role', $role)->firstOrFail();
+// Dev/demo convenience only — logs in as any role with no password, so it
+// must never be reachable in production. Gated at registration, not just
+// hidden in the UI, so the URL itself 404s outside local/dev.
+if (! app()->isProduction()) {
+    Route::get('role-login/{role}', function (string $role) {
+        $role = Role::from($role);
+        $user = User::where('role', $role)->firstOrFail();
 
-    Auth::login($user);
-    Session::regenerate();
+        Auth::login($user);
+        Session::regenerate();
 
-    return redirect(rtrim(config('app.url'), '/').route($role->homeRouteName(), [], false));
-})->whereIn('role', Role::values())->name('role-login');
+        return redirect(rtrim(config('app.url'), '/').route($role->homeRouteName(), [], false));
+    })->whereIn('role', Role::values())->name('role-login');
+}
 
 // Claude OAuth routes
 Route::get('oauth/claude/initiate', [ClaudeOAuthController::class, 'initiate'])->name('claude.initiate');

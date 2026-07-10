@@ -67,26 +67,28 @@ new #[Layout('layouts.guest')] class extends Component
             <h2>Open your role workspace</h2>
         </div>
 
-        <div class="tan90-role-grid">
-            @foreach (\App\Enums\Role::cases() as $role)
-                <a href="{{ route('role-login', $role->value) }}" class="tan90-role-card">
-                    <span>{{ $role->label() }}</span>
-                    <small>
-                        @if ($role->value === 'guard')
-                            Gate scan and vehicle inward
-                        @elseif ($role->value === 'vendor')
-                            Submission and issue response
-                        @elseif ($role->value === 'admin')
-                            Control tower and masters
-                        @else
-                            Operations workspace
-                        @endif
-                    </small>
-                </a>
-            @endforeach
-        </div>
+        @unless (app()->isProduction())
+            <div class="tan90-role-grid">
+                @foreach (\App\Enums\Role::cases() as $role)
+                    <a href="{{ route('role-login', $role->value) }}" class="tan90-role-card">
+                        <span>{{ $role->label() }}</span>
+                        <small>
+                            @if ($role->value === 'guard')
+                                Gate scan and vehicle inward
+                            @elseif ($role->value === 'vendor')
+                                Submission and issue response
+                            @elseif ($role->value === 'admin')
+                                Control tower and masters
+                            @else
+                                Operations workspace
+                            @endif
+                        </small>
+                    </a>
+                @endforeach
+            </div>
 
-        <div class="tan90-divider"><span>or sign in manually</span></div>
+            <div class="tan90-divider"><span>or sign in manually</span></div>
+        @endunless
 
         <form wire:submit="login" class="tan90-manual-form">
             <div>

@@ -3,6 +3,7 @@
 .env
 .env.backup
 .env.production
+*.sql
 .phpactor.json
 .phpunit.result.cache
 /.claude
@@ -15,7 +16,6 @@
 /.zed
 /auth.json
 /composer.phar
-/node_modules
 /public/build
 /public/fonts-manifest.dev.json
 /public/hot
@@ -34,11 +34,10 @@
 /storage/logs/*
 !/storage/logs/.gitignore
 /storage/pail
-/tan90-live-database.sql
 /bootstrap/cache/*
 !/bootstrap/cache/.gitignore
-/vendor
 _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+node_modules
