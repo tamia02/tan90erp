@@ -2,6 +2,7 @@
 
 use App\Models\GateEntry;
 use App\Models\ValidationIssue;
+use App\Models\VendorSubmission;
 use App\Services\AuditLogger;
 use App\Services\GateValidationService;
 use Livewire\Attributes\Layout;
@@ -14,6 +15,7 @@ new #[Layout('layouts.app')] class extends Component
     public bool $ocrReady = false;
     public string $gps = '';
     public ?array $saved = null;
+    public bool $fetched = false;
 
     public string $poNumber = '';
     public string $poBillDate = '';
@@ -68,6 +70,30 @@ new #[Layout('layouts.app')] class extends Component
         $this->gps = $selected['gps'].' ('.$selected['code'].')';
     }
 
+    /** Inward only — the guard keys in the bill number and everything else
+     * (PO number, vendor, quantity, material) is pulled from the vendor's
+     * own portal submission for that bill instead of being typed twice. */
+    public function fetchBillDetails(): void
+    {
+        $this->resetErrorBag('invoiceNumber');
+        $this->validateOnly('invoiceNumber', ['invoiceNumber' => ['required', 'string']]);
+
+        $submission = VendorSubmission::where('invoice_number', $this->invoiceNumber)->latest()->first();
+
+        if (! $submission) {
+            $this->fetched = false;
+            $this->addError('invoiceNumber', 'No vendor submission found for this bill number.');
+
+            return;
+        }
+
+        $this->poNumber = $submission->po_number;
+        $this->vendorName = $submission->vendor_name;
+        $this->invoiceQty = (string) $submission->invoice_qty;
+        $this->material = $submission->material;
+        $this->fetched = true;
+    }
+
     public function fillSample(): void
     {
         $this->ocrReady = true;
@@ -118,6 +144,7 @@ new #[Layout('layouts.app')] class extends Component
             $this->driverPhone = '+91 98765 43210';
             $this->documents = ['invoice' => true, 'eway' => true, 'lr' => true, 'pod' => true];
             $this->productLines = [['sku' => $this->material, 'name' => $this->material, 'qty' => $this->invoiceQty, 'uom' => 'KG', 'remarks' => 'PO-linked inward receipt']];
+            $this->fetched = true;
         }
 
         $this->useGps();
@@ -127,10 +154,16 @@ new #[Layout('layouts.app')] class extends Component
     {
         $rules = match ($this->entryType) {
             'visitor' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'material' => ['required', 'string']],
-            'inward' => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'invoiceAmount' => ['required', 'numeric'], 'material' => ['required', 'string']],
-            default => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'material' => ['required', 'string']]
+            'inward' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'vehicleNumber' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'invoiceAmount' => ['required', 'numeric']],
+            default => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string']]
         };
         $this->validate($rules);
+
+        if ($this->entryType === 'inward' && ! $this->fetched) {
+            $this->addError('invoiceNumber', 'Fetch the bill details for this bill number before saving.');
+
+            return;
+        }
 
         if (! $this->gps) {
             $this->useGps();
@@ -171,7 +204,7 @@ new #[Layout('layouts.app')] class extends Component
             ValidationIssue::create([...$issue, 'gate_entry_id' => $gate->id, 'status' => 'open']);
         }
 
-        AuditLogger::log($this->modeLabel().' entry created', "{$gate->gate_no} - {$selected['code']} - {$gate->vendor_name}");
+        AuditLogger::log($this->modeLabel().' entry created', "{$gate->gate_no} - {$selected['code']} - {$gate->vendor_name}", $gate);
         $this->saved = ['gate' => $gate, 'issues' => $issues, 'location' => $selected];
     }
 
@@ -182,6 +215,7 @@ new #[Layout('layouts.app')] class extends Component
         $this->ocrReady = false;
         $this->gps = '';
         $this->saved = null;
+        $this->fetched = false;
         $this->poNumber = '';
         $this->poBillDate = '';
         $this->vendorName = '';
@@ -325,60 +359,93 @@ new #[Layout('layouts.app')] class extends Component
                             <input wire:model="material" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Meeting / service / audit" />
                             @error('material') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
-                    @else
-                        <label class="space-y-1.5 text-sm">
-                            <span class="font-semibold" style="color: var(--text-primary);">{{ $entryType === 'outward' ? 'Page Number' : 'PO Number' }}</span>
-                            <input wire:model="poNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="{{ $entryType === 'outward' ? 'OUT RM 2627 0020' : 'PO RM 2627 0020' }}" />
-                            @error('poNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                        </label>
-                        <label class="space-y-1.5 text-sm">
-                            <span class="font-semibold" style="color: var(--text-primary);">{{ $entryType === 'outward' ? 'Delivery Address' : 'Vendor' }}</span>
-                            <input wire:model="vendorName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="{{ $entryType === 'outward' ? 'Delivery address' : 'Vendor' }}" />
-                            @error('vendorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                        </label>
-                        <label class="space-y-1.5 text-sm">
-                            <span class="font-semibold" style="color: var(--text-primary);">Invoice / Doc No</span>
-                            <input wire:model="invoiceNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Invoice number" />
-                            @error('invoiceNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                        </label>
-                        <label class="space-y-1.5 text-sm">
-                            <span class="font-semibold" style="color: var(--text-primary);">Qty</span>
-                            <input wire:model="invoiceQty" type="number" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="700" />
-                        </label>
-                        @if ($entryType === 'inward')
-                            <label class="space-y-1.5 text-sm">
-                                <span class="font-semibold" style="color: var(--text-primary);">PO Bill Date</span>
-                                <input wire:model="poBillDate" type="date" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" />
-                                @error('poBillDate') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                            </label>
-                            <label class="space-y-1.5 text-sm">
-                                <span class="font-semibold" style="color: var(--text-primary);">Invoice Amount</span>
-                                <input wire:model="invoiceAmount" type="number" step="0.01" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="29400" />
-                                @error('invoiceAmount') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                            </label>
-                        @endif
-                        <label class="space-y-1.5 text-sm md:col-span-2">
-                            <span class="font-semibold" style="color: var(--text-primary);">Material / SKU</span>
-                            <input wire:model="material" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="PCM Raw Compound (TN-1 Grade)" />
-                            @error('material') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                        </label>
-                    @endif
-
-                    <label class="space-y-1.5 text-sm">
-                        <span class="font-semibold" style="color: var(--text-primary);">{{ $entryType === 'visitor' ? 'Vehicle / Walk-in' : 'Vehicle Number' }}</span>
-                        <input wire:model="vehicleNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="{{ $entryType === 'visitor' ? 'WALK-IN' : 'MH 04 GT 5521' }}" />
-                        @error('vehicleNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                    </label>
-                    @unless ($entryType === 'visitor')
+                    @elseif ($entryType === 'inward')
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Driver Name</span>
                             <input wire:model="driverName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Driver name" />
                             @error('driverName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
-                    @endunless
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">Driver Phone Number</span>
+                            <input wire:model="driverPhone" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="+91 ..." />
+                            @error('driverPhone') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="space-y-1.5 text-sm md:col-span-2">
+                            <span class="font-semibold" style="color: var(--text-primary);">Vehicle Number</span>
+                            <input wire:model="vehicleNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="MH 04 GT 5521" />
+                            @error('vehicleNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+
+                        <label class="space-y-1.5 text-sm md:col-span-2">
+                            <span class="font-semibold" style="color: var(--text-primary);">Bill Number</span>
+                            <div class="flex gap-2">
+                                <input wire:model="invoiceNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Bill number" />
+                                <button type="button" wire:click="fetchBillDetails" class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style="background: var(--brand);">Fetch</button>
+                            </div>
+                            @error('invoiceNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+
+                        @if ($fetched)
+                            <div class="md:col-span-2 rounded-xl border p-3 text-xs" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--text-primary);">
+                                Fetched from vendor submission — PO {{ $poNumber }} · {{ $vendorName }} · Qty {{ $invoiceQty }} · {{ $material }}
+                            </div>
+                        @endif
+
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">PO Number</span>
+                            <input wire:model="poNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="PO RM 2627 0020" />
+                            @error('poNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">Vendor</span>
+                            <input wire:model="vendorName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Vendor" />
+                            @error('vendorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">Bill Date</span>
+                            <input wire:model="poBillDate" type="date" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" />
+                            @error('poBillDate') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">Bill Amount</span>
+                            <input wire:model="invoiceAmount" type="number" step="0.01" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="29400" />
+                            @error('invoiceAmount') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                    @else
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">Package Number</span>
+                            <input wire:model="poNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="OUT RM 2627 0020" />
+                            @error('poNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">Delivery Address</span>
+                            <input wire:model="vendorName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Delivery address" />
+                            @error('vendorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="space-y-1.5 text-sm md:col-span-2">
+                            <span class="font-semibold" style="color: var(--text-primary);">Invoice / Doc No</span>
+                            <input wire:model="invoiceNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Invoice number" />
+                            @error('invoiceNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                    @endif
+
+                    @if ($entryType !== 'inward')
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">{{ $entryType === 'visitor' ? 'Vehicle / Walk-in' : 'Vehicle Number' }}</span>
+                            <input wire:model="vehicleNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="{{ $entryType === 'visitor' ? 'WALK-IN' : 'MH 04 GT 5521' }}" />
+                            @error('vehicleNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        @unless ($entryType === 'visitor')
+                            <label class="space-y-1.5 text-sm">
+                                <span class="font-semibold" style="color: var(--text-primary);">Driver Name</span>
+                                <input wire:model="driverName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Driver name" />
+                                @error('driverName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            </label>
+                        @endunless
+                    @endif
                 </div>
 
-                @unless ($entryType === 'visitor')
+                @if ($entryType === 'outward')
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-5">
                         @foreach (['invoice' => 'Invoice', 'eway' => 'E-way', 'lr' => 'LR/LRC', 'pod' => 'POD'] as $key => $label)
                             @continue($key === 'pod' && $entryType === 'outward')
@@ -388,7 +455,7 @@ new #[Layout('layouts.app')] class extends Component
                             </label>
                         @endforeach
                     </div>
-                @endunless
+                @endif
 
                 <label class="block mt-5 space-y-1.5 text-sm">
                     <span class="font-semibold" style="color: var(--text-primary);">Remarks</span>
@@ -415,8 +482,8 @@ new #[Layout('layouts.app')] class extends Component
                 <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
                     <div class="grid grid-cols-2 gap-3 text-center">
                         <div class="rounded-xl border p-3" style="border-color: var(--border); background: var(--surface-2);">
-                            <div class="text-xl font-bold" style="color: var(--text-primary);">{{ $entryType === 'visitor' ? 'Pass' : $documentCount.'/4' }}</div>
-                            <div class="text-xs" style="color: var(--text-muted);">{{ $entryType === 'visitor' ? 'Type' : 'Docs' }}</div>
+                            <div class="text-xl font-bold" style="color: var(--text-primary);">{{ $entryType === 'visitor' ? 'Pass' : ($entryType === 'inward' ? ($fetched ? 'Yes' : 'No') : $documentCount.'/4') }}</div>
+                            <div class="text-xs" style="color: var(--text-muted);">{{ $entryType === 'visitor' ? 'Type' : ($entryType === 'inward' ? 'Bill Fetched' : 'Docs') }}</div>
                         </div>
                         <div class="rounded-xl border p-3" style="border-color: var(--border); background: var(--surface-2);">
                             <div class="text-xl font-bold" style="color: var(--text-primary);">{{ $gps ? 'Yes' : 'No' }}</div>

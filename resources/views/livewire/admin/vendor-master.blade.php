@@ -47,7 +47,7 @@ new #[Layout('layouts.app')] class extends Component
             'description' => $this->description ?: null,
         ]);
 
-        AuditLogger::log('Vendor added to master', "{$entry->vendor_name} · {$entry->gst_number}");
+        AuditLogger::log('Vendor added to master', "{$entry->vendor_name} · {$entry->gst_number}", $entry);
 
         $this->reset(['vendorName', 'gstNumber', 'contactPhone', 'contactEmail', 'website', 'addressCity', 'addressState', 'description', 'adding']);
         $this->category = 'Raw Material — PCM Compound';

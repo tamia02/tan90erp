@@ -76,7 +76,7 @@ new #[Layout('layouts.app')] class extends Component
         </div>
         <div class="flex flex-col divide-y" style="border-color: var(--border);">
             @forelse ($recentActivity as $row)
-                <div class="py-3 flex items-center justify-between gap-3">
+                <a href="{{ route('activity.detail', $row) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                     <div class="min-w-0">
                         <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $row->action }}</div>
                         @if ($row->detail)
@@ -84,7 +84,7 @@ new #[Layout('layouts.app')] class extends Component
                         @endif
                     </div>
                     <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ $row->created_at->format('d M, H:i') }}</span>
-                </div>
+                </a>
             @empty
                 <p class="text-sm py-4" style="color: var(--text-muted);">No activity recorded yet.</p>
             @endforelse

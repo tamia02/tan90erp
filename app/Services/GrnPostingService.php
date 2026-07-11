@@ -73,7 +73,7 @@ class GrnPostingService
 
         $gate->update(['status' => 'closed']);
 
-        AuditLogger::log('GRN Check posted, stock updated', "{$gate->gate_no} · bin {$suggestedBin}");
+        AuditLogger::log('GRN Check posted, stock updated', "{$gate->gate_no} · bin {$suggestedBin}", $grn);
 
         return $grn;
     }

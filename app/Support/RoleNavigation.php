@@ -85,6 +85,7 @@ class RoleNavigation
                 ['label' => 'SKU Master', 'route' => 'admin.sku', 'icon' => 'package'],
                 ['label' => 'Vendor Master', 'route' => 'admin.vendors', 'icon' => 'truck'],
                 ['label' => 'PO Master', 'route' => 'admin.po', 'icon' => 'file-text'],
+                ['label' => 'RFQs', 'route' => 'admin.rfq', 'icon' => 'file-question'],
                 ['label' => 'Integrations', 'route' => 'admin.integrations', 'icon' => 'link'],
                 ['label' => 'Reports', 'route' => 'admin.reports', 'icon' => 'trending-up'],
             ],

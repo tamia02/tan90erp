@@ -15,7 +15,7 @@ new #[Layout('layouts.app')] class extends Component
         $record = FinanceRecord::findOrFail($id);
         $record->update(['vendor_status' => $status, 'notes' => $this->notes ?: $record->notes]);
 
-        AuditLogger::log("Vendor status set to {$status}", (string) $record->gate_entry_id);
+        AuditLogger::log("Vendor status set to {$status}", (string) $record->gate_entry_id, $record);
 
         $this->reset(['editing', 'notes']);
     }

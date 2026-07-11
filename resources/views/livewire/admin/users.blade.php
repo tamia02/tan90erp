@@ -44,7 +44,7 @@ new #[Layout('layouts.app')] class extends Component
             'password' => Hash::make($validated['password']),
         ]);
 
-        AuditLogger::log('User added'.($user->super_admin ? ' (Super Admin)' : ''), "{$user->name} · {$user->role->label()}");
+        AuditLogger::log('User added'.($user->super_admin ? ' (Super Admin)' : ''), "{$user->name} · {$user->role->label()}", $user);
 
         $this->reset(['name', 'email', 'phone', 'role', 'vendorTier', 'description', 'superAdmin', 'password', 'adding']);
         $this->role = 'guard';

@@ -43,7 +43,7 @@ new #[Layout('layouts.app')] class extends Component
             'description' => $this->description ?: null,
         ]);
 
-        AuditLogger::log('SKU added to master', "{$entry->sku} · {$entry->category}");
+        AuditLogger::log('SKU added to master', "{$entry->sku} · {$entry->category}", $entry);
 
         $this->reset(['sku', 'defaultBin', 'productCode', 'vendorName', 'unitPrice', 'quantityInStock', 'reorderLevel', 'description', 'adding']);
         $this->category = 'PCM — Raw Material';

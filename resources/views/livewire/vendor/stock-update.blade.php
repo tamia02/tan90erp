@@ -2,7 +2,9 @@
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
+use App\Models\PurchaseOrder;
 use App\Models\VendorStockUpdate;
+use App\Models\VendorSubmission;
 use App\Services\AuditLogger;
 
 new #[Layout('layouts.app')] class extends Component
@@ -20,9 +22,30 @@ new #[Layout('layouts.app')] class extends Component
     #[Validate('required|in:KG,LTR,MTR,NOS,BOX,TON')]
     public string $unit = 'KG';
 
-    public function submit(): void
+    // A single static action bound via wire:submit — a form that swaps
+    // between two dynamic method names ("submit" vs "saveEdit") depending
+    // on $editingId can lose its click binding after Livewire morphs the
+    // DOM between add/edit mode, which is why "Update Stock" stopped
+    // responding. One fixed action name sidesteps that entirely.
+    public function save(): void
     {
         $this->validate();
+
+        if ($this->editingId) {
+            $update = VendorStockUpdate::where('vendor_name', auth()->user()->name)->findOrFail($this->editingId);
+            $update->update([
+                'material' => $this->material,
+                'quantity' => $this->quantity,
+                'unit' => $this->unit,
+            ]);
+
+            AuditLogger::log('Vendor stock updated', "{$update->material} · {$update->quantity} {$update->unit} (edited)", $update);
+
+            $this->cancelEdit();
+            session()->flash('success', 'Stock entry updated successfully.');
+
+            return;
+        }
 
         $update = VendorStockUpdate::create([
             'vendor_name' => auth()->user()->name,
@@ -31,10 +54,9 @@ new #[Layout('layouts.app')] class extends Component
             'unit' => $this->unit,
         ]);
 
-        AuditLogger::log('Vendor stock updated', "{$update->material} · {$update->quantity} {$update->unit}");
+        AuditLogger::log('Vendor stock updated', "{$update->material} · {$update->quantity} {$update->unit}", $update);
 
-        $this->material = '';
-        $this->quantity = null;
+        $this->reset(['material', 'quantity']);
         $this->unit = 'KG';
 
         session()->flash('success', 'Stock updated successfully.');
@@ -50,23 +72,6 @@ new #[Layout('layouts.app')] class extends Component
         $this->unit = $update->unit;
     }
 
-    public function saveEdit(): void
-    {
-        $this->validate();
-
-        $update = VendorStockUpdate::where('vendor_name', auth()->user()->name)->findOrFail($this->editingId);
-        $update->update([
-            'material' => $this->material,
-            'quantity' => $this->quantity,
-            'unit' => $this->unit,
-        ]);
-
-        AuditLogger::log('Vendor stock updated', "{$update->material} · {$update->quantity} {$update->unit} (edited)");
-
-        $this->cancelEdit();
-        session()->flash('success', 'Stock entry updated successfully.');
-    }
-
     public function cancelEdit(): void
     {
         $this->reset(['editingId', 'material', 'quantity', 'unit']);
@@ -75,9 +80,30 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
+        $vendorName = auth()->user()->name;
+
+        $submissions = VendorSubmission::where('vendor_name', $vendorName)->get();
+        $poNumbers = $submissions->pluck('po_number')->filter()->unique();
+        $purchaseOrders = PurchaseOrder::whereIn('po_number', $poNumbers)->with('lines')->get();
+
+        // Only materials on POs that aren't fully invoiced yet — the
+        // vendor should only be updating stock against what's still open.
+        $skuOptions = $purchaseOrders
+            ->filter(function ($po) use ($submissions) {
+                $ordered = (float) ($po->primaryLine()?->quantity ?? 0);
+                $fulfilled = (float) $submissions->where('po_number', $po->po_number)->sum('invoice_qty');
+
+                return $ordered > 0 && $fulfilled < $ordered;
+            })
+            ->flatMap(fn ($po) => $po->lines->pluck('product'))
+            ->filter()
+            ->unique()
+            ->values();
+
         return [
             'units' => self::UNITS,
-            'updates' => VendorStockUpdate::where('vendor_name', auth()->user()->name)
+            'skuOptions' => $skuOptions,
+            'updates' => VendorStockUpdate::where('vendor_name', $vendorName)
                                 ->orderBy('created_at', 'desc')
                                 ->take(10)
                                 ->get(),
@@ -91,7 +117,7 @@ new #[Layout('layouts.app')] class extends Component
 
     <div class="grid grid-cols-3 gap-6">
         <div class="col-span-1">
-            <form wire:submit="{{ $editingId ? 'saveEdit' : 'submit' }}" class="p-4 rounded-lg border space-y-4" style="background: var(--surface-3); border-color: var(--border);">
+            <form wire:submit="save" class="p-4 rounded-lg border space-y-4" style="background: var(--surface-3); border-color: var(--border);">
                 @if (session()->has('success'))
                     <div class="p-2 rounded text-xs text-green-800 bg-green-100">{{ session('success') }}</div>
                 @endif
@@ -100,7 +126,15 @@ new #[Layout('layouts.app')] class extends Component
                 @endif
                 <div>
                     <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">SKU/Material</label>
-                    <input type="text" wire:model="material" class="w-full rounded border px-3 py-2 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                    <select wire:model="material" class="w-full rounded border px-3 py-2 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                        <option value="">{{ $skuOptions->isEmpty() ? 'No open PO materials' : 'Choose SKU…' }}</option>
+                        @foreach ($skuOptions as $sku)
+                            <option value="{{ $sku }}">{{ $sku }}</option>
+                        @endforeach
+                        @if ($editingId && $material && ! $skuOptions->contains($material))
+                            <option value="{{ $material }}">{{ $material }}</option>
+                        @endif
+                    </select>
                     @error('material') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                 </div>
                 <div>

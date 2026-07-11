@@ -12,7 +12,7 @@ new #[Layout('layouts.app')] class extends Component
         $issue = ValidationIssue::findOrFail($id);
         $issue->update(['status' => $status]);
 
-        AuditLogger::log("Issue {$status}", $issue->id.($issue->owner ? " · owner {$issue->owner}" : ''));
+        AuditLogger::log("Issue {$status}", $issue->id.($issue->owner ? " · owner {$issue->owner}" : ''), $issue);
 
         $gate = $issue->gateEntry;
         if ($gate && $gate->status === 'pending_validation' && ! $gate->hasBlockingOpenIssues()) {

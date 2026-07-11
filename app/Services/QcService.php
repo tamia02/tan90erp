@@ -28,6 +28,11 @@ class QcService
             'rejected_qty' => $split['rejected'],
             'missing_qty' => $missing,
             'qc_reasons' => $qcReasons,
+            // A rejection automatically opens a purchase return for the
+            // vendor to action — surfaced via NotificationCenter::vendor()
+            // and the vendor dashboard's "Purchase Return" button.
+            'return_status' => $split['rejected'] > 0 ? 'pending' : null,
+            'return_requested_at' => $split['rejected'] > 0 ? now() : null,
         ]);
 
         $gate->update(['status' => 'qc_done']);
@@ -35,7 +40,16 @@ class QcService
         AuditLogger::log(
             'QC Check recorded',
             "{$gate->gate_no} · accepted {$split['accepted']}, defective {$split['defective']}, rejected {$split['rejected']} · sent to GRN Check",
+            $result,
         );
+
+        if ($split['rejected'] > 0) {
+            AuditLogger::log(
+                'Purchase return notification sent to vendor',
+                "{$gate->gate_no} · {$gate->vendor_name} · rejected {$split['rejected']}".($qcReasons ? " · {$qcReasons}" : ''),
+                $result,
+            );
+        }
 
         return $result;
     }

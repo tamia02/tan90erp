@@ -277,7 +277,7 @@ new #[Layout('layouts.app')] class extends Component
 
         <div class="flex flex-col divide-y rounded-xl border overflow-hidden" style="border-color: var(--border); background: var(--surface-2);">
             @forelse ($realRows as $row)
-                <div class="px-4 py-3 flex items-center justify-between gap-3" style="border-color: var(--border);">
+                <a href="{{ route('activity.detail', $row) }}" wire:navigate class="px-4 py-3 flex items-center justify-between gap-3 hover:bg-black/5" style="border-color: var(--border);">
                     <div class="min-w-0">
                         <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $row->action }}</div>
                         @if ($row->detail)
@@ -285,7 +285,7 @@ new #[Layout('layouts.app')] class extends Component
                         @endif
                     </div>
                     <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ $row->created_at->format('d M, H:i') }}</span>
-                </div>
+                </a>
             @empty
                 <div class="text-center text-sm py-8" style="color: var(--text-muted);">No live audit rows for this role yet.</div>
             @endforelse

@@ -6,12 +6,13 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['gate_entry_id', 'box_count', 'staging_area', 'unloaded_by', 'pod_lr_ref', 'started_at', 'completed_at'])]
+#[Fillable(['gate_entry_id', 'box_count', 'staging_area', 'unloaded_by', 'pod_lr_ref', 'allotted_at', 'started_at', 'completed_at'])]
 class UnloadingRecord extends Model
 {
     protected function casts(): array
     {
         return [
+            'allotted_at' => 'datetime',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
         ];

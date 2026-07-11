@@ -48,7 +48,7 @@ new #[Layout('layouts.app')] class extends Component
             'list_price' => $this->listPrice,
         ]);
 
-        AuditLogger::log('Purchase Order added to master', "{$po->po_number} · {$po->vendor_name}");
+        AuditLogger::log('Purchase Order added to master', "{$po->po_number} · {$po->vendor_name}", $po);
 
         $this->reset(['poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'product', 'quantity', 'listPrice', 'adding']);
         $this->status = 'Created';

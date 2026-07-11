@@ -23,6 +23,7 @@ new #[Layout('layouts.app')] class extends Component
 
         return [
             'awaiting' => GateEntry::where('status', 'validated')->count(),
+            'allotted' => GateEntry::where('status', 'allotted')->count(),
             'inProgress' => GateEntry::where('status', 'unloading')->count(),
             'readyForQc' => GateEntry::where('status', 'grn')->count(),
             'queue' => GateEntry::where('status', 'validated')->orderBy('created_at')->limit(5)->get(),
@@ -36,10 +37,14 @@ new #[Layout('layouts.app')] class extends Component
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Store Executive Dashboard</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Vehicles cleared by Guard and waiting to be unloaded.</p>
 
-    <div class="grid grid-cols-3 gap-3 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
-            <div class="text-xs" style="color: var(--text-muted);">Awaiting Unloading</div>
+            <div class="text-xs" style="color: var(--text-muted);">To Allot</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $awaiting }}</div>
+        </div>
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="text-xs" style="color: var(--text-muted);">Allotted</div>
+            <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $allotted }}</div>
         </div>
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">In Progress</div>
@@ -81,7 +86,7 @@ new #[Layout('layouts.app')] class extends Component
         </div>
         <div class="flex flex-col divide-y" style="border-color: var(--border);">
             @forelse ($recentActivity as $row)
-                <div class="py-3 flex items-center justify-between gap-3">
+                <a href="{{ route('activity.detail', $row) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                     <div class="min-w-0">
                         <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $row->action }}</div>
                         @if ($row->detail)
@@ -89,7 +94,7 @@ new #[Layout('layouts.app')] class extends Component
                         @endif
                     </div>
                     <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ $row->created_at->format('d M, H:i') }}</span>
-                </div>
+                </a>
             @empty
                 <p class="text-sm py-4" style="color: var(--text-muted);">No activity recorded yet.</p>
             @endforelse

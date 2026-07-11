@@ -58,7 +58,7 @@ new #[Layout('layouts.app')] class extends Component
         if ($this->eway_bill_file) $this->eway_bill_file->store('documents');
         if ($this->lr_pod_file) $this->lr_pod_file->store('documents');
 
-        AuditLogger::log('Vendor submission created', "{$submission->po_number} · {$submission->invoice_number}");
+        AuditLogger::log('Vendor submission created', "{$submission->po_number} · {$submission->invoice_number}", $submission);
 
         $this->reset(['po_number', 'invoice_number', 'invoice_qty', 'material', 'invoice_file', 'eway_bill_file', 'lr_pod_file', 'zoho_terms', 'adding']);
 
@@ -70,7 +70,7 @@ new #[Layout('layouts.app')] class extends Component
         $issue = ValidationIssue::whereHas('gateEntry', fn ($q) => $q->where('vendor_name', auth()->user()->name))->findOrFail($id);
         $issue->update(['status' => 'resolved']);
 
-        AuditLogger::log('Issue resolved', (string) $issue->id);
+        AuditLogger::log('Issue resolved', (string) $issue->id, $issue);
     }
 
     public function with(): array

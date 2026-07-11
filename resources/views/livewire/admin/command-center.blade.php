@@ -13,6 +13,7 @@ new #[Layout('layouts.app')] class extends Component
             'stages' => [
                 ['label' => 'Pending Validation', 'count' => GateEntry::where('status', 'pending_validation')->count(), 'tone' => 'warning'],
                 ['label' => 'Validated', 'count' => GateEntry::where('status', 'validated')->count(), 'tone' => 'good'],
+                ['label' => 'Allotted', 'count' => GateEntry::where('status', 'allotted')->count(), 'tone' => 'good'],
                 ['label' => 'Unloading', 'count' => GateEntry::where('status', 'unloading')->count(), 'tone' => 'warning'],
                 ['label' => 'Ready for QC', 'count' => GateEntry::where('status', 'grn')->count(), 'tone' => 'warning'],
                 ['label' => 'QC Done', 'count' => GateEntry::where('status', 'qc_done')->count(), 'tone' => 'good'],

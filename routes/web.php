@@ -40,6 +40,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // content per role (mirrors the React prototype's RequireAuth routes).
     Volt::route('notifications', 'shared.notifications')->name('notifications');
     Volt::route('activity', 'shared.activity-log')->name('activity');
+    Volt::route('activity/{entry}', 'shared.activity-detail')->name('activity.detail');
     Volt::route('settings', 'shared.settings')->name('settings');
     Volt::route('help', 'shared.help-support')->name('help');
 
@@ -99,6 +100,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('sku', 'admin.sku-master')->name('sku');
         Volt::route('vendors', 'admin.vendor-master')->name('vendors');
         Volt::route('po', 'admin.po-master')->name('po');
+        Volt::route('rfq', 'admin.rfq')->name('rfq');
         Volt::route('integrations', 'admin.integrations')->name('integrations');
         Volt::route('reports', 'admin.reports')->name('reports');
     });
