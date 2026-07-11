@@ -59,6 +59,12 @@ class NotificationCenter
             $notices[] = ['title' => 'Payables pending review', 'detail' => "{$pending} vendor payable".($pending === 1 ? '' : 's')." still marked pending.", 'tone' => 'warning'];
         }
 
+        // Store Manager → Finance Controller escalation path.
+        $escalated = ValidationIssue::where('status', 'escalated')->count();
+        if ($escalated > 0) {
+            $notices[] = ['title' => 'Issues escalated from Store Manager', 'detail' => "{$escalated} validation issue".($escalated === 1 ? '' : 's')." escalated and need Finance Controller review.", 'tone' => 'critical'];
+        }
+
         return $notices;
     }
 

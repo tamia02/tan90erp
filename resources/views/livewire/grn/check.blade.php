@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\GateEntry;
+use App\Models\PurchaseOrder;
 use App\Services\GrnPostingService;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -28,7 +29,17 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        return ['queue' => GateEntry::with('qcResult')->where('status', 'qc_done')->orderBy('created_at')->get()];
+        $queue = GateEntry::with('qcResult')->where('status', 'qc_done')->orderBy('created_at')->get();
+
+        $purchaseOrders = PurchaseOrder::whereIn('po_number', $queue->pluck('po_number')->filter())
+            ->with('lines')
+            ->get()
+            ->keyBy('po_number');
+
+        return [
+            'queue' => $queue,
+            'purchaseOrders' => $purchaseOrders,
+        ];
     }
 }; ?>
 
@@ -38,7 +49,11 @@ new #[Layout('layouts.app')] class extends Component
 
     <div class="flex flex-col gap-3">
         @forelse ($queue as $g)
-            @php $qc = $g->qcResult; @endphp
+            @php
+                $qc = $g->qcResult;
+                $po = $purchaseOrders->get($g->po_number);
+                $poLine = $po?->primaryLine();
+            @endphp
             <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
                     <div>
@@ -54,6 +69,18 @@ new #[Layout('layouts.app')] class extends Component
                         <button wire:click="openPost({{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white shrink-0" style="background: var(--brand);">Post GRN</button>
                     @endif
                 </div>
+
+                @if ($poLine)
+                    <div class="mt-3 rounded-lg border p-3 text-xs" style="border-color: var(--border); background: var(--surface-2);">
+                        <div class="font-semibold mb-1.5" style="color: var(--text-muted);">QC quantity vs PO price ({{ $g->po_number }})</div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <div><span style="color: var(--text-muted);">PO qty</span> · <span style="color: var(--text-primary);">{{ $poLine->quantity }}</span></div>
+                            <div><span style="color: var(--text-muted);">List price</span> · <span style="color: var(--text-primary);">₹{{ number_format($poLine->list_price, 2) }}</span></div>
+                            <div><span style="color: var(--text-muted);">Accepted value</span> · <span style="color: var(--status-good);">₹{{ number_format(($qc?->accepted_qty ?? 0) * $poLine->list_price, 2) }}</span></div>
+                            <div><span style="color: var(--text-muted);">Qty variance</span> · <span style="color: {{ ($qc?->accepted_qty ?? 0) < $poLine->quantity ? 'var(--status-warning)' : 'var(--status-good)' }};">{{ ($qc?->accepted_qty ?? 0) - $poLine->quantity }}</span></div>
+                        </div>
+                    </div>
+                @endif
 
                 @if ($posting === $g->id)
                     <div class="mt-4">

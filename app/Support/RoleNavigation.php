@@ -54,8 +54,9 @@ class RoleNavigation
             ],
             Role::StoreExec => [
                 ['label' => 'Dashboard', 'route' => 'unloading.dashboard', 'icon' => 'gauge'],
+                ['label' => 'Loading Desk', 'route' => 'unloading.loading-desk', 'icon' => 'truck'],
                 ['label' => 'Unloading Desk', 'route' => 'unloading.desk', 'icon' => 'warehouse'],
-                ['label' => 'Staging Areas', 'route' => 'unloading.staging', 'icon' => 'map-pinned'],
+                ['label' => 'History', 'route' => 'unloading.history', 'icon' => 'history'],
             ],
             Role::Qc => [
                 ['label' => 'Dashboard', 'route' => 'qc.dashboard', 'icon' => 'gauge'],

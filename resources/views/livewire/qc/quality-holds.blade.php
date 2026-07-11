@@ -36,6 +36,12 @@ new #[Layout('layouts.app')] class extends Component
                 @if ($r->qc_reasons)
                     <div class="text-xs mt-2" style="color: var(--text-muted);">{{ $r->qc_reasons }}</div>
                 @endif
+                @if ($r->hold_reason)
+                    <div class="text-xs mt-2" style="color: var(--text-primary);"><span class="font-semibold" style="color: var(--text-muted);">Hold reason: </span>{{ $r->hold_reason }}</div>
+                @endif
+                @if ($r->hold_document_path)
+                    <a href="{{ route('qc.hold-document', $r) }}" class="text-xs font-medium mt-1 inline-block" style="color: var(--brand);">View attached document →</a>
+                @endif
             </div>
         @empty
             <div class="text-center text-sm py-10" style="color: var(--text-muted);">Nothing on hold — every QC check has been clean.</div>

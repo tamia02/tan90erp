@@ -26,6 +26,7 @@ new #[Layout('layouts.app')] class extends Component
             'awaitingGrn' => GateEntry::where('status', 'qc_done')->count(),
             'closedToday' => GateEntry::where('status', 'closed')->whereDate('updated_at', today())->count(),
             'openIssues' => ValidationIssue::where('status', 'open')->count(),
+            'recentlyClosed' => GateEntry::with('grnRecord')->where('status', 'closed')->orderByDesc('updated_at')->limit(5)->get(),
             'activityTotal' => $activity->count(),
             'recentActivity' => $this->showAllActivity ? $activity : $activity->take(5),
         ];
@@ -49,6 +50,25 @@ new #[Layout('layouts.app')] class extends Component
             <div class="text-xs" style="color: var(--text-muted);">Open Issues</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--status-warning);">{{ $openIssues }}</div>
         </div>
+    </div>
+
+    <div class="rounded-lg border p-4 mb-6" style="background: var(--surface-3); border-color: var(--border);">
+        <h2 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">Gate Entry Close</h2>
+        @if ($recentlyClosed->isEmpty())
+            <p class="text-sm py-2" style="color: var(--text-muted);">Nothing closed yet.</p>
+        @else
+            <div class="flex flex-col divide-y" style="border-color: var(--border);">
+                @foreach ($recentlyClosed as $g)
+                    <div class="py-2.5 flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
+                            <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name }} · bin {{ $g->grnRecord?->suggested_bin }}</div>
+                        </div>
+                        <span class="text-xs font-medium" style="color: var(--status-good);">Closed · stock updated</span>
+                    </div>
+                @endforeach
+            </div>
+        @endif
     </div>
 
     <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">

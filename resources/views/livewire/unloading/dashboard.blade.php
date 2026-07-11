@@ -23,6 +23,7 @@ new #[Layout('layouts.app')] class extends Component
 
         return [
             'awaiting' => GateEntry::where('status', 'validated')->count(),
+            'onDock' => GateEntry::where('status', 'dock_assigned')->count(),
             'allotted' => GateEntry::where('status', 'allotted')->count(),
             'inProgress' => GateEntry::where('status', 'unloading')->count(),
             'readyForQc' => GateEntry::where('status', 'grn')->count(),
@@ -33,14 +34,18 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-3xl mx-auto">
+<div class="max-w-3xl mx-auto" wire:poll.10s>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Store Executive Dashboard</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Vehicles cleared by Guard and waiting to be unloaded.</p>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
-            <div class="text-xs" style="color: var(--text-muted);">To Allot</div>
+            <div class="text-xs" style="color: var(--text-muted);">Awaiting Dock</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $awaiting }}</div>
+        </div>
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="text-xs" style="color: var(--text-muted);">On Dock</div>
+            <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $onDock }}</div>
         </div>
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Allotted</div>
@@ -57,7 +62,7 @@ new #[Layout('layouts.app')] class extends Component
     </div>
 
     <div class="rounded-lg border p-4 mb-6" style="background: var(--surface-3); border-color: var(--border);">
-        <h2 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">Unloading queue</h2>
+        <h2 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">Cleared vehicles awaiting a loading dock</h2>
         @if ($queue->isEmpty())
             <p class="text-sm py-4" style="color: var(--text-muted);">Nothing waiting — cleared vehicles will show up here.</p>
         @else
@@ -68,7 +73,7 @@ new #[Layout('layouts.app')] class extends Component
                             <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                             <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }}</div>
                         </div>
-                        <a href="{{ route('unloading.desk') }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">Unload →</a>
+                        <a href="{{ route('unloading.loading-desk') }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">Assign dock →</a>
                     </div>
                 @endforeach
             </div>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\SlaDirectives;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
@@ -8,6 +9,7 @@ new #[Layout('layouts.app')] class extends Component
     public bool $emailNotifications = true;
     public bool $smsAlerts = false;
     public string $theme = 'system';
+    public string $slaDirective = '';
     public bool $justSaved = false;
 
     public function mount(): void
@@ -16,6 +18,7 @@ new #[Layout('layouts.app')] class extends Component
         $this->emailNotifications = $prefs['email_notifications'] ?? true;
         $this->smsAlerts = $prefs['sms_alerts'] ?? false;
         $this->theme = $prefs['theme'] ?? 'system';
+        $this->slaDirective = auth()->user()->sla_directive ?? '';
     }
 
     public function save(): void
@@ -26,9 +29,15 @@ new #[Layout('layouts.app')] class extends Component
                 'sms_alerts' => $this->smsAlerts,
                 'theme' => $this->theme,
             ],
+            'sla_directive' => $this->slaDirective ?: null,
         ]);
 
         $this->justSaved = true;
+    }
+
+    public function with(): array
+    {
+        return ['slaOptions' => SlaDirectives::OPTIONS];
     }
 }; ?>
 
@@ -51,6 +60,15 @@ new #[Layout('layouts.app')] class extends Component
                 <option value="system">System</option>
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
+            </select>
+        </label>
+        <label class="flex flex-col gap-1.5 text-sm">
+            <span class="font-medium" style="color: var(--text-primary);">SLA directive</span>
+            <select wire:model="slaDirective" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                <option value="">Not set</option>
+                @foreach ($slaOptions as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
+                @endforeach
             </select>
         </label>
         <div class="flex items-center gap-3">

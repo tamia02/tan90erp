@@ -4,20 +4,25 @@ use App\Models\GateEntry;
 use App\Services\QcService;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new #[Layout('layouts.app')] class extends Component
 {
+    use WithFileUploads;
+
     public ?int $checking = null;
     public string $accepted = '';
     public string $qcHold = '';
     public string $defective = '';
     public string $rejected = '';
     public string $qcReasons = '';
+    public string $holdReason = '';
+    public $holdDocument = null;
 
     public function openCheck(int $gateId): void
     {
         $this->checking = $gateId;
-        $this->reset(['accepted', 'qcHold', 'defective', 'rejected', 'qcReasons']);
+        $this->reset(['accepted', 'qcHold', 'defective', 'rejected', 'qcReasons', 'holdReason', 'holdDocument']);
     }
 
     public function submitCheck(): void
@@ -27,9 +32,13 @@ new #[Layout('layouts.app')] class extends Component
             'qcHold' => ['required', 'integer', 'min:0'],
             'defective' => ['required', 'integer', 'min:0'],
             'rejected' => ['required', 'integer', 'min:0'],
+            'holdReason' => [$this->qcHold > 0 ? 'required' : 'nullable', 'string', 'max:1000'],
+            'holdDocument' => ['nullable', 'file', 'max:10240'],
         ]);
 
         $gate = GateEntry::findOrFail($this->checking);
+
+        $holdDocumentPath = $this->holdDocument?->store('qc-hold-documents', 'local');
 
         app(QcService::class)->recordResult(
             $gate,
@@ -43,9 +52,11 @@ new #[Layout('layouts.app')] class extends Component
                 'rejected' => (int) $this->rejected,
             ],
             $this->qcReasons ?: null,
+            $this->holdReason ?: null,
+            $holdDocumentPath,
         );
 
-        $this->reset(['checking', 'accepted', 'qcHold', 'defective', 'rejected', 'qcReasons']);
+        $this->reset(['checking', 'accepted', 'qcHold', 'defective', 'rejected', 'qcReasons', 'holdReason', 'holdDocument']);
     }
 
     public function with(): array
@@ -79,7 +90,7 @@ new #[Layout('layouts.app')] class extends Component
                         </label>
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">QC Hold</span>
-                            <input wire:model="qcHold" type="number" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                            <input wire:model.live="qcHold" type="number" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
                         </label>
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">Defective</span>
@@ -93,6 +104,18 @@ new #[Layout('layouts.app')] class extends Component
                             <span class="font-medium" style="color: var(--text-primary);">QC reasons (if any hold/defective/rejected)</span>
                             <textarea wire:model="qcReasons" rows="2" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);"></textarea>
                         </label>
+                        @if ((int) $qcHold > 0)
+                            <label class="flex flex-col gap-1.5 text-sm sm:col-span-2">
+                                <span class="font-medium" style="color: var(--text-primary);">Quality Hold reason</span>
+                                <textarea wire:model="holdReason" rows="2" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="Why is this quantity on hold?"></textarea>
+                                @error('holdReason') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            </label>
+                            <label class="flex flex-col gap-1.5 text-sm sm:col-span-2">
+                                <span class="font-medium" style="color: var(--text-primary);">Attach document (optional)</span>
+                                <input wire:model="holdDocument" type="file" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                                @error('holdDocument') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            </label>
+                        @endif
                         <button wire:click="submitCheck" class="sm:col-span-4 rounded-lg px-3.5 py-2 text-sm font-medium text-white" style="background: var(--brand);">Submit QC Check &amp; send to GRN Check</button>
                     </div>
                 @endif

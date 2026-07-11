@@ -2,9 +2,11 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Enums\Role;
+use App\Models\QcResult;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 use App\Http\Controllers\ClaudeOAuthController;
 
@@ -63,8 +65,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::middleware('role:storeExec')->prefix('unloading')->name('unloading.')->group(function () {
         Volt::route('/', 'unloading.dashboard')->name('dashboard');
+        Volt::route('loading-desk', 'unloading.loading-desk')->name('loading-desk');
         Volt::route('desk', 'unloading.desk')->name('desk');
-        Volt::route('staging', 'unloading.staging')->name('staging');
+        Volt::route('history', 'unloading.history')->name('history');
     });
 
     Route::middleware('role:qc')->prefix('qc')->name('qc.')->group(function () {
@@ -72,6 +75,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('queue', 'qc.queue')->name('queue');
         Volt::route('history', 'qc.history')->name('history');
         Volt::route('holds', 'qc.quality-holds')->name('holds');
+        Route::get('holds/{qcResult}/document', function (QcResult $qcResult) {
+            abort_unless($qcResult->hold_document_path, 404);
+
+            return Storage::disk('local')->download($qcResult->hold_document_path);
+        })->name('hold-document');
     });
 
     Route::middleware('role:storeManager')->prefix('grn')->name('grn.')->group(function () {

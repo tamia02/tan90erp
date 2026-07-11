@@ -13,7 +13,7 @@ use Illuminate\Notifications\Notifiable;
 
 // Merges the React prototype's TeamMember concept into the real user
 // account — one role per account, admin-managed, no self-registration.
-#[Fillable(['name', 'email', 'phone', 'role', 'vendor_tier', 'description', 'super_admin', 'is_active', 'preferences', 'password'])]
+#[Fillable(['name', 'email', 'phone', 'role', 'vendor_tier', 'description', 'sla_directive', 'super_admin', 'is_active', 'preferences', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {

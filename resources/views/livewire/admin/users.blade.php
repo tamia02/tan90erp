@@ -3,6 +3,7 @@
 use App\Enums\Role;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\SlaDirectives;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
@@ -18,6 +19,7 @@ new #[Layout('layouts.app')] class extends Component
     public string $role = 'guard';
     public string $vendorTier = 'basic';
     public string $description = '';
+    public string $slaDirective = '';
     public bool $superAdmin = false;
     public string $password = '';
 
@@ -30,6 +32,7 @@ new #[Layout('layouts.app')] class extends Component
             'role' => ['required', Rule::enum(Role::class)],
             'vendorTier' => ['nullable', 'in:basic,advanced'],
             'description' => ['nullable', 'string', 'max:255'],
+            'slaDirective' => ['nullable', Rule::in(array_keys(SlaDirectives::OPTIONS))],
             'password' => ['required', 'string', 'min:8'],
         ]);
 
@@ -40,13 +43,14 @@ new #[Layout('layouts.app')] class extends Component
             'role' => $validated['role'],
             'vendor_tier' => $validated['role'] === Role::Vendor->value ? $validated['vendorTier'] : null,
             'description' => $validated['description'] ?: null,
+            'sla_directive' => $validated['slaDirective'] ?: null,
             'super_admin' => $this->superAdmin,
             'password' => Hash::make($validated['password']),
         ]);
 
         AuditLogger::log('User added'.($user->super_admin ? ' (Super Admin)' : ''), "{$user->name} · {$user->role->label()}", $user);
 
-        $this->reset(['name', 'email', 'phone', 'role', 'vendorTier', 'description', 'superAdmin', 'password', 'adding']);
+        $this->reset(['name', 'email', 'phone', 'role', 'vendorTier', 'description', 'slaDirective', 'superAdmin', 'password', 'adding']);
         $this->role = 'guard';
         $this->vendorTier = 'basic';
     }
@@ -63,6 +67,7 @@ new #[Layout('layouts.app')] class extends Component
         return [
             'users' => User::orderByDesc('created_at')->get(),
             'roles' => Role::cases(),
+            'slaOptions' => SlaDirectives::OPTIONS,
         ];
     }
 }; ?>
@@ -121,6 +126,15 @@ new #[Layout('layouts.app')] class extends Component
                 <input wire:model="description" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="Gate 1, day shift" />
             </label>
             <label class="flex flex-col gap-1.5 text-sm">
+                <span class="font-medium" style="color: var(--text-primary);">SLA directive</span>
+                <select wire:model="slaDirective" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                    <option value="">Not set</option>
+                    @foreach ($slaOptions as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">Password</span>
                 <input wire:model="password" type="password" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
                 @error('password') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
@@ -149,6 +163,7 @@ new #[Layout('layouts.app')] class extends Component
                         <th class="px-4 py-2.5 font-medium">Phone</th>
                         <th class="px-4 py-2.5 font-medium">Role</th>
                         <th class="px-4 py-2.5 font-medium">Vendor UI</th>
+                        <th class="px-4 py-2.5 font-medium">SLA Directive</th>
                         <th class="px-4 py-2.5 font-medium">Super Admin</th>
                         <th class="px-4 py-2.5 font-medium"></th>
                     </tr>
@@ -161,6 +176,7 @@ new #[Layout('layouts.app')] class extends Component
                             <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ $user->phone ?? '—' }}</td>
                             <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $user->role->label() }}</td>
                             <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ $user->role === \App\Enums\Role::Vendor ? ucfirst($user->vendor_tier ?? 'basic') : '—' }}</td>
+                            <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ \App\Support\SlaDirectives::label($user->sla_directive) }}</td>
                             <td class="px-4 py-2.5">{{ $user->super_admin ? 'Yes' : 'No' }}</td>
                             <td class="px-4 py-2.5 text-right">
                                 <button
@@ -174,7 +190,7 @@ new #[Layout('layouts.app')] class extends Component
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No users yet.</td></tr>
+                        <tr><td colspan="8" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No users yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
