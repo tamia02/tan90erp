@@ -67,12 +67,13 @@ new #[Layout('layouts.app')] class extends Component
     {
         $vendorName = auth()->user()->name;
 
-        $activity = AuditLogEntry::orderByDesc('created_at')
-            ->limit(200)
+        $activity = AuditLogEntry::with('subject')
+            ->orderByDesc('created_at')
             ->get()
-            ->filter(fn ($row) => collect(self::ACTIVITY_KEYWORDS)->contains(
+            ->filter(fn ($row) => $row->vendorName() === $vendorName && collect(self::ACTIVITY_KEYWORDS)->contains(
                 fn ($keyword) => str_contains($row->action, $keyword) || str_contains((string) $row->detail, $keyword)
             ))
+            ->take(200)
             ->values();
         $allSubmissions = VendorSubmission::where('vendor_name', $vendorName)->get();
         $poNumbers = $allSubmissions->pluck('po_number')->filter()->unique();

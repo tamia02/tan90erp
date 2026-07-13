@@ -39,6 +39,10 @@ class GateValidationService
             $raise('PO_MISSING', 'PO Missing', 'PO number not found for this inward entry', 'hardFail');
         }
 
+        if (empty($form['vendor_name'])) {
+            $raise('VENDOR_MISSING', 'Vendor Missing', 'No vendor name entered for this inward entry', 'hardFail');
+        }
+
         if (! empty($form['invoice_number']) && GateEntry::whereRaw('LOWER(invoice_number) = ?', [strtolower($form['invoice_number'])])->exists()) {
             $raise('DUP_INVOICE', 'Duplicate Invoice', 'Possible duplicate invoice detected', 'hardFail');
         }

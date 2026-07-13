@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\Role;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -15,5 +16,29 @@ class AuditLogEntry extends Model
     public function subject(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /** The vendor this entry belongs to, if any — used to scope a vendor's own activity feed and to block cross-vendor access to a detail page. */
+    public function vendorName(): ?string
+    {
+        $subject = $this->subject;
+
+        if (! $subject) {
+            return null;
+        }
+
+        if ($subject instanceof User) {
+            return $subject->role === Role::Vendor ? $subject->name : null;
+        }
+
+        if (isset($subject->vendor_name)) {
+            return $subject->vendor_name;
+        }
+
+        if (method_exists($subject, 'gateEntry')) {
+            return $subject->gateEntry?->vendor_name;
+        }
+
+        return null;
     }
 }

@@ -13,8 +13,20 @@ class SlaDirectives
         'critical_4h' => 'Critical (4h)',
     ];
 
+    private const HOURS = [
+        'standard_24h' => 24,
+        'priority_12h' => 12,
+        'critical_4h' => 4,
+    ];
+
     public static function label(?string $value): string
     {
         return self::OPTIONS[$value] ?? 'Not set';
+    }
+
+    /** Hours until SLA breach for a directive tier, falling back to $default when unset/unrecognized. */
+    public static function hours(?string $value, int $default = 12): int
+    {
+        return self::HOURS[$value] ?? $default;
     }
 }

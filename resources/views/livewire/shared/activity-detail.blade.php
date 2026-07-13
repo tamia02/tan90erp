@@ -19,8 +19,11 @@ new #[Layout('layouts.app')] class extends Component
         // Vendor is the one externally-facing role — block a vendor from
         // opening another vendor's record by guessing the URL. Every other
         // role is internal staff already trusted with cross-role visibility
-        // elsewhere (e.g. Admin's Activity Log, Validation Issues).
-        if ($user->role === Role::Vendor && $this->vendorNameFor($entry->subject) !== $user->name) {
+        // elsewhere (e.g. Admin's Activity Log, Validation Issues). Rows with
+        // no linked subject (e.g. logged without a $subject argument) have no
+        // vendor to check against, so they fall through to the "no
+        // structured record" state below instead of a 403.
+        if ($user->role === Role::Vendor && $entry->subject && $entry->vendorName() !== $user->name) {
             abort(403);
         }
 
@@ -38,23 +41,6 @@ new #[Layout('layouts.app')] class extends Component
             'gateEntry' => $gateEntry,
             'gateEntryFields' => $gateEntry ? $this->describe($gateEntry) : [],
         ];
-    }
-
-    private function vendorNameFor(?Model $subject): ?string
-    {
-        if (! $subject) {
-            return null;
-        }
-
-        if (isset($subject->vendor_name)) {
-            return $subject->vendor_name;
-        }
-
-        if (method_exists($subject, 'gateEntry')) {
-            return $subject->gateEntry?->vendor_name;
-        }
-
-        return null;
     }
 
     private function labelFor(Model $subject): string

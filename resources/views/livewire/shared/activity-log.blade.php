@@ -42,7 +42,7 @@ new #[Layout('layouts.app')] class extends Component
     public function with(): array
     {
         $role = auth()->user()->role;
-        $realRows = AuditLogEntry::orderByDesc('created_at')->limit(60)->get();
+        $realRows = AuditLogEntry::with('subject')->orderByDesc('created_at')->limit(60)->get();
 
         return [
             'role' => $role,
@@ -168,17 +168,27 @@ new #[Layout('layouts.app')] class extends Component
     {
         $keywords = match ($role) {
             Role::Guard => ['Gate entry', 'Security Guard'],
-            Role::Vendor => ['Vendor submission', 'Vendor stock', 'Vendor User'],
+            Role::Vendor => ['Vendor submission', 'Vendor stock', 'Vendor User', 'RFQ', 'Purchase return'],
             Role::StoreExec => ['Unloading', 'Store Executive'],
-            Role::Qc => ['QC', 'QC User'],
-            Role::StoreManager => ['GRN', 'SKU', 'Purchase Order', 'Store Manager'],
+            Role::Qc => ['QC', 'QC User', 'Purchase return'],
+            Role::StoreManager => ['GRN', 'SKU', 'Purchase Order', 'Store Manager', 'Purchase return'],
             Role::Finance => ['Vendor status', 'Finance User'],
             Role::Admin => [],
         };
 
-        return $rows->filter(fn ($row) => collect($keywords)->contains(
+        $rows = $rows->filter(fn ($row) => collect($keywords)->contains(
             fn ($keyword) => str_contains($row->action, $keyword) || str_contains((string) $row->detail, $keyword)
-        ))->values();
+        ));
+
+        // Vendor is the one externally-facing role — every other role is
+        // internal staff already trusted with cross-role visibility, but a
+        // vendor must only ever see rows tied to their own account.
+        if ($role === Role::Vendor) {
+            $vendorName = auth()->user()->name;
+            $rows = $rows->filter(fn ($row) => $row->vendorName() === $vendorName);
+        }
+
+        return $rows->values();
     }
 }; ?>
 

@@ -1,10 +1,13 @@
 <?php
 
+use App\Enums\Role;
 use App\Models\GateEntry;
+use App\Models\User;
 use App\Models\ValidationIssue;
 use App\Models\VendorSubmission;
 use App\Services\AuditLogger;
 use App\Services\GateValidationService;
+use App\Support\SlaDirectives;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
@@ -154,7 +157,7 @@ new #[Layout('layouts.app')] class extends Component
     {
         $rules = match ($this->entryType) {
             'visitor' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'material' => ['required', 'string']],
-            'inward' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'vehicleNumber' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'invoiceAmount' => ['required', 'numeric']],
+            'inward' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'vehicleNumber' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'invoiceAmount' => ['required', 'numeric'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'material' => ['required', 'string']],
             default => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string']]
         };
         $this->validate($rules);
@@ -191,13 +194,14 @@ new #[Layout('layouts.app')] class extends Component
 
         $issues = app(GateValidationService::class)->validate($form);
         $blocking = app(GateValidationService::class)->isBlocking($issues);
+        $vendorUser = $form['vendor_name'] ? User::where('role', Role::Vendor)->where('name', $form['vendor_name'])->first() : null;
         $gate = GateEntry::create([
             ...$form,
             'gate_no' => 'GATE-'.random_int(1000, 9999),
             'bill_scanned' => $this->entryType === 'visitor' ? false : $this->billScanned,
             'remarks' => trim($this->remarks."\nDocuments: ".$this->documentSummary()."\nLine: ".$this->material.' x '.$qty) ?: null,
             'status' => $blocking ? 'pending_validation' : 'validated',
-            'sla_deadline' => now()->addHours(12),
+            'sla_deadline' => now()->addHours(SlaDirectives::hours($vendorUser?->sla_directive)),
         ]);
 
         foreach ($issues as $issue) {

@@ -21,9 +21,14 @@ new #[Layout('layouts.app')] class extends Component
 
     public function markQuoted(int $id): void
     {
+        $rfq = Rfq::findOrFail($id);
+
+        if ($rfq->status === 'closed') {
+            return;
+        }
+
         $this->validate(['quotedPrice' => ['required', 'numeric', 'min:0']]);
 
-        $rfq = Rfq::findOrFail($id);
         $rfq->update([
             'status' => 'quoted',
             'quoted_price' => $this->quotedPrice,
@@ -38,6 +43,11 @@ new #[Layout('layouts.app')] class extends Component
     public function close(int $id): void
     {
         $rfq = Rfq::findOrFail($id);
+
+        if ($rfq->status === 'closed') {
+            return;
+        }
+
         $rfq->update(['status' => 'closed', 'admin_notes' => $this->adminNotes ?: $rfq->admin_notes]);
 
         AuditLogger::log('RFQ closed', "{$rfq->sku} · {$rfq->vendor_name}", $rfq);
