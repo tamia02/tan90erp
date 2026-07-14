@@ -37,6 +37,15 @@ class DatabaseSeeder extends Seeder
         $this->seedPurchaseOrders();
         $this->seedGateEntriesAndDownstream();
         $this->seedVendorStockUpdates();
+
+        // Tan90 module merge: house role registry first (reference-only rows
+        // for the 7 GRN roles above), then each module's own roles/users/domain
+        // data. Order matters — BOM's seeder assumes Master Data's RBAC tables
+        // and roles already exist.
+        $this->call(Tan90HouseRolesSeeder::class);
+        $this->call(Tan90MasterDataSeeder::class);
+        $this->call(Tan90MasterDataGapRolesSeeder::class);
+        $this->call(Tan90BomRecipeCostingSeeder::class);
     }
 
     private function seedUsers(): void

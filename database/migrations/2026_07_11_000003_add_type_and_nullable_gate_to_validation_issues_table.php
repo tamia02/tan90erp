@@ -37,12 +37,14 @@ return new class extends Migration
             $table->dropColumn('gate_entry_id');
         });
 
-        // gate_entries.id is a plain signed `int` (not bigint/unsigned) in
-        // this schema, so the FK column has to match that exactly or MySQL
-        // rejects it (errno 150) — can't use foreignId()'s
-        // unsignedBigInteger here.
+        // gate_entries.id is Laravel's default bigint unsigned (from
+        // $table->id() in its own create migration), so the FK column has
+        // to match that exactly or MySQL rejects it (errno 150) - a plain
+        // signed integer() here was errno-150-incompatible; only went
+        // unnoticed before because it had never been run against a real
+        // MySQL engine (SQLite doesn't enforce column types this strictly).
         Schema::table('validation_issues', function (Blueprint $table) {
-            $table->integer('gate_entry_id')->nullable()->after('id');
+            $table->unsignedBigInteger('gate_entry_id')->nullable()->after('id');
             $table->foreign('gate_entry_id')->references('id')->on('gate_entries')->cascadeOnDelete();
         });
     }

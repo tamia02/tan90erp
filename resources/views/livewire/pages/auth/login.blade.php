@@ -85,6 +85,24 @@ new #[Layout('layouts.guest')] class extends Component
                         </small>
                     </a>
                 @endforeach
+
+                {{-- Master Data / BOM module roles, read from the shared tan90_roles
+                     table rather than the enum above — every module seeds into this
+                     one table, so a new module's roles show up here automatically
+                     once it's merged in, with no change to this view. --}}
+                @php
+                    $grnCodes = \App\Enums\Role::values();
+                    $tan90Roles = \App\Models\Tan90\MasterData\Role::where('status', 'active')
+                        ->whereNotIn('code', $grnCodes)
+                        ->orderBy('name')
+                        ->get();
+                @endphp
+                @foreach ($tan90Roles as $tan90Role)
+                    <a href="{{ route('tan90-role-login', $tan90Role->code) }}" class="tan90-role-card">
+                        <span>{{ $tan90Role->name }}</span>
+                        <small>{{ $tan90Role->data_scope ?: 'Operations workspace' }}</small>
+                    </a>
+                @endforeach
             </div>
 
             <div class="tan90-divider"><span>or sign in manually</span></div>

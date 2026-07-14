@@ -9,9 +9,21 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 use App\Http\Controllers\ClaudeOAuthController;
+use App\Livewire\Actions\Logout;
 
 Route::redirect('/', '/login');
 Route::redirect('public', '/login');
+
+// The GRN sidebar (layout/navigation.blade.php) calls the Logout action
+// directly as a Volt component method - there was never a named 'logout'
+// route. The Tan90 modules' layouts (copied from standalone demos built
+// against a standard Breeze-style app) use a plain <form action="{{ route
+// ('logout') }}"> instead, so this route exists purely for them.
+Route::post('logout', function (Logout $logout) {
+    $logout();
+
+    return redirect('/login');
+})->middleware('auth')->name('logout');
 
 // Dev/demo convenience only — logs in as any role with no password, so it
 // must never be reachable in production. Gated at registration, not just
@@ -26,6 +38,25 @@ if (! app()->isProduction()) {
 
         return redirect(rtrim(config('app.url'), '/').route($role->homeRouteName(), [], false));
     })->whereIn('role', Role::values())->name('role-login');
+
+    // Same dev/demo convenience, generalized to the Tan90 module RBAC
+    // (Master Data / BOM, Recipe & Costing) instead of the GRN enum above —
+    // logs in the first seeded user holding that tan90_roles.code and sends
+    // them to whichever module's dashboard owns that role. Shared codes
+    // (Super Admin/Plant/Auditor, seeded by more than one module) default to
+    // Master Data's dashboard; the sidebar nav reaches every other module.
+    Route::get('tan90-role-login/{roleCode}', function (string $roleCode) {
+        $role = \App\Models\Tan90\MasterData\Role::where('code', $roleCode)->firstOrFail();
+        $profile = \App\Models\Tan90\MasterData\UserProfile::where('tan90_role_id', $role->id)->firstOrFail();
+
+        Auth::login($profile->user);
+        Session::regenerate();
+
+        $bomOnlyCodes = ['ROLE-RND', 'ROLE-FORMULATION', 'ROLE-COSTING', 'ROLE-PRODUCTION-ENG', 'ROLE-QA-APPROVER'];
+        $homeRoute = in_array($roleCode, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
+
+        return redirect(rtrim(config('app.url'), '/').route($homeRoute, [], false));
+    })->name('tan90-role-login');
 }
 
 // Claude OAuth routes
