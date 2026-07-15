@@ -1,53 +1,53 @@
-@extends('tan90.master-data.layout')
+<x-app-layout>
+  <x-slot name="header">
+    <h2 class="font-semibold text-xl leading-tight" style="color: var(--text-primary);">Approval Queue</h2>
+  </x-slot>
 
-@section('title', 'Approval Queue')
-@section('page-title', 'Approval Queue')
-@section('page-subtitle', $rows->count() . ' records awaiting governance action')
+  <div class="max-w-5xl mx-auto">
+    <p class="text-sm mb-5" style="color: var(--text-secondary);">Maker-checker workspace for draft, pending and review-stage master records.</p>
 
-@section('content')
-  <div class="page-head">
-    <div class="page-title">
-      <p class="eyebrow">Governance Workspace</p>
-      <h2>Approval Queue</h2>
-      <p>Maker-checker workspace for draft, pending and review-stage master records.</p>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Total Pending</div><div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $rows->count() }}</div></div>
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Draft</div><div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $rows->where('status', 'draft')->count() }}</div></div>
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">In Review</div><div class="text-2xl font-semibold mt-1" style="color: var(--status-warning);">{{ $rows->where('status', 'review')->count() }}</div></div>
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Pending</div><div class="text-2xl font-semibold mt-1" style="color: var(--status-warning);">{{ $rows->where('status', 'pending')->count() }}</div></div>
+    </div>
+
+    <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+              <th class="px-4 py-2.5 font-medium">Record</th><th class="px-4 py-2.5 font-medium">Module</th><th class="px-4 py-2.5 font-medium">Status</th><th class="px-4 py-2.5 font-medium">Updated</th><th class="px-4 py-2.5 font-medium text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @forelse ($rows as $row)
+              <tr style="border-top: 1px solid var(--border);">
+                <td class="px-4 py-2.5">
+                  <a href="{{ route('tan90.master-data.show', [$row['slug'], $row['id']]) }}" class="font-medium" style="color: var(--brand);">{{ $row['name'] }}</a>
+                  <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $row['code'] }}</div>
+                </td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $row['module'] }}</td>
+                <td class="px-4 py-2.5">@include('tan90.master-data.partials.status-badge', ['value' => $row['status']])</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ optional($row['updated_at'])->format('d M Y, H:i') }}</td>
+                <td class="px-4 py-2.5 text-right">
+                  <div class="flex items-center justify-end gap-2">
+                    <form method="POST" action="{{ route('tan90.master-data.approve', [$row['slug'], $row['id']]) }}">
+                      @csrf <button type="submit" class="text-xs font-medium" style="color: var(--status-good);">Approve</button>
+                    </form>
+                    <form method="POST" action="{{ route('tan90.master-data.reject', [$row['slug'], $row['id']]) }}">
+                      @csrf <button type="submit" class="text-xs font-medium" style="color: var(--status-critical);">Reject</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            @empty
+              <tr><td colspan="5" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No pending approvals — all master records are currently clear.</td></tr>
+            @endforelse
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
-
-  <section class="kpi-grid">
-    <article class="card kpi-card"><div class="kpi-label">Total Pending</div><div class="kpi-value">{{ $rows->count() }}</div></article>
-    <article class="card kpi-card"><div class="kpi-label">Draft</div><div class="kpi-value">{{ $rows->where('status', 'draft')->count() }}</div></article>
-    <article class="card kpi-card"><div class="kpi-label">In Review</div><div class="kpi-value">{{ $rows->where('status', 'review')->count() }}</div></article>
-    <article class="card kpi-card"><div class="kpi-label">Pending</div><div class="kpi-value">{{ $rows->where('status', 'pending')->count() }}</div></article>
-  </section>
-
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Record</th><th>Module</th><th>Status</th><th>Updated</th><th style="text-align:right">Actions</th></tr></thead>
-      <tbody>
-        @forelse ($rows as $row)
-          <tr>
-            <td>
-              <a class="cell-main" href="{{ route('tan90.master-data.show', [$row['slug'], $row['id']]) }}">{{ $row['name'] }}</a>
-              <div class="cell-sub code">{{ $row['code'] }}</div>
-            </td>
-            <td>{{ $row['module'] }}</td>
-            <td>@include('tan90.master-data.partials.status-badge', ['value' => $row['status']])</td>
-            <td>{{ optional($row['updated_at'])->format('d M Y, H:i') }}</td>
-            <td>
-              <div class="row-actions">
-                <form method="POST" action="{{ route('tan90.master-data.approve', [$row['slug'], $row['id']]) }}">
-                  @csrf <button class="btn btn-sm btn-success" type="submit">Approve</button>
-                </form>
-                <form method="POST" action="{{ route('tan90.master-data.reject', [$row['slug'], $row['id']]) }}">
-                  @csrf <button class="btn btn-sm btn-danger" type="submit">Reject</button>
-                </form>
-              </div>
-            </td>
-          </tr>
-        @empty
-          <tr><td colspan="5"><div class="empty-state"><div><div class="empty-icon">✓</div><h3>No pending approvals</h3><p>All master records are currently clear.</p></div></div></td></tr>
-        @endforelse
-      </tbody>
-    </table>
-  </div>
-@endsection
+</x-app-layout>

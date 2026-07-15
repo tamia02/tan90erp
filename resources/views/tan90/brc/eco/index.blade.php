@@ -1,37 +1,38 @@
-@extends('tan90.brc.layout')
+<x-app-layout>
+  <x-slot name="header">
+    <h2 class="font-semibold text-xl leading-tight" style="color: var(--text-primary);">Engineering Change Orders</h2>
+  </x-slot>
 
-@section('title', 'Engineering Change Orders')
-@section('page-title', 'Engineering Change Orders')
-@section('page-subtitle', $ecos->total() . ' change orders')
+  <div class="max-w-5xl mx-auto">
+    <div class="mb-5">
+      <p class="text-xs font-medium uppercase tracking-wide" style="color: var(--text-muted);">Change Control</p>
+      <p class="text-sm mt-1" style="color: var(--text-secondary);">Raised automatically whenever a released recipe or BOM is superseded by a new revision.</p>
+    </div>
 
-@section('content')
-  <div class="page-head">
-    <div class="page-title">
-      <p class="eyebrow">Change Control</p>
-      <h2>Engineering Change Orders</h2>
-      <p>Raised automatically whenever a released recipe or BOM is superseded by a new revision.</p>
+    <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+              <th class="px-4 py-2.5 font-medium">Code</th><th class="px-4 py-2.5 font-medium">Object</th><th class="px-4 py-2.5 font-medium">Reason</th><th class="px-4 py-2.5 font-medium">Requested By</th><th class="px-4 py-2.5 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @forelse ($ecos as $eco)
+              <tr onclick="window.location='{{ route('tan90.brc.eco.show', $eco->id) }}'" style="border-top: 1px solid var(--border); cursor: pointer;" class="hover:bg-black/5">
+                <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $eco->code }}</td>
+                <td class="px-4 py-2.5" style="color: var(--text-primary);">{{ ucfirst($eco->object_type) }} #{{ $eco->object_id }}</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $eco->reason }}</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $eco->requestedBy->name ?? '—' }}</td>
+                <td class="px-4 py-2.5">@include('tan90.brc.partials.status-badge', ['value' => $eco->status])</td>
+              </tr>
+            @empty
+              <tr><td colspan="5" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No engineering changes yet.</td></tr>
+            @endforelse
+          </tbody>
+        </table>
+      </div>
+      <div class="px-4 py-3" style="border-top: 1px solid var(--border);">{{ $ecos->links() }}</div>
     </div>
   </div>
-
-  <section class="card">
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Code</th><th>Object</th><th>Reason</th><th>Requested By</th><th>Status</th></tr></thead>
-        <tbody>
-          @forelse ($ecos as $eco)
-            <tr class="record-row" onclick="window.location='{{ route('tan90.brc.eco.show', $eco->id) }}'">
-              <td>{{ $eco->code }}</td>
-              <td>{{ ucfirst($eco->object_type) }} #{{ $eco->object_id }}</td>
-              <td>{{ $eco->reason }}</td>
-              <td>{{ $eco->requestedBy->name ?? '—' }}</td>
-              <td>@include('tan90.brc.partials.status-badge', ['value' => $eco->status])</td>
-            </tr>
-          @empty
-            <tr><td colspan="5"><div class="empty-state"><div><div class="empty-icon">EC</div><h3>No engineering changes yet</h3></div></div></td></tr>
-          @endforelse
-        </tbody>
-      </table>
-    </div>
-    <div class="card-foot">{{ $ecos->links() }}</div>
-  </section>
-@endsection
+</x-app-layout>

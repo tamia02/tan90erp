@@ -1,55 +1,67 @@
-@extends('tan90.brc.layout')
+<x-app-layout>
+  <x-slot name="header">
+    <h2 class="font-semibold text-xl leading-tight" style="color: var(--text-primary);">{{ $recipe->name }}</h2>
+  </x-slot>
 
-@section('title', $recipe->code)
-@section('page-title', $recipe->name)
-@section('page-subtitle', $recipe->code)
-
-@section('content')
-  <div class="page-head">
-    <div class="page-title">
-      <p class="eyebrow">Recipe / {{ $recipe->finishedGood->name ?? '' }}</p>
-      <h2>{{ $recipe->name }}</h2>
-    </div>
-    <div class="page-actions">
-      <a class="btn btn-ghost" href="{{ route('tan90.brc.recipes.index') }}">← Back</a>
-      @can('update', $recipe)
-        <form method="POST" action="{{ route('tan90.brc.recipes.revisions.store', $recipe->id) }}" onsubmit="return confirm('Create a new revision?')">
-          @csrf
-          <input type="hidden" name="reason" value="Manual revision from recipe detail screen">
-          <button class="btn btn-secondary" type="submit">New Revision</button>
-        </form>
-      @endcan
-    </div>
-  </div>
-
-  @if ($currentVersion)
-    <section class="kpi-grid compact">
-      <div class="kpi-card"><span>Revision</span><strong>{{ $currentVersion->revision_code }}</strong></div>
-      <div class="kpi-card"><span>Gate Status</span><strong>@include('tan90.brc.partials.status-badge', ['value' => $currentVersion->gate_status])</strong></div>
-      <div class="kpi-card"><span>Formula Total</span><strong>{{ $validation['total'] ?? 0 }}%</strong></div>
-    </section>
-
-    @if ($validation && ! $validation['valid'])
-      <div class="card" style="margin-bottom:14px;padding:12px 16px;border-left:3px solid var(--danger)">
-        @foreach ($validation['errors'] as $error) <p>{{ $error }}</p> @endforeach
+  <div class="max-w-5xl mx-auto">
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+      <div>
+        <p class="text-xs font-medium uppercase tracking-wide" style="color: var(--text-muted);">Recipe / {{ $recipe->finishedGood->name ?? '' }}</p>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">{{ $recipe->code }}</p>
       </div>
-    @endif
+      <div class="flex gap-2">
+        <a href="{{ route('tan90.brc.recipes.index') }}" class="inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">← Back</a>
+        @can('update', $recipe)
+          <form method="POST" action="{{ route('tan90.brc.recipes.revisions.store', $recipe->id) }}" onsubmit="return confirm('Create a new revision?')">
+            @csrf
+            <input type="hidden" name="reason" value="Manual revision from recipe detail screen">
+            <button type="submit" class="inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">New Revision</button>
+          </form>
+        @endcan
+      </div>
+    </div>
 
-    <section class="grid grid-2">
-      <article class="card">
-        <div class="card-head"><div><h3>Component Lines</h3><p>{{ $currentVersion->revision_code }}</p></div></div>
-        <div class="card-body">
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>#</th><th>Component</th><th>%</th><th>Wastage %</th><th>UOM</th></tr></thead>
+    @if ($currentVersion)
+      <div class="grid grid-cols-3 gap-3 mb-6">
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+          <div class="text-xs" style="color: var(--text-muted);">Revision</div>
+          <div class="text-xl font-semibold mt-1" style="color: var(--text-primary);">{{ $currentVersion->revision_code }}</div>
+        </div>
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+          <div class="text-xs" style="color: var(--text-muted);">Gate Status</div>
+          <div class="mt-1.5">@include('tan90.brc.partials.status-badge', ['value' => $currentVersion->gate_status])</div>
+        </div>
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+          <div class="text-xs" style="color: var(--text-muted);">Formula Total</div>
+          <div class="text-xl font-semibold mt-1" style="color: var(--text-primary);">{{ $validation['total'] ?? 0 }}%</div>
+        </div>
+      </div>
+
+      @if ($validation && ! $validation['valid'])
+        <div class="rounded-lg border p-3 mb-4 text-sm" style="background: var(--status-critical-bg); border-color: var(--status-critical); color: var(--status-critical);">
+          @foreach ($validation['errors'] as $error) <p>{{ $error }}</p> @endforeach
+        </div>
+      @endif
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+          <h3 class="font-semibold text-sm mb-1" style="color: var(--text-primary);">Component Lines</h3>
+          <p class="text-xs mb-3" style="color: var(--text-muted);">{{ $currentVersion->revision_code }}</p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+                  <th class="py-2 pr-2 font-medium">#</th><th class="py-2 pr-2 font-medium">Component</th><th class="py-2 pr-2 font-medium">%</th><th class="py-2 pr-2 font-medium">Wastage %</th><th class="py-2 font-medium">UOM</th>
+                </tr>
+              </thead>
               <tbody>
                 @foreach ($currentVersion->lines as $line)
-                  <tr>
-                    <td>{{ $line->sequence }}</td>
-                    <td>{{ $line->component->name ?? '—' }}{{ $line->is_alternate ? ' (Alt)' : '' }}</td>
-                    <td>{{ $line->percentage }}</td>
-                    <td>{{ $line->wastage_percent }}</td>
-                    <td>{{ $line->uom }}</td>
+                  <tr style="border-top: 1px solid var(--border);">
+                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->sequence }}</td>
+                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->component->name ?? '—' }}{{ $line->is_alternate ? ' (Alt)' : '' }}</td>
+                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->percentage }}</td>
+                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->wastage_percent }}</td>
+                    <td class="py-2" style="color: var(--text-primary);">{{ $line->uom }}</td>
                   </tr>
                 @endforeach
               </tbody>
@@ -58,59 +70,57 @@
 
           @can('update', $recipe)
             @if ($currentVersion->gate_status === 'draft')
-              <form method="POST" action="{{ route('tan90.brc.recipe-versions.lines.store', $currentVersion->id) }}" class="form-grid" style="margin-top:14px">
+              <form method="POST" action="{{ route('tan90.brc.recipe-versions.lines.store', $currentVersion->id) }}" class="grid grid-cols-2 gap-2 mt-4">
                 @csrf
-                <label class="field">
-                  <span class="field-label">Component</span>
-                  <select name="tan90_component_id" required>
+                <label class="flex flex-col gap-1 text-xs col-span-2">
+                  <span class="font-medium" style="color: var(--text-primary);">Component</span>
+                  <select name="tan90_component_id" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);" required>
                     @foreach (\App\Models\Tan90\BomRecipeCosting\Component::active()->orderBy('name')->get() as $component)
                       <option value="{{ $component->id }}">{{ $component->name }}</option>
                     @endforeach
                   </select>
                 </label>
-                <label class="field"><span class="field-label">%</span><input type="number" step="0.0001" name="percentage" required></label>
-                <label class="field"><span class="field-label">Wastage %</span><input type="number" step="0.01" name="wastage_percent" value="0"></label>
-                <label class="field"><span class="field-label">UOM</span><input type="text" name="uom"></label>
-                <div class="full"><button class="btn btn-secondary" type="submit">Add Line</button></div>
+                <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">%</span><input type="number" step="0.0001" name="percentage" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);" required></label>
+                <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Wastage %</span><input type="number" step="0.01" name="wastage_percent" value="0" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+                <label class="flex flex-col gap-1 text-xs col-span-2"><span class="font-medium" style="color: var(--text-primary);">UOM</span><input type="text" name="uom" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+                <button type="submit" class="col-span-2 rounded-lg px-3 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">Add Line</button>
               </form>
             @endif
           @endcan
         </div>
-      </article>
 
-      <article class="card">
-        <div class="card-head"><div><h3>Release Gates</h3><p>P0 workflow</p></div></div>
-        <div class="card-body">
-          <div class="timeline">
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+          <h3 class="font-semibold text-sm mb-1" style="color: var(--text-primary);">Release Gates</h3>
+          <p class="text-xs mb-3" style="color: var(--text-muted);">P0 workflow</p>
+          <div class="flex flex-col divide-y" style="border-color: var(--border);">
             @forelse ($gateHistory as $gate)
-              <div class="timeline-item">
-                <span class="timeline-dot"></span>
-                <h4>{{ $gate->gate }} · {{ $gate->status }}</h4>
-                <p>{{ $gate->reviewed_at?->format('d M Y, H:i') }} — {{ $gate->reviewedBy?->name }}</p>
+              <div class="py-2.5">
+                <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $gate->gate }} · {{ $gate->status }}</div>
+                <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $gate->reviewed_at?->format('d M Y, H:i') }} — {{ $gate->reviewedBy?->name }}</div>
               </div>
             @empty
-              <div class="empty-state"><div><div class="empty-icon">RG</div><h3>No gates passed yet</h3></div></div>
+              <p class="text-sm py-4" style="color: var(--text-muted);">No gates passed yet.</p>
             @endforelse
           </div>
 
           @can('approve', $recipe)
-            <form method="POST" action="{{ route('tan90.brc.recipe-versions.gates.pass', $currentVersion->id) }}" class="form-grid" style="margin-top:14px">
+            <form method="POST" action="{{ route('tan90.brc.recipe-versions.gates.pass', $currentVersion->id) }}" class="grid gap-2 mt-4">
               @csrf
-              <label class="field">
-                <span class="field-label">Pass Gate</span>
-                <select name="gate" required>
+              <label class="flex flex-col gap-1 text-xs">
+                <span class="font-medium" style="color: var(--text-primary);">Pass Gate</span>
+                <select name="gate" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);" required>
                   @foreach (['Draft', 'Technical Review', 'QA Review', 'Cost Review', 'Plant Trial', 'Release', 'MRP Ready'] as $gate)
                     <option value="{{ $gate }}">{{ $gate }}</option>
                   @endforeach
                 </select>
               </label>
-              <div class="full"><button class="btn btn-primary" type="submit">Pass Gate</button></div>
+              <button type="submit" class="rounded-lg px-3 py-2 text-sm font-medium text-white" style="background: var(--brand);">Pass Gate</button>
             </form>
           @endcan
         </div>
-      </article>
-    </section>
-  @else
-    <div class="empty-state"><div><div class="empty-icon">RC</div><h3>No revision yet</h3></div></div>
-  @endif
-@endsection
+      </div>
+    @else
+      <p class="text-sm" style="color: var(--text-muted);">No revision yet.</p>
+    @endif
+  </div>
+</x-app-layout>

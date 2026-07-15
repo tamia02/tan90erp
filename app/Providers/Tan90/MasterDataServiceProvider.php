@@ -33,10 +33,6 @@ class MasterDataServiceProvider extends ServiceProvider
             Gate::policy($config['model'], Tan90MasterDataPolicy::class);
         }
 
-        $this->publishes([
-            __DIR__ . '/../../../public/tan90-master-data' => public_path('tan90-master-data'),
-        ], 'tan90-master-data-assets');
-
         // Registered here (rather than routes/console.php) so this module never has
         // to edit a file outside its own path list. Requires the host app's own
         // scheduler to actually be running: `php artisan schedule:work` in dev, or

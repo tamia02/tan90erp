@@ -53,9 +53,5 @@ class BomRecipeCostingServiceProvider extends ServiceProvider
         ] as $model) {
             Gate::policy($model, Tan90BomRecipeCostingPolicy::class);
         }
-
-        $this->publishes([
-            __DIR__ . '/../../../public/tan90-brc' => public_path('tan90-brc'),
-        ], 'tan90-brc-assets');
     }
 }

@@ -1,105 +1,111 @@
-@extends('tan90.brc.layout')
+<x-app-layout>
+  <x-slot name="header">
+    <h2 class="font-semibold text-xl leading-tight" style="color: var(--text-primary);">{{ $costSheet->code }}</h2>
+  </x-slot>
 
-@section('title', $costSheet->code)
-@section('page-title', $costSheet->code)
-@section('page-subtitle', $costSheet->cost_period)
-
-@section('content')
-  <div class="page-head">
-    <div class="page-title">
-      <p class="eyebrow">Cost Sheet / {{ $costSheet->finishedGood->name ?? '' }}</p>
-      <h2>{{ $costSheet->code }}</h2>
+  <div class="max-w-5xl mx-auto">
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+      <div>
+        <p class="text-xs font-medium uppercase tracking-wide" style="color: var(--text-muted);">Cost Sheet / {{ $costSheet->finishedGood->name ?? '' }}</p>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">{{ $costSheet->cost_period }}</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="{{ route('tan90.brc.costing.index') }}" class="inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">← Back</a>
+        @can('approve', $costSheet)
+          @if ($costSheet->approval_status !== 'approved')
+            <form method="POST" action="{{ route('tan90.brc.costing.approve-standard', $costSheet->id) }}">
+              @csrf <button type="submit" class="inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium text-white" style="background: var(--status-good);">Approve Standard Cost</button>
+            </form>
+          @endif
+        @endcan
+      </div>
     </div>
-    <div class="page-actions">
-      <a class="btn btn-ghost" href="{{ route('tan90.brc.costing.index') }}">← Back</a>
-      @can('approve', $costSheet)
-        @if ($costSheet->approval_status !== 'approved')
-          <form method="POST" action="{{ route('tan90.brc.costing.approve-standard', $costSheet->id) }}">
-            @csrf <button class="btn btn-success" type="submit">Approve Standard Cost</button>
-          </form>
-        @endif
-      @endcan
+
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Material</div><div class="text-lg font-semibold mt-1" style="color: var(--text-primary);">{{ number_format($costSheet->material_cost, 2) }}</div></div>
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Labor</div><div class="text-lg font-semibold mt-1" style="color: var(--text-primary);">{{ number_format($costSheet->labor_cost, 2) }}</div></div>
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Machine</div><div class="text-lg font-semibold mt-1" style="color: var(--text-primary);">{{ number_format($costSheet->machine_cost, 2) }}</div></div>
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Utility</div><div class="text-lg font-semibold mt-1" style="color: var(--text-primary);">{{ number_format($costSheet->utility_cost, 2) }}</div></div>
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Overhead</div><div class="text-lg font-semibold mt-1" style="color: var(--text-primary);">{{ number_format($costSheet->overhead_cost, 2) }}</div></div>
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);"><div class="text-xs" style="color: var(--text-muted);">Total Standard</div><div class="text-lg font-semibold mt-1" style="color: var(--text-primary);">{{ number_format($costSheet->total_standard_cost, 2) }}</div></div>
     </div>
-  </div>
 
-  <section class="kpi-grid compact">
-    <div class="kpi-card"><span>Material</span><strong>{{ number_format($costSheet->material_cost, 2) }}</strong></div>
-    <div class="kpi-card"><span>Labor</span><strong>{{ number_format($costSheet->labor_cost, 2) }}</strong></div>
-    <div class="kpi-card"><span>Machine</span><strong>{{ number_format($costSheet->machine_cost, 2) }}</strong></div>
-    <div class="kpi-card"><span>Utility</span><strong>{{ number_format($costSheet->utility_cost, 2) }}</strong></div>
-    <div class="kpi-card"><span>Overhead</span><strong>{{ number_format($costSheet->overhead_cost, 2) }}</strong></div>
-    <div class="kpi-card"><span>Total Standard</span><strong>{{ number_format($costSheet->total_standard_cost, 2) }}</strong></div>
-  </section>
-
-  <section class="grid grid-2" style="margin-top:15px">
-    <article class="card">
-      <div class="card-head"><div><h3>Record Actual Cost</h3><p>Compares against the approved standard, writes variance</p></div></div>
-      <div class="card-body">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <h3 class="font-semibold text-sm mb-1" style="color: var(--text-primary);">Record Actual Cost</h3>
+        <p class="text-xs mb-3" style="color: var(--text-muted);">Compares against the approved standard, writes variance</p>
         @can('update', $costSheet)
-          <form method="POST" action="{{ route('tan90.brc.costing.actual.store', $costSheet->id) }}" class="form-grid">
+          <form method="POST" action="{{ route('tan90.brc.costing.actual.store', $costSheet->id) }}" class="grid grid-cols-2 gap-2">
             @csrf
-            <label class="field"><span class="field-label">Material</span><input type="number" step="0.01" name="material"></label>
-            <label class="field"><span class="field-label">Labor</span><input type="number" step="0.01" name="labor"></label>
-            <label class="field"><span class="field-label">Machine</span><input type="number" step="0.01" name="machine"></label>
-            <label class="field"><span class="field-label">Utility</span><input type="number" step="0.01" name="utility"></label>
-            <label class="field"><span class="field-label">Overhead</span><input type="number" step="0.01" name="overhead"></label>
-            <div class="full"><button class="btn btn-secondary" type="submit">Record Actual</button></div>
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Material</span><input type="number" step="0.01" name="material" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Labor</span><input type="number" step="0.01" name="labor" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Machine</span><input type="number" step="0.01" name="machine" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Utility</span><input type="number" step="0.01" name="utility" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+            <label class="flex flex-col gap-1 text-xs col-span-2"><span class="font-medium" style="color: var(--text-primary);">Overhead</span><input type="number" step="0.01" name="overhead" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+            <button type="submit" class="col-span-2 rounded-lg px-3 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">Record Actual</button>
           </form>
         @endcan
 
-        <div class="table-wrap" style="margin-top:14px">
-          <table class="data-table">
-            <thead><tr><th>Type</th><th>Standard</th><th>Actual</th><th>Variance</th><th>%</th></tr></thead>
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+                <th class="py-2 pr-2 font-medium">Type</th><th class="py-2 pr-2 font-medium">Standard</th><th class="py-2 pr-2 font-medium">Actual</th><th class="py-2 pr-2 font-medium">Variance</th><th class="py-2 font-medium">%</th>
+              </tr>
+            </thead>
             <tbody>
               @forelse ($costSheet->variances as $variance)
-                <tr>
-                  <td>{{ ucfirst($variance->variance_type) }}</td>
-                  <td>{{ number_format($variance->standard_cost, 2) }}</td>
-                  <td>{{ number_format($variance->actual_cost, 2) }}</td>
-                  <td>{{ number_format($variance->variance_amount, 2) }}</td>
-                  <td>{{ $variance->variance_percent }}%</td>
+                <tr style="border-top: 1px solid var(--border);">
+                  <td class="py-2 pr-2" style="color: var(--text-primary);">{{ ucfirst($variance->variance_type) }}</td>
+                  <td class="py-2 pr-2" style="color: var(--text-primary);">{{ number_format($variance->standard_cost, 2) }}</td>
+                  <td class="py-2 pr-2" style="color: var(--text-primary);">{{ number_format($variance->actual_cost, 2) }}</td>
+                  <td class="py-2 pr-2" style="color: var(--text-primary);">{{ number_format($variance->variance_amount, 2) }}</td>
+                  <td class="py-2" style="color: var(--text-primary);">{{ $variance->variance_percent }}%</td>
                 </tr>
               @empty
-                <tr><td colspan="5"><div class="empty-state"><div><div class="empty-icon">VR</div><h3>No variance recorded yet</h3></div></div></td></tr>
+                <tr><td colspan="5" class="py-10 text-center text-sm" style="color: var(--text-muted);">No variance recorded yet.</td></tr>
               @endforelse
             </tbody>
           </table>
         </div>
       </div>
-    </article>
 
-    <article class="card">
-      <div class="card-head"><div><h3>Cost Simulation</h3><p>What-if adjustments, not persisted to the standard</p></div></div>
-      <div class="card-body">
-        <form method="POST" action="{{ route('tan90.brc.costing.simulate', $costSheet->id) }}" class="form-grid">
+      <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <h3 class="font-semibold text-sm mb-1" style="color: var(--text-primary);">Cost Simulation</h3>
+        <p class="text-xs mb-3" style="color: var(--text-muted);">What-if adjustments, not persisted to the standard</p>
+        <form method="POST" action="{{ route('tan90.brc.costing.simulate', $costSheet->id) }}" class="grid grid-cols-2 gap-2">
           @csrf
-          <label class="field full"><span class="field-label">Scenario Name</span><input type="text" name="scenario_name" required></label>
-          <label class="field"><span class="field-label">Material % change</span><input type="number" step="0.1" name="adjustments[material]" value="0"></label>
-          <label class="field"><span class="field-label">Labor % change</span><input type="number" step="0.1" name="adjustments[labor]" value="0"></label>
-          <label class="field"><span class="field-label">Machine % change</span><input type="number" step="0.1" name="adjustments[machine]" value="0"></label>
-          <label class="field"><span class="field-label">Utility % change</span><input type="number" step="0.1" name="adjustments[utility]" value="0"></label>
-          <label class="field"><span class="field-label">Overhead % change</span><input type="number" step="0.1" name="adjustments[overhead]" value="0"></label>
-          <label class="field"><span class="field-label">Selling Price (Optional)</span><input type="number" step="0.01" name="selling_price"></label>
-          <div class="full"><button class="btn btn-secondary" type="submit">Run Simulation</button></div>
+          <label class="flex flex-col gap-1 text-xs col-span-2"><span class="font-medium" style="color: var(--text-primary);">Scenario Name</span><input type="text" name="scenario_name" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);" required></label>
+          <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Material % change</span><input type="number" step="0.1" name="adjustments[material]" value="0" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+          <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Labor % change</span><input type="number" step="0.1" name="adjustments[labor]" value="0" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+          <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Machine % change</span><input type="number" step="0.1" name="adjustments[machine]" value="0" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+          <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Utility % change</span><input type="number" step="0.1" name="adjustments[utility]" value="0" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+          <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Overhead % change</span><input type="number" step="0.1" name="adjustments[overhead]" value="0" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+          <label class="flex flex-col gap-1 text-xs"><span class="font-medium" style="color: var(--text-primary);">Selling Price (Optional)</span><input type="number" step="0.01" name="selling_price" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);"></label>
+          <button type="submit" class="col-span-2 rounded-lg px-3 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">Run Simulation</button>
         </form>
 
-        <div class="table-wrap" style="margin-top:14px">
-          <table class="data-table">
-            <thead><tr><th>Scenario</th><th>Simulated Total</th><th>Margin %</th></tr></thead>
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+                <th class="py-2 pr-2 font-medium">Scenario</th><th class="py-2 pr-2 font-medium">Simulated Total</th><th class="py-2 font-medium">Margin %</th>
+              </tr>
+            </thead>
             <tbody>
               @forelse ($costSheet->simulations as $simulation)
-                <tr>
-                  <td>{{ $simulation->scenario_name }}</td>
-                  <td>{{ number_format($simulation->simulated_total_cost, 2) }}</td>
-                  <td>{{ $simulation->margin_percent !== null ? $simulation->margin_percent . '%' : '—' }}</td>
+                <tr style="border-top: 1px solid var(--border);">
+                  <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $simulation->scenario_name }}</td>
+                  <td class="py-2 pr-2" style="color: var(--text-primary);">{{ number_format($simulation->simulated_total_cost, 2) }}</td>
+                  <td class="py-2" style="color: var(--text-primary);">{{ $simulation->margin_percent !== null ? $simulation->margin_percent . '%' : '—' }}</td>
                 </tr>
               @empty
-                <tr><td colspan="3"><div class="empty-state"><div><div class="empty-icon">SM</div><h3>No simulations yet</h3></div></div></td></tr>
+                <tr><td colspan="3" class="py-10 text-center text-sm" style="color: var(--text-muted);">No simulations yet.</td></tr>
               @endforelse
             </tbody>
           </table>
         </div>
       </div>
-    </article>
-  </section>
-@endsection
+    </div>
+  </div>
+</x-app-layout>

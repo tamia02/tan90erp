@@ -1,73 +1,63 @@
-@extends('tan90.master-data.layout')
+<x-app-layout>
+  <x-slot name="header">
+    <h2 class="font-semibold text-xl leading-tight" style="color: var(--text-primary);">Import / Export Center</h2>
+  </x-slot>
 
-@section('title', 'Import / Export Center')
-@section('page-title', 'Import / Export Center')
-@section('page-subtitle', 'CSV-based master data administration')
+  <div class="max-w-5xl mx-auto">
+    <p class="text-sm mb-5" style="color: var(--text-secondary);">Upload CSV masters, preview validation and export clean or rejected rows.</p>
 
-@section('content')
-  <div class="page-head">
-    <div class="page-title">
-      <p class="eyebrow">Data Administration</p>
-      <h2>Import / Export Center</h2>
-      <p>Upload CSV masters, preview validation and export clean or rejected rows.</p>
-    </div>
-  </div>
-
-  <div class="stepper">
-    <div class="step active"><span class="step-number">1</span>Upload</div>
-    <div class="step"><span class="step-number">2</span>Preview</div>
-    <div class="step"><span class="step-number">3</span>Validate</div>
-    <div class="step"><span class="step-number">4</span>Import</div>
-  </div>
-
-  <section class="card">
-    <div class="card-body">
-      <form method="POST" action="{{ route('tan90.master-data.import.upload') }}" enctype="multipart/form-data" class="form-grid">
+    <div class="rounded-lg border p-4 mb-6" style="background: var(--surface-3); border-color: var(--border);">
+      <form method="POST" action="{{ route('tan90.master-data.import.upload') }}" enctype="multipart/form-data" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         @csrf
-        <label class="field">
-          <span class="field-label">Entity</span>
-          <select name="entity" required>
+        <label class="flex flex-col gap-1.5 text-sm">
+          <span class="font-medium" style="color: var(--text-primary);">Entity</span>
+          <select name="entity" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" required>
             <option value="">Select entity</option>
             @foreach ($importableEntities as $slug => $entityConfig)
               <option value="{{ $slug }}">{{ $entityConfig['title'] }}</option>
             @endforeach
           </select>
         </label>
-        <label class="field">
-          <span class="field-label">CSV File <span class="optional">Max 10 MB</span></span>
-          <input type="file" name="file" accept=".csv,text/csv" required>
+        <label class="flex flex-col gap-1.5 text-sm">
+          <span class="font-medium" style="color: var(--text-primary);">CSV File <span class="text-xs" style="color: var(--text-muted);">Max 10 MB</span></span>
+          <input type="file" name="file" accept=".csv,text/csv" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" required>
         </label>
-        <div class="full" style="margin-top:6px">
-          <button class="btn btn-primary" type="submit">Upload & Preview</button>
+        <div class="sm:col-span-2">
+          <button type="submit" class="rounded-lg px-3.5 py-2 text-sm font-medium text-white" style="background: var(--brand);">Upload & Preview</button>
         </div>
       </form>
     </div>
-  </section>
 
-  <section class="card" style="margin-top:15px">
-    <div class="card-head"><div><h3>Import History</h3><p>Recent jobs and validation outcomes</p></div></div>
-    <div class="card-body" style="padding:0">
-      <div class="table-wrap" style="border:0;border-radius:0">
-        <table>
-          <thead><tr><th>File</th><th>Entity</th><th>Rows</th><th>Valid</th><th>Invalid</th><th>Duplicates</th><th>Result</th><th>Started By</th></tr></thead>
+    <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
+      <div class="px-4 pt-3">
+        <h3 class="font-semibold text-sm" style="color: var(--text-primary);">Import History</h3>
+        <p class="text-xs mb-2" style="color: var(--text-muted);">Recent jobs and validation outcomes</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+              <th class="px-4 py-2.5 font-medium">File</th><th class="px-4 py-2.5 font-medium">Entity</th><th class="px-4 py-2.5 font-medium">Rows</th><th class="px-4 py-2.5 font-medium">Valid</th><th class="px-4 py-2.5 font-medium">Invalid</th><th class="px-4 py-2.5 font-medium">Duplicates</th><th class="px-4 py-2.5 font-medium">Result</th><th class="px-4 py-2.5 font-medium">Started By</th>
+            </tr>
+          </thead>
           <tbody>
             @forelse ($jobs as $job)
-              <tr>
-                <td><a class="cell-main" href="{{ route('tan90.master-data.import.show', $job->id) }}">{{ $job->original_filename }}</a></td>
-                <td>{{ $job->entity_type }}</td>
-                <td>{{ $job->total_rows }}</td>
-                <td>{{ $job->valid_rows }}</td>
-                <td>{{ $job->invalid_rows }}</td>
-                <td>{{ $job->duplicate_rows }}</td>
-                <td>@include('tan90.master-data.partials.status-badge', ['value' => $job->result])</td>
-                <td>{{ $job->startedBy?->name }}</td>
+              <tr style="border-top: 1px solid var(--border);">
+                <td class="px-4 py-2.5"><a href="{{ route('tan90.master-data.import.show', $job->id) }}" class="font-medium" style="color: var(--brand);">{{ $job->original_filename }}</a></td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $job->entity_type }}</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $job->total_rows }}</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $job->valid_rows }}</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $job->invalid_rows }}</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $job->duplicate_rows }}</td>
+                <td class="px-4 py-2.5">@include('tan90.master-data.partials.status-badge', ['value' => $job->result])</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $job->startedBy?->name }}</td>
               </tr>
             @empty
-              <tr><td colspan="8"><div class="empty-state"><div><div class="empty-icon">IM</div><h3>No imports yet</h3></div></div></td></tr>
+              <tr><td colspan="8" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No imports yet.</td></tr>
             @endforelse
           </tbody>
         </table>
       </div>
     </div>
-  </section>
-@endsection
+  </div>
+</x-app-layout>

@@ -1,33 +1,34 @@
-@extends('tan90.brc.layout')
+<x-app-layout>
+  <x-slot name="header">
+    <h2 class="font-semibold text-xl leading-tight" style="color: var(--text-primary);">MRP Readiness</h2>
+  </x-slot>
 
-@section('title', 'MRP Readiness')
-@section('page-title', 'MRP Readiness')
-@section('page-subtitle', $finishedGoods->count() . ' finished goods')
+  <div class="max-w-4xl mx-auto">
+    <div class="mb-5">
+      <p class="text-xs font-medium uppercase tracking-wide" style="color: var(--text-muted);">Planning</p>
+      <p class="text-sm mt-1" style="color: var(--text-secondary);">Blocked when the recipe, BOM, routing or standard cost isn't released for a finished good.</p>
+    </div>
 
-@section('content')
-  <div class="page-head">
-    <div class="page-title">
-      <p class="eyebrow">Planning</p>
-      <h2>MRP Readiness</h2>
-      <p>Blocked when the recipe, BOM, routing or standard cost isn't released for a finished good.</p>
+    <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+              <th class="px-4 py-2.5 font-medium">Finished Good</th><th class="px-4 py-2.5 font-medium">Status</th><th class="px-4 py-2.5 font-medium">Blockers</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach ($finishedGoods as $fg)
+              @php($result = $readiness[$fg->id])
+              <tr onclick="window.location='{{ route('tan90.brc.mrp-readiness.show', $fg->id) }}'" style="border-top: 1px solid var(--border); cursor: pointer;" class="hover:bg-black/5">
+                <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $fg->name }}</td>
+                <td class="px-4 py-2.5">@include('tan90.brc.partials.status-badge', ['value' => $result['ready'] ? 'mrp_ready' : 'pending'])</td>
+                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $result['ready'] ? 'None' : count($result['blockers']) . ' blocker(s)' }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
-
-  <section class="card">
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Finished Good</th><th>Status</th><th>Blockers</th></tr></thead>
-        <tbody>
-          @foreach ($finishedGoods as $fg)
-            @php($result = $readiness[$fg->id])
-            <tr class="record-row" onclick="window.location='{{ route('tan90.brc.mrp-readiness.show', $fg->id) }}'">
-              <td>{{ $fg->name }}</td>
-              <td>@include('tan90.brc.partials.status-badge', ['value' => $result['ready'] ? 'mrp_ready' : 'pending'])</td>
-              <td>{{ $result['ready'] ? 'None' : count($result['blockers']) . ' blocker(s)' }}</td>
-            </tr>
-          @endforeach
-        </tbody>
-      </table>
-    </div>
-  </section>
-@endsection
+</x-app-layout>
