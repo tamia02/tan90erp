@@ -64,7 +64,7 @@ class DataQualityScanner
         Item::active()->where(function ($q) {
             $q->whereNull('hsn')->orWhere('hsn', '');
         })->get()->each(function (Item $item) {
-            $this->upsertIssue('DQ-ITEM-HSN', 'Item', $item->name . ' (' . $item->sku . ')', Item::class, $item->id,
+            $this->upsertIssue('DQ-ITEM-HSN', 'Item', $item->masking_code ?? $item->id, Item::class, $item->id,
                 'HSN code missing', 'medium', 'Finance', 'Assign an HSN code and GST rate');
         });
     }

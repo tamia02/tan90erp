@@ -15,12 +15,21 @@ class Component extends Model
     protected $table = 'tan90_components';
 
     protected $fillable = [
-        'code', 'name', 'type', 'uom', 'standard_cost', 'status', 'approval_status',
+        'code', 'name', 'masking_code', 'type', 'uom', 'standard_cost', 'status', 'approval_status',
     ];
 
     public static function criticalFields(): array
     {
         return ['standard_cost', 'uom'];
+    }
+
+    // The real chemical name (and the old "code" abbreviation, e.g.
+    // "CMP-MGNO3" for Magnesium Nitrate) must never appear in audit text -
+    // only the opaque masking_code identifies this record everywhere.
+    public function auditLabel(): string
+    {
+        return $this->getAttribute('masking_code')
+            ?: class_basename($this).' #'.$this->getKey();
     }
 
     public function recipeLines(): HasMany

@@ -35,6 +35,7 @@ class RecipeValidationService
         }
 
         $duplicateComponentIds = $version->lines()
+            ->reorder()
             ->selectRaw('tan90_component_id, COUNT(*) as cnt')
             ->groupBy('tan90_component_id')
             ->having('cnt', '>', 1)

@@ -32,6 +32,7 @@
         </div>
         <div class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
           @foreach ($changeRequest->proposed_changes as $field => $newValue)
+            @continue(in_array($field, $entity['hidden_summary_fields'] ?? []))
             <div>
               <div class="text-xs" style="color: var(--text-muted);">{{ Str::title(str_replace('_', ' ', $field)) }}</div>
               <div class="font-medium mt-0.5" style="color: var(--text-primary);">{{ $changeRequest->previous_values[$field] ?? '—' }} → {{ $newValue }}</div>

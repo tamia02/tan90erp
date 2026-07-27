@@ -24,7 +24,7 @@ class RecipeScalingService
 
                 return [
                     'component_id' => $line->tan90_component_id,
-                    'component_name' => $line->component?->name,
+                    'component_name' => $line->component?->masking_code,
                     'base_percentage' => (float) $line->percentage,
                     'scaled_quantity' => round($baseQuantity, 4),
                     'wastage_quantity' => round($wastageQuantity, 4),

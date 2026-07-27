@@ -110,6 +110,7 @@
         <div class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
           @foreach ($record->getAttributes() as $key => $value)
             @continue(in_array($key, ['id', 'created_at', 'updated_at', 'deleted_at', 'created_by', 'updated_by']))
+            @continue(in_array($key, $config['hidden_summary_fields'] ?? []))
             <div>
               <div class="text-xs" style="color: var(--text-muted);">{{ Str::title(str_replace('_', ' ', preg_replace('/_id$/', '', $key))) }}</div>
               <div class="font-medium mt-0.5" style="color: var(--text-primary);">{{ is_bool($value) ? ($value ? 'Yes' : 'No') : ($value ?? '—') }}</div>

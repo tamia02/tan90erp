@@ -14,11 +14,14 @@ class WhereUsedController extends Controller
 
     public function show(int $component)
     {
-        $component = Component::findOrFail($component);
-        $this->authorize('view', $component);
+        // Not named $component in the view data: Blade already reserves
+        // that name inside <x-slot> blocks for the enclosing component
+        // instance, silently shadowing a same-named view variable there.
+        $brcComponent = Component::findOrFail($component);
+        $this->authorize('view', $brcComponent);
 
-        $usage = $this->whereUsed->forComponent($component);
+        $usage = $this->whereUsed->forComponent($brcComponent);
 
-        return view('tan90.brc.where-used.show', compact('component', 'usage'));
+        return view('tan90.brc.where-used.show', compact('brcComponent', 'usage'));
     }
 }

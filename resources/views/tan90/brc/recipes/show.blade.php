@@ -58,7 +58,7 @@
                 @foreach ($currentVersion->lines as $line)
                   <tr style="border-top: 1px solid var(--border);">
                     <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->sequence }}</td>
-                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->component->name ?? '—' }}{{ $line->is_alternate ? ' (Alt)' : '' }}</td>
+                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->component->masking_code ?? '—' }}{{ $line->is_alternate ? ' (Alt)' : '' }}</td>
                     <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->percentage }}</td>
                     <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->wastage_percent }}</td>
                     <td class="py-2" style="color: var(--text-primary);">{{ $line->uom }}</td>
@@ -75,8 +75,8 @@
                 <label class="flex flex-col gap-1 text-xs col-span-2">
                   <span class="font-medium" style="color: var(--text-primary);">Component</span>
                   <select name="tan90_component_id" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);" required>
-                    @foreach (\App\Models\Tan90\BomRecipeCosting\Component::active()->orderBy('name')->get() as $component)
-                      <option value="{{ $component->id }}">{{ $component->name }}</option>
+                    @foreach (\App\Models\Tan90\BomRecipeCosting\Component::active()->orderBy('masking_code')->get() as $component)
+                      <option value="{{ $component->id }}">{{ $component->masking_code }}</option>
                     @endforeach
                   </select>
                 </label>

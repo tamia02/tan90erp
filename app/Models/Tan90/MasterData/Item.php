@@ -25,6 +25,14 @@ class Item extends Model
         return ['tan90_uom_id', 'hsn', 'standard_cost'];
     }
 
+    // The real chemical name must never appear in audit text - only the
+    // opaque masking_code identifies this record everywhere.
+    public function auditLabel(): string
+    {
+        return $this->getAttribute('masking_code')
+            ?: class_basename($this).' #'.$this->getKey();
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ItemCategory::class, 'tan90_item_category_id');

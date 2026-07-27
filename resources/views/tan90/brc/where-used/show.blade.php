@@ -1,6 +1,6 @@
 <x-app-layout>
   <x-slot name="header">
-    <h2 class="font-semibold text-xl leading-tight" style="color: var(--text-primary);">{{ $component->name }}</h2>
+    <h2 class="font-semibold text-xl leading-tight" style="color: var(--text-primary);">{{ $brcComponent->masking_code }}</h2>
   </x-slot>
 
   <div class="max-w-4xl mx-auto">

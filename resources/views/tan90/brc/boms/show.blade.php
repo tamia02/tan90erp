@@ -59,7 +59,7 @@
                   <tr style="border-top: 1px solid var(--border);">
                     <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->sequence }}</td>
                     <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->line_type === 'sub_bom' ? 'Sub-BOM' : 'Component' }}</td>
-                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->line_type === 'sub_bom' ? ($line->subBom->code ?? '—') : ($line->component->name ?? '—') }}</td>
+                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->line_type === 'sub_bom' ? ($line->subBom->code ?? '—') : ($line->component->masking_code ?? '—') }}</td>
                     <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $line->quantity }} {{ $line->uom }}</td>
                     <td class="py-2" style="color: var(--text-primary);">{{ $line->wastage_percent }}</td>
                   </tr>
@@ -83,8 +83,8 @@
                   <span class="font-medium" style="color: var(--text-primary);">Component</span>
                   <select name="tan90_component_id" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);">
                     <option value="">—</option>
-                    @foreach (\App\Models\Tan90\BomRecipeCosting\Component::active()->orderBy('name')->get() as $component)
-                      <option value="{{ $component->id }}">{{ $component->name }}</option>
+                    @foreach (\App\Models\Tan90\BomRecipeCosting\Component::active()->orderBy('masking_code')->get() as $component)
+                      <option value="{{ $component->id }}">{{ $component->masking_code }}</option>
                     @endforeach
                   </select>
                 </label>
