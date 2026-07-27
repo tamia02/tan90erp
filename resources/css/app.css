@@ -216,6 +216,54 @@
     background: rgba(148, 163, 184, 0.24);
 }
 
+.tan90-demo-access {
+    margin-top: 1rem;
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    border-radius: 0.85rem;
+    padding: 0.85rem;
+    background: rgba(22, 163, 74, 0.12);
+    color: #dcfce7;
+}
+
+.tan90-demo-access p {
+    font-weight: 900;
+    margin-bottom: 0.55rem;
+}
+
+.tan90-demo-access div {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+}
+
+.tan90-demo-access summary {
+    cursor: pointer;
+    font-weight: 900;
+    margin: 0.7rem 0 0.45rem;
+}
+
+.tan90-demo-access button {
+    width: 100%;
+    text-align: left;
+    border: 1px solid rgba(187, 247, 208, 0.35);
+    border-radius: 0.75rem;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 800;
+    background: rgba(15, 23, 42, 0.28);
+}
+
+.tan90-demo-access button span,
+.tan90-demo-access button small {
+    display: block;
+}
+
+.tan90-demo-access small {
+    display: block;
+    margin-top: 0.55rem;
+    color: #bbf7d0;
+}
+
 .tan90-manual-form {
     display: grid;
     gap: 1rem;

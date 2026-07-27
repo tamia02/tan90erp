@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Actions\Logout;
+use App\Services\Access\AccessControlService;
 use App\Support\RoleNavigation;
 use App\Support\Tan90ModuleNavigation;
 use Livewire\Volt\Component;
@@ -25,24 +26,50 @@ new class extends Component
             return ['navItems' => []];
         }
 
-        // GRN users keep their existing per-role nav, unchanged. A Tan90-only
+        $access = app(AccessControlService::class);
+        $accessItems = [];
+        if ($access->hasNewAccess($user)) {
+            foreach ([
+                ['label' => 'Workspace', 'route' => 'workspace.index', 'permission' => 'workspace.view'],
+                ['label' => 'Customise Workspace', 'route' => 'workspace.customise', 'permission' => 'workspace.customise'],
+                ['label' => 'Dashboard Builder', 'route' => 'access.dashboard-builder.index', 'permission_any' => ['dashboard.builder.role', 'dashboard.builder.team', 'dashboard.builder.user']],
+                ['label' => 'Access Roles', 'route' => 'access.roles.index', 'permission' => 'access.roles.view'],
+                ['label' => 'People', 'route' => 'access.people.index', 'permission' => 'access.people.view'],
+                ['label' => 'Hierarchy', 'route' => 'access.hierarchy.index', 'permission' => 'access.hierarchy.view'],
+                ['label' => 'Saved Views', 'route' => 'access.views.index', 'permission' => 'views.use_assigned'],
+                ['label' => 'Access Activity', 'route' => 'access.activity.index', 'permission' => 'access.activity.view'],
+            ] as $item) {
+                $canSeeItem = isset($item['permission_any'])
+                    ? collect($item['permission_any'])->contains(fn ($permission) => $access->can($user, $permission))
+                    : $access->can($user, $item['permission']);
+
+                if ($canSeeItem) {
+                    unset($item['permission']);
+                    unset($item['permission_any']);
+                    $accessItems[] = $item + ['icon' => 'shield'];
+                }
+            }
+        }
+
+        // GRN users keep their existing per-role nav, unchanged unless they
+        // explicitly have new access assignments. A Tan90-only
         // user (Master Data/BOM role, no GRN role) gets nav items for
         // whichever module's routes they're currently on - not a fixed set
         // per role, since a shared role like Super Admin moves between
         // modules.
         if ($user->role) {
-            return ['navItems' => RoleNavigation::forRole($user->role)];
+            return ['navItems' => [...RoleNavigation::forRole($user->role), ...$accessItems]];
         }
 
         if (request()->routeIs('tan90.brc.*')) {
-            return ['navItems' => Tan90ModuleNavigation::forBom()];
+            return ['navItems' => [...Tan90ModuleNavigation::forBom(), ...$accessItems]];
         }
 
         if (request()->routeIs('tan90.master-data.*')) {
-            return ['navItems' => Tan90ModuleNavigation::forMasterData()];
+            return ['navItems' => [...Tan90ModuleNavigation::forMasterData(), ...$accessItems]];
         }
 
-        return ['navItems' => []];
+        return ['navItems' => $accessItems];
     }
 }; ?>
 

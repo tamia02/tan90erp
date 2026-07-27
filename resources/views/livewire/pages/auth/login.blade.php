@@ -3,6 +3,7 @@
 use App\Enums\Role;
 use App\Livewire\Forms\LoginForm;
 use App\Models\User;
+use App\Services\Access\AccessControlService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\Layout;
@@ -12,6 +13,13 @@ new #[Layout('layouts.guest')] class extends Component
 {
     public LoginForm $form;
 
+    public function mount(): void
+    {
+        if ((! app()->isProduction() || filter_var(env('APP_DEMO_MODE', false), FILTER_VALIDATE_BOOL)) && request()->filled('email')) {
+            $this->form->email = request()->string('email')->toString();
+        }
+    }
+
     public function login(): void
     {
         $this->validate();
@@ -20,7 +28,7 @@ new #[Layout('layouts.guest')] class extends Component
 
         Session::regenerate();
 
-        $home = $this->roleHomeUrl(Auth::user()->role);
+        $home = $this->homeUrl(Auth::user());
         $this->redirectIntended(default: $home, navigate: true);
     }
 
@@ -34,6 +42,19 @@ new #[Layout('layouts.guest')] class extends Component
         Session::regenerate();
 
         $this->redirect($this->roleHomeUrl($role), navigate: true);
+    }
+
+    private function homeUrl(User $user): string
+    {
+        if ($user->role) {
+            return $this->roleHomeUrl($user->role);
+        }
+
+        if (app(AccessControlService::class)->can($user, 'workspace.view')) {
+            return rtrim(config('app.url'), '/').route('workspace.index', [], false);
+        }
+
+        return rtrim(config('app.url'), '/').route('login', [], false);
     }
 
     private function roleHomeUrl(Role $role): string
@@ -107,6 +128,49 @@ new #[Layout('layouts.guest')] class extends Component
 
             <div class="tan90-divider"><span>or sign in manually</span></div>
         @endunless
+
+        @if (! app()->isProduction() || filter_var(env('APP_DEMO_MODE', false), FILTER_VALIDATE_BOOL))
+            <div class="tan90-demo-access">
+                <p>Explore Demo Accounts by Hierarchy</p>
+                @php
+                    $demoGroups = [
+                        'Level 1 / Super Admin' => ['superadmin@tan90.demo'],
+                        'Level 2 / Heads of Vertical' => ['head.store@tan90.demo', 'head.quality@tan90.demo', 'head.procurement@tan90.demo'],
+                        'Level 3 / Managers' => ['manager.grn@tan90.demo', 'manager.qc@tan90.demo', 'manager.vendor@tan90.demo'],
+                        'Level 4 / Executives and Employees' => ['executive.grn@tan90.demo', 'executive.qc@tan90.demo', 'executive.grnqc@tan90.demo', 'executive.vendor@tan90.demo', 'executive.readonly@tan90.demo'],
+                    ];
+                    $demoUsers = \App\Models\User::whereIn('email', collect($demoGroups)->flatten())
+                        ->with(['accessRoles', 'accessPositions.vertical', 'accessPositions.unit', 'accessPositions.team', 'accessPositions.manager'])
+                        ->get()
+                        ->keyBy('email');
+                @endphp
+                @foreach ($demoGroups as $group => $emails)
+                    <details @open($loop->first)>
+                        <summary>{{ $group }}</summary>
+                        <div>
+                            @foreach ($emails as $email)
+                                @if ($demoUsers->has($email))
+                                    @php($demoUser = $demoUsers[$email])
+                                    <form method="post" action="{{ route('demo-login', $demoUser) }}">
+                                        @csrf
+                                        <button type="submit">
+                                            <strong>{{ $demoUser->name }}</strong>
+                                            <span>{{ $email }}</span>
+                                            <small>{{ $demoUser->accessRoles->pluck('name')->implode(', ') ?: 'Advanced access' }}</small>
+                                            @if($demoUser->accessPositions->first())
+                                                @php($position = $demoUser->accessPositions->first())
+                                                <small>{{ $position->vertical?->name ?? 'All verticals' }} / {{ $position->team?->name ?? 'All teams' }} / Reports to {{ $position->manager?->name ?? 'top level' }}</small>
+                                            @endif
+                                        </button>
+                                    </form>
+                                @endif
+                            @endforeach
+                        </div>
+                    </details>
+                @endforeach
+                <small>Manual password for all demo accounts: demo123</small>
+            </div>
+        @endif
 
         <form wire:submit="login" class="tan90-manual-form">
             <div>

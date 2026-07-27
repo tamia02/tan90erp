@@ -4,11 +4,14 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\Role;
+use App\Models\Access\AccessPosition;
+use App\Models\Access\AccessRole;
 use App\Models\Tan90\MasterData\Concerns\HasTan90Profile;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -21,12 +24,12 @@ use Illuminate\Notifications\Notifiable;
 // `role` enum column below. A user can hold a GRN role (this enum), a
 // Tan90 module role (tan90Profile), both, or neither — the two systems are
 // deliberately not merged into one, see the merge plan's Phase 2 notes.
-#[Fillable(['name', 'email', 'phone', 'role', 'vendor_tier', 'description', 'sla_directive', 'super_admin', 'is_active', 'preferences', 'password'])]
+#[Fillable(['name', 'email', 'phone', 'role', 'access_mode', 'vendor_tier', 'description', 'sla_directive', 'super_admin', 'is_active', 'preferences', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, HasTan90Profile;
+    use HasFactory, HasTan90Profile, Notifiable;
 
     /**
      * Get the attributes that should be cast.
@@ -39,6 +42,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'role' => Role::class,
+            'access_mode' => 'string',
             'super_admin' => 'boolean',
             'is_active' => 'boolean',
             'preferences' => 'array',
@@ -53,5 +57,17 @@ class User extends Authenticatable
     public function isAdvancedVendor(): bool
     {
         return $this->role === Role::Vendor && $this->vendor_tier === 'advanced';
+    }
+
+    public function accessRoles(): BelongsToMany
+    {
+        return $this->belongsToMany(AccessRole::class, 'access_user_roles', 'user_id', 'role_id')
+            ->withPivot(['assigned_by', 'starts_at', 'expires_at', 'status'])
+            ->withTimestamps();
+    }
+
+    public function accessPositions()
+    {
+        return $this->hasMany(AccessPosition::class);
     }
 }
