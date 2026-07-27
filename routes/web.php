@@ -104,6 +104,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('/', 'guard.dashboard')->name('dashboard');
         Volt::route('scan', 'guard.bill-scan')->name('scan');
         Volt::route('entries', 'guard.entries')->name('entries');
+        Volt::route('entries/{entry}', 'guard.entry-detail')->name('entries.show');
     });
 
     Route::middleware('role:vendor')->prefix('vendor')->name('vendor.')->group(function () {

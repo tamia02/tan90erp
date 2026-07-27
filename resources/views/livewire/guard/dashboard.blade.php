@@ -51,13 +51,13 @@ new #[Layout('layouts.app')] class extends Component
         <h2 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">Recent entries</h2>
         <div class="flex flex-col divide-y" style="border-color: var(--border);">
             @forelse ($recent as $entry)
-                <div class="py-3 flex items-center justify-between gap-3">
+                <a href="{{ route('guard.entries.show', $entry) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                     <div class="min-w-0">
                         <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $entry->gate_no }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $entry->vendor_name ?? $entry->vehicle_number }}</div>
                     </div>
-                    <span class="text-xs capitalize" style="color: var(--text-muted);">{{ str_replace('_', ' ', $entry->status) }}</span>
-                </div>
+                    <span class="text-xs capitalize shrink-0" style="color: var(--text-muted);">{{ str_replace('_', ' ', $entry->status) }}</span>
+                </a>
             @empty
                 <p class="text-sm py-4" style="color: var(--text-muted);">No gate entries yet.</p>
             @endforelse
