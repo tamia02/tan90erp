@@ -135,9 +135,9 @@ new #[Layout('layouts.guest')] class extends Component
                 @php
                     $demoGroups = [
                         'Level 1 / Super Admin' => ['superadmin@tan90.demo'],
-                        'Level 2 / Heads of Vertical' => ['head.store@tan90.demo', 'head.quality@tan90.demo', 'head.procurement@tan90.demo'],
-                        'Level 3 / Managers' => ['manager.grn@tan90.demo', 'manager.qc@tan90.demo', 'manager.vendor@tan90.demo'],
-                        'Level 4 / Executives and Employees' => ['executive.grn@tan90.demo', 'executive.qc@tan90.demo', 'executive.grnqc@tan90.demo', 'executive.vendor@tan90.demo', 'executive.readonly@tan90.demo'],
+                        'Level 2 / Heads of Vertical' => ['head.store@tan90.demo', 'head.quality@tan90.demo', 'head.procurement@tan90.demo', 'head.finance@tan90.demo', 'head.masterdata@tan90.demo'],
+                        'Level 3 / Managers' => ['manager.grn@tan90.demo', 'manager.qc@tan90.demo', 'manager.vendor@tan90.demo', 'manager.finance@tan90.demo', 'manager.masterdata@tan90.demo'],
+                        'Level 4 / Executives and Employees' => ['executive.grn@tan90.demo', 'executive.qc@tan90.demo', 'executive.grnqc@tan90.demo', 'executive.vendor@tan90.demo', 'executive.readonly@tan90.demo', 'executive.finance@tan90.demo', 'executive.masterdata@tan90.demo'],
                     ];
                     $demoUsers = \App\Models\User::whereIn('email', collect($demoGroups)->flatten())
                         ->with(['accessRoles', 'accessPositions.vertical', 'accessPositions.unit', 'accessPositions.team', 'accessPositions.manager'])

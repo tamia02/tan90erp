@@ -61,6 +61,8 @@ class AccessControlSeeder extends Seeder
             'GRN' => AccessTeam::updateOrCreate(['vertical_id' => $verticals['STORE']->id, 'code' => 'GRN'], ['unit_id' => $units['STORE-BHIWANDI']->id, 'name' => 'GRN Control Team', 'status' => 'active']),
             'QC' => AccessTeam::updateOrCreate(['vertical_id' => $verticals['QUALITY']->id, 'code' => 'QC'], ['unit_id' => $units['QUALITY-BHIWANDI']->id, 'name' => 'QC Inspection Team', 'status' => 'active']),
             'VENDOR' => AccessTeam::updateOrCreate(['vertical_id' => $verticals['PROCUREMENT']->id, 'code' => 'VENDOR'], ['unit_id' => $units['PROC-VENDOR']->id, 'name' => 'Vendor Coordination Team', 'status' => 'active']),
+            'FINANCE' => AccessTeam::updateOrCreate(['vertical_id' => $verticals['FINANCE']->id, 'code' => 'FINANCE'], ['unit_id' => null, 'name' => 'Finance Review Team', 'status' => 'active']),
+            'MASTERDATA' => AccessTeam::updateOrCreate(['vertical_id' => $verticals['MASTER-DATA']->id, 'code' => 'MASTERDATA'], ['unit_id' => null, 'name' => 'Master Data Team', 'status' => 'active']),
         ];
 
         $roles = $this->seedRoles($verticals);
@@ -84,6 +86,8 @@ class AccessControlSeeder extends Seeder
             'STORE' => ['Store Head', 'Store Vertical Head'],
             'QUALITY' => ['Quality Head', 'Quality Vertical Head'],
             'PROCUREMENT' => ['Procurement Head', 'Procurement Vertical Head'],
+            'FINANCE' => ['Finance Head', 'Finance Vertical Head'],
+            'MASTER-DATA' => ['Master Data Head', 'Master Data Vertical Head'],
         ] as $code => [$name, $label]) {
             $roles["HEAD-$code"] = AccessRole::updateOrCreate(['code' => "ACCESS-$code-HEAD"], [
                 'name' => $name, 'label' => $label, 'level' => 2, 'hierarchy_level' => 2,
@@ -92,14 +96,20 @@ class AccessControlSeeder extends Seeder
             ]);
         }
 
+        $managerHeadCode = [
+            'GRN' => 'STORE', 'QC' => 'QUALITY', 'VENDOR' => 'PROCUREMENT',
+            'FINANCE' => 'FINANCE', 'MASTERDATA' => 'MASTER-DATA',
+        ];
         foreach ([
             'GRN' => ['Store GRN Manager', $verticals['STORE']],
             'QC' => ['QC Manager', $verticals['QUALITY']],
             'VENDOR' => ['Vendor Manager', $verticals['PROCUREMENT']],
+            'FINANCE' => ['Finance Manager', $verticals['FINANCE']],
+            'MASTERDATA' => ['Master Data Manager', $verticals['MASTER-DATA']],
         ] as $code => [$name, $vertical]) {
             $roles["MANAGER-$code"] = AccessRole::updateOrCreate(['code' => "ACCESS-$code-MANAGER"], [
                 'name' => $name, 'label' => 'Manager', 'level' => 3, 'hierarchy_level' => 3,
-                'vertical_id' => $vertical->id, 'parent_role_id' => $roles['HEAD-'.($code === 'VENDOR' ? 'PROCUREMENT' : ($code === 'QC' ? 'QUALITY' : 'STORE'))]->id,
+                'vertical_id' => $vertical->id, 'parent_role_id' => $roles['HEAD-'.$managerHeadCode[$code]]->id,
                 'role_kind' => 'system', 'is_system' => true, 'status' => 'active', 'version' => 1,
             ]);
         }
@@ -110,6 +120,8 @@ class AccessControlSeeder extends Seeder
             'GRNQC' => ['GRN + QC Executive', $verticals['STORE'], $roles['MANAGER-GRN']],
             'VENDOR' => ['Vendor Executive', $verticals['PROCUREMENT'], $roles['MANAGER-VENDOR']],
             'READONLY' => ['Read-only Executive', $verticals['STORE'], $roles['MANAGER-GRN']],
+            'FINANCE' => ['Finance Executive', $verticals['FINANCE'], $roles['MANAGER-FINANCE']],
+            'MASTERDATA' => ['Master Data Executive', $verticals['MASTER-DATA'], $roles['MANAGER-MASTERDATA']],
         ] as $code => [$name, $vertical, $parent]) {
             $roles["EXEC-$code"] = AccessRole::updateOrCreate(['code' => "ACCESS-$code-EXEC"], [
                 'name' => $name, 'label' => 'Executive/Employee', 'level' => 4, 'hierarchy_level' => 4,
@@ -135,7 +147,7 @@ class AccessControlSeeder extends Seeder
 
         $allKeys = $permissions->keys()->all();
         $sync($roles['SUPER'], $allKeys, 'all', true);
-        foreach (['HEAD-STORE', 'HEAD-QUALITY', 'HEAD-PROCUREMENT'] as $key) {
+        foreach (['HEAD-STORE', 'HEAD-QUALITY', 'HEAD-PROCUREMENT', 'HEAD-FINANCE', 'HEAD-MASTER-DATA'] as $key) {
             $sync($roles[$key], $allKeys, 'vertical', true);
         }
         $sync($roles['MANAGER-GRN'], ['workspace.view', 'workspace.customise', 'dashboard.builder.personal', 'dashboard.builder.user', 'dashboard.widget.add', 'dashboard.widget.move', 'dashboard.widget.resize', 'grn.module.access', 'grn.dashboard.view', 'grn.records.view', 'grn.register.view', 'grn.stock_balance.view', 'grn.records.create', 'grn.records.update', 'grn.records.post', 'grn.records.export', 'views.use_assigned', 'views.manage_user'], 'team', true);
@@ -146,6 +158,10 @@ class AccessControlSeeder extends Seeder
         $sync($roles['EXEC-GRNQC'], ['workspace.view', 'dashboard.builder.personal', 'grn.module.access', 'grn.dashboard.view', 'grn.records.view', 'grn.register.view', 'qc.module.access', 'qc.dashboard.view', 'qc.queue.view', 'views.use_assigned'], 'assigned');
         $sync($roles['EXEC-VENDOR'], ['workspace.view', 'vendor.module.access', 'vendor.records.view', 'views.use_assigned'], 'self');
         $sync($roles['EXEC-READONLY'], ['workspace.view', 'grn.module.access', 'grn.dashboard.view', 'grn.records.view', 'grn.register.view', 'views.use_assigned'], 'assigned');
+        $sync($roles['MANAGER-FINANCE'], ['workspace.view', 'workspace.customise', 'dashboard.builder.personal', 'dashboard.builder.user', 'dashboard.widget.add', 'dashboard.widget.move', 'dashboard.widget.resize', 'finance.module.access', 'finance.review.view', 'finance.claims.approve', 'finance.claim.field.amount.view', 'finance.claim.field.amount.edit', 'views.use_assigned', 'views.manage_user'], 'team', true);
+        $sync($roles['EXEC-FINANCE'], ['workspace.view', 'dashboard.builder.personal', 'finance.module.access', 'finance.review.view', 'finance.claim.field.amount.view', 'views.use_assigned'], 'assigned');
+        $sync($roles['MANAGER-MASTERDATA'], ['workspace.view', 'workspace.customise', 'dashboard.builder.personal', 'dashboard.builder.user', 'dashboard.widget.add', 'dashboard.widget.move', 'dashboard.widget.resize', 'master_data.module.access', 'master_data.dashboard.view', 'master_data.items.view', 'master_data.items.approve', 'master_data.vendor.tab.bank_details.view', 'views.use_assigned', 'views.manage_user'], 'team', true);
+        $sync($roles['EXEC-MASTERDATA'], ['workspace.view', 'dashboard.builder.personal', 'master_data.module.access', 'master_data.dashboard.view', 'master_data.items.view', 'views.use_assigned'], 'assigned');
     }
 
     private function seedUsers(array $roles, array $verticals, array $units, array $teams, $permissions): array
@@ -163,6 +179,12 @@ class AccessControlSeeder extends Seeder
             'executive.grnqc@tan90.demo' => ['Amit Varma', $roles['EXEC-GRNQC'], 4, $verticals['STORE'], $units['STORE-BHIWANDI'], $teams['GRN'], 'manager.grn@tan90.demo', null],
             'executive.vendor@tan90.demo' => ['Farah Ansari', $roles['EXEC-VENDOR'], 4, $verticals['PROCUREMENT'], $units['PROC-VENDOR'], $teams['VENDOR'], 'manager.vendor@tan90.demo', LegacyRole::Vendor],
             'executive.readonly@tan90.demo' => ['Tara Iyer', $roles['EXEC-READONLY'], 4, $verticals['STORE'], $units['STORE-BHIWANDI'], $teams['GRN'], 'manager.grn@tan90.demo', null],
+            'head.finance@tan90.demo' => ['Sanjay Kapoor', $roles['HEAD-FINANCE'], 2, $verticals['FINANCE'], null, null, null, null],
+            'head.masterdata@tan90.demo' => ['Priya Nambiar', $roles['HEAD-MASTER-DATA'], 2, $verticals['MASTER-DATA'], null, null, null, null],
+            'manager.finance@tan90.demo' => ['Ashok Verma', $roles['MANAGER-FINANCE'], 3, $verticals['FINANCE'], null, $teams['FINANCE'], 'head.finance@tan90.demo', LegacyRole::Finance],
+            'manager.masterdata@tan90.demo' => ['Divya Reddy', $roles['MANAGER-MASTERDATA'], 3, $verticals['MASTER-DATA'], null, $teams['MASTERDATA'], 'head.masterdata@tan90.demo', null],
+            'executive.finance@tan90.demo' => ['Rakesh Bhatt', $roles['EXEC-FINANCE'], 4, $verticals['FINANCE'], null, $teams['FINANCE'], 'manager.finance@tan90.demo', LegacyRole::Finance],
+            'executive.masterdata@tan90.demo' => ['Neha Choudhary', $roles['EXEC-MASTERDATA'], 4, $verticals['MASTER-DATA'], null, $teams['MASTERDATA'], 'manager.masterdata@tan90.demo', null],
         ];
 
         $users = [];
@@ -195,6 +217,8 @@ class AccessControlSeeder extends Seeder
         $teams['GRN']->update(['manager_user_id' => $users['manager.grn@tan90.demo']->id]);
         $teams['QC']->update(['manager_user_id' => $users['manager.qc@tan90.demo']->id]);
         $teams['VENDOR']->update(['manager_user_id' => $users['manager.vendor@tan90.demo']->id]);
+        $teams['FINANCE']->update(['manager_user_id' => $users['manager.finance@tan90.demo']->id]);
+        $teams['MASTERDATA']->update(['manager_user_id' => $users['manager.masterdata@tan90.demo']->id]);
 
         $this->override($users['executive.grnqc@tan90.demo'], $users['manager.grn@tan90.demo'], $permissions['qc.queue.view'], 'allow', 'assigned', 'Cross-functional GRN+QC direct grant');
         $this->override($users['executive.readonly@tan90.demo'], $users['manager.grn@tan90.demo'], $permissions['grn.records.update'], 'deny', 'assigned', 'Read-only demo restriction');

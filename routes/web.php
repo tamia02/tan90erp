@@ -190,6 +190,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('dashboard-builder', [DashboardBuilderController::class, 'index'])->name('dashboard-builder.index');
         Route::post('dashboard-builder', [DashboardBuilderController::class, 'save'])->name('dashboard-builder.save');
         Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');
+        Route::get('activity/{log}', [ActivityController::class, 'show'])->name('activity.show');
     });
 
     Route::get('workspace', [WorkspaceController::class, 'index'])->name('workspace.index');
