@@ -32,8 +32,14 @@ migrations or seeders yourself.
    docker compose exec -T mysql mysql -u sail -ppassword tan90_mod1 < database/dumps/tan90_demo_seed.sql
    ```
 6. Open **http://localhost:8000** — the login page lists every role across
-   all three modules. Click any tile to log straight in, or use
-   `demo123` as the password for any of the emails below.
+   all three modules, plus an "Explore Demo Accounts by Hierarchy" panel.
+   Click any tile/button to log straight in, or use `demo123` as the
+   password for any of the emails below.
+
+**Important — if you ever deploy this somewhere with `APP_ENV=production`**
+(a real server usually wants that), keep `APP_DEMO_MODE=true` in `.env` or
+every demo login tile disappears from the login page. It's already set
+that way in this ZIP's `.env.package`; just don't remove it.
 
 ## Demo logins (all password `demo123`)
 
@@ -48,6 +54,17 @@ procurement@tan90.demo
 **BOM, Recipe & Costing:** admin@tan90.demo (same account as Master Data's),
 rd@tan90.demo, formula@tan90.demo, costing@tan90.demo, production@tan90.demo,
 qa@tan90.demo, plant-brc@tan90.demo, auditor-brc@tan90.demo
+
+**Access Control / Workspace hierarchy** (the "Explore Demo Accounts by
+Hierarchy" panel on the login page — click straight through, no typing
+needed): superadmin@tan90.demo (Level 1); head.store@tan90.demo,
+head.quality@tan90.demo, head.procurement@tan90.demo, head.finance@tan90.demo,
+head.masterdata@tan90.demo (Level 2); manager.grn@tan90.demo,
+manager.qc@tan90.demo, manager.vendor@tan90.demo, manager.finance@tan90.demo,
+manager.masterdata@tan90.demo (Level 3); executive.grn@tan90.demo,
+executive.qc@tan90.demo, executive.grnqc@tan90.demo, executive.vendor@tan90.demo,
+executive.readonly@tan90.demo, executive.finance@tan90.demo,
+executive.masterdata@tan90.demo (Level 4).
 
 ## What's not included
 

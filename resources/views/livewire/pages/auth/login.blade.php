@@ -88,7 +88,7 @@ new #[Layout('layouts.guest')] class extends Component
             <h2>Open your role workspace</h2>
         </div>
 
-        @unless (app()->isProduction())
+        @if (! app()->isProduction() || filter_var(env('APP_DEMO_MODE', false), FILTER_VALIDATE_BOOL))
             <div class="tan90-role-grid">
                 @foreach (\App\Enums\Role::cases() as $role)
                     <a href="{{ route('role-login', $role->value) }}" class="tan90-role-card">
@@ -127,7 +127,7 @@ new #[Layout('layouts.guest')] class extends Component
             </div>
 
             <div class="tan90-divider"><span>or sign in manually</span></div>
-        @endunless
+        @endif
 
         @if (! app()->isProduction() || filter_var(env('APP_DEMO_MODE', false), FILTER_VALIDATE_BOOL))
             <div class="tan90-demo-access">
