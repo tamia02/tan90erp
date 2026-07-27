@@ -19,6 +19,7 @@ class QcService
 
         return DB::transaction(function () use ($gate, $sku, $poQty, $invoiceQty, $split, $qcReasons, $holdReason, $holdDocumentPath, $physicalReceived, $missing) {
             $result = QcResult::create([
+                'created_by' => auth()->id(),
                 'gate_entry_id' => $gate->id,
                 'sku' => $sku,
                 'po_qty' => $poQty,

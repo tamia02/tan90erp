@@ -197,6 +197,7 @@ new #[Layout('layouts.app')] class extends Component
         $vendorUser = $form['vendor_name'] ? User::where('role', Role::Vendor)->where('name', $form['vendor_name'])->first() : null;
         $gate = GateEntry::create([
             ...$form,
+            'created_by' => auth()->id(),
             'gate_no' => 'GATE-'.random_int(1000, 9999),
             'bill_scanned' => $this->entryType === 'visitor' ? false : $this->billScanned,
             'remarks' => trim($this->remarks."\nDocuments: ".$this->documentSummary()."\nLine: ".$this->material.' x '.$qty) ?: null,

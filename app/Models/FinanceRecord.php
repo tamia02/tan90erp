@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'gate_entry_id', 'vendor_name', 'invoice_number', 'rate_per_unit',
+    'created_by', 'gate_entry_id', 'vendor_name', 'invoice_number', 'rate_per_unit',
     'invoice_value', 'accepted_value', 'deduction_defective', 'deduction_rejected',
     'deduction_missing', 'final_payable', 'vendor_status', 'notes',
 ])]

@@ -195,6 +195,54 @@ class AccessControlService
         return $targetRoles->every(fn (AccessRole $role) => $this->canManageRole($actor, $role));
     }
 
+    /**
+     * This user plus everyone who reports up to them, directly or through
+     * another manager in between (e.g. a Head's reports include their
+     * Managers' Executives too). Depth-bounded well past this app's 4
+     * hierarchy levels purely as a cycle guard.
+     *
+     * @return Collection<int, int>
+     */
+    public function reportUserIds(User $user): Collection
+    {
+        $ids = collect([$user->id]);
+        $frontier = collect([$user->id]);
+
+        for ($i = 0; $i < 10 && $frontier->isNotEmpty(); $i++) {
+            $next = AccessPosition::where('status', 'active')
+                ->whereIn('reports_to_user_id', $frontier)
+                ->pluck('user_id')
+                ->diff($ids);
+
+            if ($next->isEmpty()) {
+                break;
+            }
+
+            $ids = $ids->merge($next);
+            $frontier = $next;
+        }
+
+        return $ids->unique()->values();
+    }
+
+    /**
+     * User IDs a dashboard widget should scope its counts to - null means
+     * "no filter, show the company-wide total" (super admins only).
+     * Everyone else sees themselves plus whoever reports up to them, so an
+     * individual contributor sees their own numbers and a Head/Manager sees
+     * their whole team's combined total.
+     *
+     * @return Collection<int, int>|null
+     */
+    public function teamScopedUserIds(User $user): ?Collection
+    {
+        if ($user->super_admin) {
+            return null;
+        }
+
+        return $this->reportUserIds($user);
+    }
+
     public function widgetsFor(User $user): Collection
     {
         return DashboardWidgetCatalog::query()
@@ -332,6 +380,10 @@ class AccessControlService
             $verticalIds = $this->activeRoles($user)->pluck('vertical_id')->filter()->unique();
 
             return isset($record->vertical_id) && $verticalIds->contains($record->vertical_id);
+        }
+
+        if ($permission['scope_type'] === 'direct_reports') {
+            return isset($record->created_by) && $this->reportUserIds($user)->contains((int) $record->created_by);
         }
 
         return false;

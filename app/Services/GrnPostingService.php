@@ -24,6 +24,7 @@ class GrnPostingService
         }
 
         $grn = GrnRecord::create([
+            'created_by' => auth()->id(),
             'gate_entry_id' => $gate->id,
             'sku' => $qc->sku,
             'po_qty' => $qc->po_qty,
@@ -58,6 +59,7 @@ class GrnPostingService
 
         $rate = self::RATE_PER_UNIT;
         FinanceRecord::create([
+            'created_by' => auth()->id(),
             'gate_entry_id' => $gate->id,
             'vendor_name' => $gate->vendor_name ?? 'Unknown Vendor',
             'invoice_number' => $gate->invoice_number,
