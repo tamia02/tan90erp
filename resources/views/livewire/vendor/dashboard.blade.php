@@ -9,6 +9,7 @@ use App\Models\QcResult;
 use App\Models\Rfq;
 use App\Models\VendorSubmission;
 use App\Services\AuditLogger;
+use App\Support\CombinedActivityFeed;
 
 new #[Layout('layouts.app')] class extends Component
 {
@@ -67,14 +68,11 @@ new #[Layout('layouts.app')] class extends Component
     {
         $vendorName = auth()->user()->name;
 
-        $activity = AuditLogEntry::with('subject')
-            ->orderByDesc('created_at')
-            ->get()
-            ->filter(fn ($row) => $row->vendorName() === $vendorName && collect(self::ACTIVITY_KEYWORDS)->contains(
-                fn ($keyword) => str_contains($row->action, $keyword) || str_contains((string) $row->detail, $keyword)
-            ))
-            ->take(200)
-            ->values();
+        $activity = CombinedActivityFeed::forUser(
+            auth()->user(),
+            self::ACTIVITY_KEYWORDS,
+            fn (AuditLogEntry $row) => $row->vendorName() === $vendorName,
+        );
         $allSubmissions = VendorSubmission::where('vendor_name', $vendorName)->get();
         $poNumbers = $allSubmissions->pluck('po_number')->filter()->unique();
         $purchaseOrders = PurchaseOrder::whereIn('po_number', $poNumbers)->with('lines')->get()->keyBy('po_number');
@@ -345,14 +343,14 @@ new #[Layout('layouts.app')] class extends Component
         </div>
         <div class="flex flex-col divide-y" style="border-color: var(--border);">
             @forelse ($recentActivity as $row)
-                <a href="{{ route('activity.detail', $row) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
+                <a href="{{ $row['url'] }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                     <div class="min-w-0">
-                        <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $row->action }}</div>
-                        @if ($row->detail)
-                            <div class="text-xs mt-0.5 truncate" style="color: var(--text-muted);">{{ $row->detail }}</div>
+                        <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $row['title'] }}</div>
+                        @if ($row['detail'])
+                            <div class="text-xs mt-0.5 truncate" style="color: var(--text-muted);">{{ $row['detail'] }}</div>
                         @endif
                     </div>
-                    <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ $row->created_at->format('d M, H:i') }}</span>
+                    <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ $row['created_at']->format('d M, H:i') }}</span>
                 </a>
             @empty
                 <p class="text-sm py-4" style="color: var(--text-muted);">No activity recorded yet.</p>

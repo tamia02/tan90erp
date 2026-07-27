@@ -1,7 +1,7 @@
 <?php
 
 use App\Enums\Role;
-use App\Models\AuditLogEntry;
+use App\Support\CombinedActivityFeed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
@@ -42,7 +42,25 @@ new #[Layout('layouts.app')] class extends Component
     public function with(): array
     {
         $role = auth()->user()->role;
-        $realRows = AuditLogEntry::with('subject')->orderByDesc('created_at')->limit(60)->get();
+        $vendorName = auth()->user()->name;
+
+        $keywords = match ($role) {
+            Role::Guard => ['Gate entry', 'Security Guard'],
+            Role::Vendor => ['Vendor submission', 'Vendor stock', 'Vendor User', 'RFQ', 'Purchase return'],
+            Role::StoreExec => ['Unloading', 'Store Executive'],
+            Role::Qc => ['QC', 'QC User', 'Purchase return'],
+            Role::StoreManager => ['GRN', 'SKU', 'Purchase Order', 'Store Manager', 'Purchase return'],
+            Role::Finance => ['Vendor status', 'Finance User'],
+            Role::Admin => [],
+        };
+
+        $realRows = CombinedActivityFeed::forUser(
+            auth()->user(),
+            $keywords,
+            $role === Role::Vendor ? fn ($row) => $row->vendorName() === $vendorName : null,
+            60,
+            $role === Role::Admin,
+        );
 
         return [
             'role' => $role,
@@ -51,7 +69,7 @@ new #[Layout('layouts.app')] class extends Component
             'stats' => $this->stats($role),
             'locations' => self::LOCATIONS,
             'skuSamples' => self::SKU_SAMPLES,
-            'realRows' => $role === Role::Admin ? $realRows : $this->filterRealRows($realRows, $role),
+            'realRows' => $realRows,
         ];
     }
 
@@ -164,32 +182,6 @@ new #[Layout('layouts.app')] class extends Component
         };
     }
 
-    private function filterRealRows($rows, Role $role)
-    {
-        $keywords = match ($role) {
-            Role::Guard => ['Gate entry', 'Security Guard'],
-            Role::Vendor => ['Vendor submission', 'Vendor stock', 'Vendor User', 'RFQ', 'Purchase return'],
-            Role::StoreExec => ['Unloading', 'Store Executive'],
-            Role::Qc => ['QC', 'QC User', 'Purchase return'],
-            Role::StoreManager => ['GRN', 'SKU', 'Purchase Order', 'Store Manager', 'Purchase return'],
-            Role::Finance => ['Vendor status', 'Finance User'],
-            Role::Admin => [],
-        };
-
-        $rows = $rows->filter(fn ($row) => collect($keywords)->contains(
-            fn ($keyword) => str_contains($row->action, $keyword) || str_contains((string) $row->detail, $keyword)
-        ));
-
-        // Vendor is the one externally-facing role — every other role is
-        // internal staff already trusted with cross-role visibility, but a
-        // vendor must only ever see rows tied to their own account.
-        if ($role === Role::Vendor) {
-            $vendorName = auth()->user()->name;
-            $rows = $rows->filter(fn ($row) => $row->vendorName() === $vendorName);
-        }
-
-        return $rows->values();
-    }
 }; ?>
 
 <div class="space-y-5">
@@ -282,19 +274,19 @@ new #[Layout('layouts.app')] class extends Component
     <section class="rounded-2xl border p-4 sm:p-5" style="background: var(--surface-3); border-color: var(--border);">
         <h2 class="text-lg font-semibold" style="color: var(--text-primary);">System Audit Trail</h2>
         <p class="text-sm mb-4" style="color: var(--text-secondary);">
-            {{ $role === \App\Enums\Role::Admin ? 'Live audit entries from every role.' : 'Live audit entries related to this role.' }}
+            {{ $role === \App\Enums\Role::Admin ? 'Live audit entries from every role, including access and role changes.' : 'Live audit entries related to this role.' }}
         </p>
 
         <div class="flex flex-col divide-y rounded-xl border overflow-hidden" style="border-color: var(--border); background: var(--surface-2);">
             @forelse ($realRows as $row)
-                <a href="{{ route('activity.detail', $row) }}" wire:navigate class="px-4 py-3 flex items-center justify-between gap-3 hover:bg-black/5" style="border-color: var(--border);">
+                <a href="{{ $row['url'] }}" wire:navigate class="px-4 py-3 flex items-center justify-between gap-3 hover:bg-black/5" style="border-color: var(--border);">
                     <div class="min-w-0">
-                        <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $row->action }}</div>
-                        @if ($row->detail)
-                            <div class="text-xs mt-0.5 truncate" style="color: var(--text-muted);">{{ $row->detail }}</div>
+                        <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $row['title'] }}</div>
+                        @if ($row['detail'])
+                            <div class="text-xs mt-0.5 truncate" style="color: var(--text-muted);">{{ $row['detail'] }}</div>
                         @endif
                     </div>
-                    <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ $row->created_at->format('d M, H:i') }}</span>
+                    <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ $row['created_at']->format('d M, H:i') }}</span>
                 </a>
             @empty
                 <div class="text-center text-sm py-8" style="color: var(--text-muted);">No live audit rows for this role yet.</div>
