@@ -58,7 +58,7 @@ new #[Layout('layouts.app')] class extends Component
     public function deleteUser(int $id): void
     {
         $user = User::findOrFail($id);
-        AuditLogger::log('User removed', "{$user->name} · {$user->role->label()}");
+        AuditLogger::log('User removed', "{$user->name} · ".($user->role?->label() ?? 'Access Control only'));
         $user->delete();
     }
 
@@ -174,7 +174,7 @@ new #[Layout('layouts.app')] class extends Component
                             <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $user->name }}</td>
                             <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ $user->email }}</td>
                             <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ $user->phone ?? '—' }}</td>
-                            <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $user->role->label() }}</td>
+                            <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $user->role?->label() ?? 'Access Control only' }}</td>
                             <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ $user->role === \App\Enums\Role::Vendor ? ucfirst($user->vendor_tier ?? 'basic') : '—' }}</td>
                             <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ \App\Support\SlaDirectives::label($user->sla_directive) }}</td>
                             <td class="px-4 py-2.5">{{ $user->super_admin ? 'Yes' : 'No' }}</td>

@@ -54,6 +54,24 @@ class User extends Authenticatable
         return $this->role === Role::Admin;
     }
 
+    // Access-Control-only users (Super Admin, Head, Manager, Executive
+    // demo accounts) have no legacy `role` at all, so anywhere that used to
+    // assume `$user->role->homeRouteName()` would exist unconditionally
+    // needs this fallback instead - falls through to Workspace if they have
+    // that permission, else back to login.
+    public function homeRouteName(): string
+    {
+        if ($this->role) {
+            return $this->role->homeRouteName();
+        }
+
+        if (app(\App\Services\Access\AccessControlService::class)->can($this, 'workspace.view')) {
+            return 'workspace.index';
+        }
+
+        return 'login';
+    }
+
     public function isAdvancedVendor(): bool
     {
         return $this->role === Role::Vendor && $this->vendor_tier === 'advanced';

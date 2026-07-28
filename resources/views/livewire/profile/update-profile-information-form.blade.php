@@ -51,7 +51,7 @@ new class extends Component
         $user = Auth::user();
 
         if ($user->hasVerifiedEmail()) {
-            $this->redirectIntended(default: route($user->role->homeRouteName(), absolute: false));
+            $this->redirectIntended(default: route($user->homeRouteName(), absolute: false));
 
             return;
         }

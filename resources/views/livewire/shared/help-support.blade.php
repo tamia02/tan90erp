@@ -34,13 +34,13 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        return ['faqs' => self::FAQS[auth()->user()->role->value] ?? []];
+        return ['faqs' => self::FAQS[auth()->user()->role?->value] ?? []];
     }
 }; ?>
 
 <div class="max-w-2xl mx-auto">
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Help &amp; Support</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Answers for the {{ auth()->user()->role->label() }} module.</p>
+    <p class="text-sm mb-4" style="color: var(--text-secondary);">Answers for the {{ auth()->user()->role?->label() ?? 'Access Control' }} module.</p>
 
     <div class="flex flex-col gap-2 mb-6">
         @foreach ($faqs as $faq)

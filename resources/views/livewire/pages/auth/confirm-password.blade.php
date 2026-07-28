@@ -29,7 +29,7 @@ new #[Layout('layouts.guest')] class extends Component
 
         session(['auth.password_confirmed_at' => time()]);
 
-        $home = route(Auth::user()->role->homeRouteName(), absolute: false);
+        $home = route(Auth::user()->homeRouteName(), absolute: false);
         $this->redirectIntended(default: $home, navigate: true);
     }
 }; ?>
