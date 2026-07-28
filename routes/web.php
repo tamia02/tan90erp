@@ -177,6 +177,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('roles/{role}/clone', [AccessRoleController::class, 'clone'])->name('roles.clone');
 
         Route::get('people', [AccessPeopleController::class, 'index'])->name('people.index');
+        Route::get('people/create', [AccessPeopleController::class, 'create'])->name('people.create');
+        Route::post('people', [AccessPeopleController::class, 'store'])->name('people.store');
         Route::get('people/{user}', [AccessPeopleController::class, 'show'])->name('people.show');
         Route::post('people/{user}/assign-role', [AccessPeopleController::class, 'assign'])->name('people.assign-role');
         Route::post('people/{user}/extra-access', [AccessPeopleController::class, 'grantOverride'])->name('people.extra-access');

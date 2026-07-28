@@ -30,9 +30,11 @@ new class extends Component
         $accessItems = [];
         if ($access->hasNewAccess($user)) {
             foreach ([
-                ['label' => 'Workspace', 'route' => 'workspace.index', 'permission' => 'workspace.view'],
-                ['label' => 'Customise Workspace', 'route' => 'workspace.customise', 'permission' => 'workspace.customise'],
-                ['label' => 'Dashboard Builder', 'route' => 'access.dashboard-builder.index', 'permission_any' => ['dashboard.builder.role', 'dashboard.builder.team', 'dashboard.builder.user']],
+                // No self-service "Workspace" / "Customise Workspace" links -
+                // per the client, nobody builds their own dashboard. A
+                // Head/Manager's combined dashboard is configured by Super
+                // Admin when the profile is created (People > Add User),
+                // not something the person themselves edits.
                 ['label' => 'Access Roles', 'route' => 'access.roles.index', 'permission' => 'access.roles.view'],
                 ['label' => 'People', 'route' => 'access.people.index', 'permission' => 'access.people.view'],
                 ['label' => 'Hierarchy', 'route' => 'access.hierarchy.index', 'permission' => 'access.hierarchy.view'],

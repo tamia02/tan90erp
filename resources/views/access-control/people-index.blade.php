@@ -3,7 +3,7 @@
     <div class="access-shell max-w-7xl mx-auto space-y-5">
         <div class="access-top p-5 flex items-center justify-between gap-4">
             <div><div class="text-sm access-muted">Access Control / People</div><h1 class="text-2xl font-bold">Manage Users</h1></div>
-            <span class="access-chip">Grid / List</span>
+            <a href="{{ route('access.people.create') }}" class="access-btn access-btn-primary">Add User</a>
         </div>
         @if(session('status'))<div class="access-card p-3 text-sm">{{ session('status') }}</div>@endif
         <form class="access-card p-4 grid md:grid-cols-5 gap-3">
