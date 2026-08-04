@@ -8,6 +8,9 @@ use App\Http\Controllers\AccessControl\DashboardBuilderController;
 use App\Http\Controllers\AccessControl\HierarchyController;
 use App\Http\Controllers\AccessControl\SavedViewController;
 use App\Http\Controllers\ClaudeOAuthController;
+use App\Http\Controllers\Workspace\ApprovalController;
+use App\Http\Controllers\Workspace\ExceptionController;
+use App\Http\Controllers\Workspace\TaskController;
 use App\Http\Controllers\Workspace\WorkspaceController;
 use App\Http\Controllers\ZohoWebhookController;
 use App\Livewire\Actions\Logout;
@@ -211,6 +214,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('workspace', [WorkspaceController::class, 'index'])->name('workspace.index');
     Route::get('workspace/customise', [WorkspaceController::class, 'customise'])->name('workspace.customise');
     Route::post('workspace/customise', [WorkspaceController::class, 'save'])->name('workspace.save');
+
+    Route::prefix('workspace/tasks')->name('workspace.tasks.')->group(function () {
+        Route::get('/', [TaskController::class, 'index'])->name('index');
+        Route::post('/', [TaskController::class, 'store'])->name('store');
+        Route::post('{task}/claim', [TaskController::class, 'claim'])->name('claim');
+        Route::post('{task}/complete', [TaskController::class, 'complete'])->name('complete');
+    });
+
+    Route::prefix('workspace/approvals')->name('workspace.approvals.')->group(function () {
+        Route::get('/', [ApprovalController::class, 'index'])->name('index');
+        Route::post('/', [ApprovalController::class, 'store'])->name('store');
+        Route::post('{approval}/decide', [ApprovalController::class, 'decide'])->name('decide');
+    });
+
+    Route::prefix('workspace/exceptions')->name('workspace.exceptions.')->group(function () {
+        Route::get('/', [ExceptionController::class, 'index'])->name('index');
+        Route::post('/', [ExceptionController::class, 'store'])->name('store');
+        Route::post('{exception}/acknowledge', [ExceptionController::class, 'acknowledge'])->name('acknowledge');
+        Route::post('{exception}/resolve', [ExceptionController::class, 'resolve'])->name('resolve');
+    });
 });
 
 require __DIR__.'/auth.php';

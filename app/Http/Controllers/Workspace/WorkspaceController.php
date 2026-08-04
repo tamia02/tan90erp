@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Workspace;
 use App\Http\Controllers\Controller;
 use App\Models\Access\AccessRoleDashboardLayout;
 use App\Models\Access\UserDashboardLayout;
+use App\Models\Workspace\WorkspaceApproval;
+use App\Models\Workspace\WorkspaceException;
+use App\Models\Workspace\WorkspaceTask;
 use App\Services\Access\AccessControlService;
 use Illuminate\Http\Request;
 
@@ -27,7 +30,36 @@ class WorkspaceController extends Controller
             ->sortBy(fn ($card) => $card['layout']['y'] ?? 999)
             ->values();
 
-        return view('workspace.index', ['widgets' => $cards]);
+        return view('workspace.index', ['widgets' => $cards, 'queues' => $this->queueSummary($user)]);
+    }
+
+    /**
+     * @return array<string, array{count: int, route: string}|null>
+     */
+    private function queueSummary(\App\Models\User $user): array
+    {
+        $scope = $this->access->teamScopedUserIds($user);
+
+        return [
+            'tasks' => $this->access->can($user, 'workspace.tasks.view') ? [
+                'count' => WorkspaceTask::where('status', '!=', 'completed')
+                    ->when($scope, fn ($q) => $q->whereIn('assigned_to', $scope)->orWhereIn('created_by', $scope))
+                    ->count(),
+                'route' => 'workspace.tasks.index',
+            ] : null,
+            'approvals' => $this->access->can($user, 'workspace.approvals.view') ? [
+                'count' => WorkspaceApproval::where('status', 'pending')
+                    ->when($scope, fn ($q) => $q->whereIn('requested_by', $scope)->orWhereIn('approver_id', $scope))
+                    ->count(),
+                'route' => 'workspace.approvals.index',
+            ] : null,
+            'exceptions' => $this->access->can($user, 'workspace.exceptions.view') ? [
+                'count' => WorkspaceException::where('status', '!=', 'resolved')
+                    ->when($scope, fn ($q) => $q->whereIn('assigned_to', $scope)->orWhereIn('raised_by', $scope))
+                    ->count(),
+                'route' => 'workspace.exceptions.index',
+            ] : null,
+        ];
     }
 
     public function customise(Request $request)

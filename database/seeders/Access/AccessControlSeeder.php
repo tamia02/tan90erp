@@ -16,6 +16,9 @@ use App\Models\Access\DashboardTemplateItem;
 use App\Models\Access\DashboardWidget;
 use App\Models\Access\DashboardWidgetCatalog;
 use App\Models\User;
+use App\Models\Workspace\WorkspaceApproval;
+use App\Models\Workspace\WorkspaceException;
+use App\Models\Workspace\WorkspaceTask;
 use App\Services\Access\PermissionRegistry;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -73,6 +76,7 @@ class AccessControlSeeder extends Seeder
         $this->seedDashboards($users, $roles, $teams);
         $this->seedRoleDashboardLayouts($roles);
         $this->seedReferenceRoles($verticals);
+        $this->seedWorkspaceQueues($users);
     }
 
     private function seedRoles(array $verticals): array
@@ -164,6 +168,20 @@ class AccessControlSeeder extends Seeder
         $sync($roles['EXEC-FINANCE'], ['workspace.view', 'dashboard.builder.personal', 'finance.module.access', 'finance.review.view', 'finance.claim.field.amount.view', 'views.use_assigned'], 'assigned');
         $sync($roles['MANAGER-MASTERDATA'], ['workspace.view', 'workspace.customise', 'dashboard.builder.personal', 'dashboard.builder.user', 'dashboard.widget.add', 'dashboard.widget.move', 'dashboard.widget.resize', 'master_data.module.access', 'master_data.dashboard.view', 'master_data.items.view', 'master_data.items.approve', 'master_data.vendor.tab.bank_details.view', 'views.use_assigned', 'views.manage_user'], 'team', true);
         $sync($roles['EXEC-MASTERDATA'], ['workspace.view', 'dashboard.builder.personal', 'master_data.module.access', 'master_data.dashboard.view', 'master_data.items.view', 'views.use_assigned'], 'assigned');
+
+        // My Work / Approval Center / Alerts & Exceptions - team-scoped
+        // manage rights for Managers (they triage their team's queue,
+        // decide approvals), self-scoped work rights for Executives (they
+        // work their own assigned items, view their own request status,
+        // but don't hold approval authority).
+        $managerQueueKeys = ['workspace.tasks.view', 'workspace.tasks.complete', 'workspace.approvals.view', 'workspace.approvals.approve', 'workspace.exceptions.view', 'workspace.exceptions.assign'];
+        $execQueueKeys = ['workspace.tasks.view', 'workspace.tasks.complete', 'workspace.approvals.view', 'workspace.exceptions.view'];
+        foreach (['MANAGER-GRN', 'MANAGER-QC', 'MANAGER-VENDOR', 'MANAGER-FINANCE', 'MANAGER-MASTERDATA'] as $key) {
+            $sync($roles[$key], $managerQueueKeys, 'team', true);
+        }
+        foreach (['EXEC-GRN', 'EXEC-QC', 'EXEC-GRNQC', 'EXEC-VENDOR', 'EXEC-READONLY', 'EXEC-FINANCE', 'EXEC-MASTERDATA'] as $key) {
+            $sync($roles[$key], $execQueueKeys, 'assigned');
+        }
     }
 
     private function seedUsers(array $roles, array $verticals, array $units, array $teams, $permissions): array
@@ -294,6 +312,72 @@ class AccessControlSeeder extends Seeder
                 ['role_id' => $roles[$roleKey]->id, 'widget_key' => $pin['widget']],
                 ['x' => 0, 'y' => 0, 'w' => 4, 'h' => 3, 'visible' => true, 'mandatory' => $pin['mandatory'], 'locked' => $pin['locked']],
             );
+        }
+    }
+
+    private function seedWorkspaceQueues(array $users): void
+    {
+        $tasks = [
+            ['title' => 'Post pending GRN for gate GATE-4821', 'module' => 'GRN', 'priority' => 'high', 'assigned_to' => 'executive.grn@tan90.demo', 'created_by' => 'manager.grn@tan90.demo', 'status' => 'open', 'due_at' => now()->addHours(6)],
+            ['title' => 'Inspect incoming PCM batch before GRN post', 'module' => 'QC', 'priority' => 'critical', 'assigned_to' => 'executive.qc@tan90.demo', 'created_by' => 'manager.qc@tan90.demo', 'status' => 'in_progress', 'due_at' => now()->addHours(2)],
+            ['title' => 'Reconcile vendor claim for Thermocore Materials', 'module' => 'Finance', 'priority' => 'medium', 'assigned_to' => 'executive.finance@tan90.demo', 'created_by' => 'manager.finance@tan90.demo', 'status' => 'open', 'due_at' => now()->addDays(1)],
+            ['title' => 'Review duplicate SKU flagged in master data import', 'module' => 'Master Data', 'priority' => 'low', 'assigned_to' => 'executive.masterdata@tan90.demo', 'created_by' => 'manager.masterdata@tan90.demo', 'status' => 'completed', 'due_at' => now()->subDay(), 'completed_at' => now()->subHours(3)],
+        ];
+
+        foreach ($tasks as $spec) {
+            $assignedTo = $users[$spec['assigned_to']]->id;
+            $createdBy = $users[$spec['created_by']]->id;
+            $task = WorkspaceTask::updateOrCreate(
+                ['title' => $spec['title']],
+                ['module' => $spec['module'], 'priority' => $spec['priority'], 'assigned_to' => $assignedTo, 'created_by' => $createdBy, 'status' => $spec['status'], 'due_at' => $spec['due_at'], 'completed_at' => $spec['completed_at'] ?? null],
+            );
+            if ($task->wasRecentlyCreated) {
+                $task->events()->create(['user_id' => $createdBy, 'action' => 'created']);
+                if ($spec['status'] === 'completed') {
+                    $task->events()->create(['user_id' => $assignedTo, 'action' => 'completed']);
+                }
+            }
+        }
+
+        $approvals = [
+            ['subject' => 'Release payment - Konkan Insulation Systems (₹28,980)', 'module' => 'Finance', 'amount' => 28980, 'risk_level' => 'medium', 'requested_by' => 'executive.finance@tan90.demo', 'status' => 'pending'],
+            ['subject' => 'Approve vendor bank detail change - Thermocore Materials', 'module' => 'Master Data', 'amount' => null, 'risk_level' => 'high', 'requested_by' => 'executive.masterdata@tan90.demo', 'status' => 'pending'],
+            ['subject' => 'Approve QC hold release - GATE-4790 batch', 'module' => 'QC', 'amount' => null, 'risk_level' => 'low', 'requested_by' => 'executive.qc@tan90.demo', 'status' => 'approved', 'decided_by' => 'manager.qc@tan90.demo'],
+        ];
+
+        foreach ($approvals as $spec) {
+            $requestedBy = $users[$spec['requested_by']]->id;
+            $decidedBy = isset($spec['decided_by']) ? $users[$spec['decided_by']]->id : null;
+            $approval = WorkspaceApproval::updateOrCreate(
+                ['subject' => $spec['subject']],
+                ['module' => $spec['module'], 'amount' => $spec['amount'], 'risk_level' => $spec['risk_level'], 'requested_by' => $requestedBy, 'status' => $spec['status'], 'decided_by' => $decidedBy, 'approver_id' => $decidedBy, 'decided_at' => $decidedBy ? now()->subHours(4) : null],
+            );
+            if ($approval->wasRecentlyCreated) {
+                $approval->events()->create(['user_id' => $requestedBy, 'action' => 'requested']);
+                if ($decidedBy) {
+                    $approval->events()->create(['user_id' => $decidedBy, 'action' => $spec['status']]);
+                }
+            }
+        }
+
+        $exceptions = [
+            ['title' => 'GATE-4821 unposted GRN past SLA', 'category' => 'Unposted GRN', 'severity' => 'critical', 'module' => 'GRN', 'raised_by' => null, 'assigned_to' => 'manager.grn@tan90.demo', 'status' => 'open'],
+            ['title' => 'QC hold exceeds 24h without disposition', 'category' => 'Quality hold', 'severity' => 'warning', 'module' => 'QC', 'raised_by' => null, 'assigned_to' => 'manager.qc@tan90.demo', 'status' => 'acknowledged', 'acknowledged_at' => now()->subHours(1)],
+            ['title' => 'Vendor master data missing GST for 2 vendors', 'category' => 'Data quality', 'severity' => 'warning', 'module' => 'Master Data', 'raised_by' => null, 'assigned_to' => 'manager.masterdata@tan90.demo', 'status' => 'open'],
+        ];
+
+        foreach ($exceptions as $spec) {
+            $assignedTo = $users[$spec['assigned_to']]->id;
+            $exception = WorkspaceException::updateOrCreate(
+                ['title' => $spec['title']],
+                ['category' => $spec['category'], 'severity' => $spec['severity'], 'module' => $spec['module'], 'raised_by' => null, 'assigned_to' => $assignedTo, 'status' => $spec['status'], 'acknowledged_at' => $spec['acknowledged_at'] ?? null],
+            );
+            if ($exception->wasRecentlyCreated) {
+                $exception->events()->create(['user_id' => null, 'action' => 'raised', 'detail' => 'System-detected exception']);
+                if ($spec['status'] === 'acknowledged') {
+                    $exception->events()->create(['user_id' => $assignedTo, 'action' => 'acknowledged']);
+                }
+            }
         }
     }
 

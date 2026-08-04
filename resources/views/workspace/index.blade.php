@@ -9,6 +9,20 @@
             <a class="access-btn access-btn-primary" href="{{ route('workspace.customise') }}">Customise</a>
         </div>
 
+        @php($queueLabels = ['tasks' => ['My Work', 'open task'], 'approvals' => ['Approval Center', 'pending request'], 'exceptions' => ['Alerts & Exceptions', 'open exception']])
+        @if (collect($queues)->filter()->isNotEmpty())
+            <div class="access-grid">
+                @foreach ($queues as $key => $queue)
+                    @continue(! $queue)
+                    <a href="{{ route($queue['route']) }}" class="access-card p-4 block">
+                        <div class="access-muted text-sm">{{ $queueLabels[$key][0] }}</div>
+                        <div class="workspace-metric mt-1">{{ $queue['count'] }}</div>
+                        <p class="access-muted text-sm mt-1">{{ Str::plural($queueLabels[$key][1], $queue['count']) }}</p>
+                    </a>
+                @endforeach
+            </div>
+        @endif
+
         @if ($widgets->isEmpty())
             <div class="access-card p-6 text-sm access-muted text-center">
                 No widgets are available for your account yet.

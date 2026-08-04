@@ -83,6 +83,12 @@ class PermissionRegistry
             ['dashboard.widget.resize', 'Workspace', 'Builder', 'dashboard', 'resize', 'Resize widgets', null],
             ['dashboard.template.publish', 'Workspace', 'Builder', 'dashboard', 'publish', 'Publish dashboard template', null],
             ['dashboard.widget.lock', 'Workspace', 'Builder', 'dashboard', 'lock', 'Lock widget position/size/config', null],
+            ['workspace.tasks.view', 'Workspace', 'My Work', 'page', 'view', 'View my tasks', 'workspace.tasks.index'],
+            ['workspace.tasks.complete', 'Workspace', 'My Work', 'action', 'complete', 'Claim and complete tasks', null],
+            ['workspace.approvals.view', 'Workspace', 'Approval Center', 'page', 'view', 'View approval queue', 'workspace.approvals.index'],
+            ['workspace.approvals.approve', 'Workspace', 'Approval Center', 'action', 'approve', 'Approve or reject requests', null],
+            ['workspace.exceptions.view', 'Workspace', 'Alerts & Exceptions', 'page', 'view', 'View exceptions', 'workspace.exceptions.index'],
+            ['workspace.exceptions.assign', 'Workspace', 'Alerts & Exceptions', 'action', 'assign', 'Acknowledge, assign and resolve exceptions', null],
         ];
 
         foreach ($routes as [$key, $module, $screen, $category, $action, $label, $route]) {
