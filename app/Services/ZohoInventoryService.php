@@ -408,7 +408,7 @@ class ZohoInventoryService
             VendorMaster::withoutEvents(fn () => VendorMaster::updateOrCreate(
                 ['vendor_name' => $name],
                 [
-                    'gst_number' => $record['gst_no'] ?: ($existing?->gst_number ?: 'ZOHO-N/A'),
+                    'gst_number' => ($record['gst_no'] ?? null) ?: ($existing?->gst_number ?: 'ZOHO-N/A'),
                     'contact_phone' => (string) (($primaryContact['phone'] ?? $existing?->contact_phone) ?: 'N/A'),
                     'contact_email' => $primaryContact['email'] ?? $existing?->contact_email,
                     'category' => $existing?->category ?: 'Zoho Vendor',
