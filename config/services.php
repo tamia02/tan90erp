@@ -44,7 +44,13 @@ return [
         'field_po' => env('ZOHO_FIELD_PO', 'PO_Number'),
         'field_vendor_name' => env('ZOHO_FIELD_VENDOR_NAME', 'Vendor_Name'),
         'field_subject' => env('ZOHO_FIELD_SUBJECT', 'Subject'),
-        'field_product_details' => env('ZOHO_FIELD_PRODUCT_DETAILS', 'Product_Details'),
+        'field_product_details' => env('ZOHO_FIELD_PRODUCT_DETAILS', 'Purchase_Items'),
+        'webhook_secret' => env('ZOHO_WEBHOOK_SECRET'),
+        'sync_minutes' => env('ZOHO_SYNC_MINUTES', 30),
+        'write_enabled' => env('ZOHO_WRITE_ENABLED', true),
+        'create_enabled' => env('ZOHO_CREATE_ENABLED', false),
+        'write_vendor_name' => env('ZOHO_WRITE_VENDOR_NAME', false),
+        'write_product_details' => env('ZOHO_WRITE_PRODUCT_DETAILS', false),
     ],
 
     'claude' => [

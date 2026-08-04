@@ -9,10 +9,12 @@ use App\Http\Controllers\AccessControl\HierarchyController;
 use App\Http\Controllers\AccessControl\SavedViewController;
 use App\Http\Controllers\ClaudeOAuthController;
 use App\Http\Controllers\Workspace\WorkspaceController;
+use App\Http\Controllers\ZohoWebhookController;
 use App\Livewire\Actions\Logout;
 use App\Models\QcResult;
 use App\Models\Tan90\MasterData\UserProfile;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
@@ -22,84 +24,87 @@ use Livewire\Volt\Volt;
 Route::redirect('/', '/login');
 Route::redirect('public', '/login');
 
-// The GRN sidebar (layout/navigation.blade.php) calls the Logout action
-// directly as a Volt component method - there was never a named 'logout'
-// route. The Tan90 modules' layouts (copied from standalone demos built
-// against a standard Breeze-style app) use a plain <form action="{{ route
-// ('logout') }}"> instead, so this route exists purely for them.
+Route::post('zoho/webhook/purchase-order', [ZohoWebhookController::class, 'purchaseOrder'])
+    ->withoutMiddleware([ValidateCsrfToken::class])
+    ->name('zoho.webhook.purchase-order');
+
 Route::post('logout', function (Logout $logout) {
     $logout();
 
     return redirect('/login');
 })->middleware('auth')->name('logout');
 
-// Dev/demo convenience only — logs in as any role with no password, so it
-// must never be reachable in production. Gated at registration, not just
-// hidden in the UI, so the URL itself 404s outside local/dev.
-if (! app()->isProduction()) {
-    Route::get('role-login/{role}', function (string $role) {
-        $role = Role::from($role);
-        $user = User::where('role', $role)->firstOrFail();
+Route::get('role-login/{role}', function (string $role) {
+    $role = Role::from($role);
+    $user = User::where('role', $role)->firstOrFail();
 
-        Auth::login($user);
-        Session::regenerate();
+    Auth::login($user);
+    Session::regenerate();
 
-        return redirect(rtrim(config('app.url'), '/').route($role->homeRouteName(), [], false));
-    })->whereIn('role', Role::values())->name('role-login');
+    return redirect(rtrim(config('app.url'), '/').route($role->homeRouteName(), [], false));
+})->whereIn('role', Role::values())->name('role-login');
 
-    // Same dev/demo convenience, generalized to the Tan90 module RBAC
-    // (Master Data / BOM, Recipe & Costing) instead of the GRN enum above —
-    // logs in the first seeded user holding that tan90_roles.code and sends
-    // them to whichever module's dashboard owns that role. Shared codes
-    // (Super Admin/Plant/Auditor, seeded by more than one module) default to
-    // Master Data's dashboard; the sidebar nav reaches every other module.
-    Route::get('tan90-role-login/{roleCode}', function (string $roleCode) {
-        $role = App\Models\Tan90\MasterData\Role::where('code', $roleCode)->firstOrFail();
-        $profile = UserProfile::where('tan90_role_id', $role->id)->firstOrFail();
+Route::get('tan90-role-login/{roleCode}', function (string $roleCode) {
+    $role = App\Models\Tan90\MasterData\Role::where('code', $roleCode)->firstOrFail();
+    $profile = UserProfile::where('tan90_role_id', $role->id)->firstOrFail();
 
-        Auth::login($profile->user);
-        Session::regenerate();
+    Auth::login($profile->user);
+    Session::regenerate();
 
+    $bomOnlyCodes = ['ROLE-RND', 'ROLE-FORMULATION', 'ROLE-COSTING', 'ROLE-PRODUCTION-ENG', 'ROLE-QA-APPROVER'];
+    $homeRoute = in_array($roleCode, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
+
+    return redirect(rtrim(config('app.url'), '/').route($homeRoute, [], false));
+})->name('tan90-role-login');
+
+Route::get('demo-user-login/{user}', function (User $user) {
+    abort_unless($user->is_active, 404);
+
+    Auth::login($user);
+    Session::regenerate();
+
+    if ($user->role instanceof Role) {
+        return redirect(rtrim(config('app.url'), '/').route($user->role->homeRouteName(), [], false));
+    }
+
+    $profile = $user->tan90Profile()->with('role')->first();
+    if ($profile?->role) {
         $bomOnlyCodes = ['ROLE-RND', 'ROLE-FORMULATION', 'ROLE-COSTING', 'ROLE-PRODUCTION-ENG', 'ROLE-QA-APPROVER'];
-        $homeRoute = in_array($roleCode, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
+        $homeRoute = in_array($profile->role->code, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
 
         return redirect(rtrim(config('app.url'), '/').route($homeRoute, [], false));
-    })->name('tan90-role-login');
-}
+    }
 
-if (! app()->isProduction() || filter_var(env('APP_DEMO_MODE', false), FILTER_VALIDATE_BOOL)) {
-    Route::post('demo-login/{user}', function (User $user) {
-        abort_unless(str_ends_with($user->email, '@tan90.demo') && $user->access_mode === 'advanced', 403);
-
-        Auth::login($user);
-        Session::regenerate();
-
+    if (app(App\Services\Access\AccessControlService::class)->can($user, 'workspace.view')) {
         return redirect()->route('workspace.index');
-    })->name('demo-login');
-}
+    }
 
-// Claude OAuth routes
+    return redirect('/login');
+})->name('demo-user-login');
+
+Route::post('demo-login/{user}', function (User $user) {
+    abort_unless(str_ends_with($user->email, '@tan90.demo') && $user->access_mode === 'advanced', 403);
+
+    Auth::login($user);
+    Session::regenerate();
+
+    return redirect()->route('workspace.index');
+})->name('demo-login');
+
 Route::get('oauth/claude/initiate', [ClaudeOAuthController::class, 'initiate'])->name('claude.initiate');
 Route::get('oauth/claude/callback', [ClaudeOAuthController::class, 'callback'])->name('claude.callback');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('profile', 'profile')->name('profile');
 
-    // Claude Chat
     Route::post('api/claude/chat', 'App\Http\Controllers\ClaudeOAuthController@chat')->name('claude.chat');
 
-    // Shared utility screens — any signed-in role, each adapts its own
-    // content per role (mirrors the React prototype's RequireAuth routes).
     Volt::route('notifications', 'shared.notifications')->name('notifications');
     Volt::route('activity', 'shared.activity-log')->name('activity');
     Volt::route('activity/{entry}', 'shared.activity-detail')->name('activity.detail');
     Volt::route('settings', 'shared.settings')->name('settings');
     Volt::route('help', 'shared.help-support')->name('help');
 
-    // One route group per role, each gated by the `role` middleware
-    // (EnsureRole) — Admin bypasses every gate, every other role is
-    // walled off to its own prefix, mirroring the React prototype's
-    // strict per-role portal isolation.
     Route::middleware('role:guard')->prefix('guard')->name('guard.')->group(function () {
         Volt::route('/', 'guard.dashboard')->name('dashboard');
         Volt::route('scan', 'guard.bill-scan')->name('scan');

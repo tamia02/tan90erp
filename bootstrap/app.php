@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'access' => \App\Http\Middleware\EnsureAdvancedAccess::class,
             'role' => \App\Http\Middleware\EnsureRole::class,
         ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'zoho/webhook/purchase-order',
+        ]);
     })
     ->withCommands([
         __DIR__.'/../app/Console/Commands',

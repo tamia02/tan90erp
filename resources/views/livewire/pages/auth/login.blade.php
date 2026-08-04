@@ -15,7 +15,7 @@ new #[Layout('layouts.guest')] class extends Component
 
     public function mount(): void
     {
-        if ((! app()->isProduction() || filter_var(env('APP_DEMO_MODE', false), FILTER_VALIDATE_BOOL)) && request()->filled('email')) {
+        if (request()->filled('email')) {
             $this->form->email = request()->string('email')->toString();
         }
     }
@@ -35,7 +35,6 @@ new #[Layout('layouts.guest')] class extends Component
     public function loginAs(string $role): void
     {
         $role = Role::from($role);
-
         $user = User::where('role', $role)->firstOrFail();
 
         Auth::login($user);
@@ -88,89 +87,106 @@ new #[Layout('layouts.guest')] class extends Component
             <h2>Open your role workspace</h2>
         </div>
 
-        @if (! app()->isProduction() || filter_var(env('APP_DEMO_MODE', false), FILTER_VALIDATE_BOOL))
-            <div class="tan90-role-grid">
-                @foreach (\App\Enums\Role::cases() as $role)
-                    <a href="{{ route('role-login', $role->value) }}" class="tan90-role-card">
-                        <span>{{ $role->label() }}</span>
-                        <small>
-                            @if ($role->value === 'guard')
-                                Gate scan and vehicle inward
-                            @elseif ($role->value === 'vendor')
-                                Submission and issue response
-                            @elseif ($role->value === 'admin')
-                                Control tower and masters
-                            @else
-                                Operations workspace
+        <div class="tan90-role-grid">
+            @foreach (\App\Enums\Role::cases() as $role)
+                <a href="{{ route('role-login', $role->value) }}" class="tan90-role-card">
+                    <span>{{ $role->label() }}</span>
+                    <small>
+                        @if ($role->value === 'guard')
+                            Gate scan and vehicle inward
+                        @elseif ($role->value === 'vendor')
+                            Submission and issue response
+                        @elseif ($role->value === 'admin')
+                            Control tower and masters
+                        @else
+                            Operations workspace
+                        @endif
+                    </small>
+                </a>
+            @endforeach
+
+            @php
+                $grnCodes = \App\Enums\Role::values();
+                $tan90Roles = \App\Models\Tan90\MasterData\Role::where('status', 'active')
+                    ->whereNotIn('code', $grnCodes)
+                    ->orderBy('name')
+                    ->get();
+            @endphp
+            @foreach ($tan90Roles as $tan90Role)
+                <a href="{{ route('tan90-role-login', $tan90Role->code) }}" class="tan90-role-card">
+                    <span>{{ $tan90Role->name }}</span>
+                    <small>{{ $tan90Role->data_scope ?: 'Operations workspace' }}</small>
+                </a>
+            @endforeach
+        </div>
+
+        @php
+            $demoUsers = \App\Models\User::with('tan90Profile.role')
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get();
+        @endphp
+        <div class="tan90-panel-heading mt-6">
+            <p>Demo users</p>
+            <h2>Open any seeded account</h2>
+        </div>
+        <div class="tan90-role-grid">
+            @foreach ($demoUsers as $demoUser)
+                @php
+                    $demoRole = $demoUser->role?->label()
+                        ?? $demoUser->tan90Profile?->role?->name
+                        ?? $demoUser->accessRoles?->pluck('name')->implode(', ')
+                        ?? 'Demo User';
+                @endphp
+                <a href="{{ route('demo-user-login', $demoUser) }}" class="tan90-role-card">
+                    <span>{{ $demoUser->name }}</span>
+                    <small>{{ $demoRole }} - {{ $demoUser->email }}</small>
+                </a>
+            @endforeach
+        </div>
+
+        <div class="tan90-demo-access">
+            <p>Explore Demo Accounts by Hierarchy</p>
+            @php
+                $demoGroups = [
+                    'Level 1 / Super Admin' => ['superadmin@tan90.demo'],
+                    'Level 2 / Heads of Vertical' => ['head.store@tan90.demo', 'head.quality@tan90.demo', 'head.procurement@tan90.demo', 'head.finance@tan90.demo', 'head.masterdata@tan90.demo'],
+                    'Level 3 / Managers' => ['manager.grn@tan90.demo', 'manager.qc@tan90.demo', 'manager.vendor@tan90.demo', 'manager.finance@tan90.demo', 'manager.masterdata@tan90.demo'],
+                    'Level 4 / Executives and Employees' => ['executive.grn@tan90.demo', 'executive.qc@tan90.demo', 'executive.grnqc@tan90.demo', 'executive.vendor@tan90.demo', 'executive.readonly@tan90.demo', 'executive.finance@tan90.demo', 'executive.masterdata@tan90.demo'],
+                ];
+                $advancedDemoUsers = \App\Models\User::whereIn('email', collect($demoGroups)->flatten())
+                    ->with(['accessRoles', 'accessPositions.vertical', 'accessPositions.unit', 'accessPositions.team', 'accessPositions.manager'])
+                    ->get()
+                    ->keyBy('email');
+            @endphp
+            @foreach ($demoGroups as $group => $emails)
+                <details @open($loop->first)>
+                    <summary>{{ $group }}</summary>
+                    <div>
+                        @foreach ($emails as $email)
+                            @if ($advancedDemoUsers->has($email))
+                                @php($advancedDemoUser = $advancedDemoUsers[$email])
+                                <form method="post" action="{{ route('demo-login', $advancedDemoUser) }}">
+                                    @csrf
+                                    <button type="submit">
+                                        <strong>{{ $advancedDemoUser->name }}</strong>
+                                        <span>{{ $email }}</span>
+                                        <small>{{ $advancedDemoUser->accessRoles->pluck('name')->implode(', ') ?: 'Advanced access' }}</small>
+                                        @if($advancedDemoUser->accessPositions->first())
+                                            @php($position = $advancedDemoUser->accessPositions->first())
+                                            <small>{{ $position->vertical?->name ?? 'All verticals' }} / {{ $position->team?->name ?? 'All teams' }} / Reports to {{ $position->manager?->name ?? 'top level' }}</small>
+                                        @endif
+                                    </button>
+                                </form>
                             @endif
-                        </small>
-                    </a>
-                @endforeach
+                        @endforeach
+                    </div>
+                </details>
+            @endforeach
+            <small>Manual password for all demo accounts: demo123</small>
+        </div>
 
-                {{-- Master Data / BOM module roles, read from the shared tan90_roles
-                     table rather than the enum above — every module seeds into this
-                     one table, so a new module's roles show up here automatically
-                     once it's merged in, with no change to this view. --}}
-                @php
-                    $grnCodes = \App\Enums\Role::values();
-                    $tan90Roles = \App\Models\Tan90\MasterData\Role::where('status', 'active')
-                        ->whereNotIn('code', $grnCodes)
-                        ->orderBy('name')
-                        ->get();
-                @endphp
-                @foreach ($tan90Roles as $tan90Role)
-                    <a href="{{ route('tan90-role-login', $tan90Role->code) }}" class="tan90-role-card">
-                        <span>{{ $tan90Role->name }}</span>
-                        <small>{{ $tan90Role->data_scope ?: 'Operations workspace' }}</small>
-                    </a>
-                @endforeach
-            </div>
-
-            <div class="tan90-divider"><span>or sign in manually</span></div>
-        @endif
-
-        @if (! app()->isProduction() || filter_var(env('APP_DEMO_MODE', false), FILTER_VALIDATE_BOOL))
-            <div class="tan90-demo-access">
-                <p>Explore Demo Accounts by Hierarchy</p>
-                @php
-                    $demoGroups = [
-                        'Level 1 / Super Admin' => ['superadmin@tan90.demo'],
-                        'Level 2 / Heads of Vertical' => ['head.store@tan90.demo', 'head.quality@tan90.demo', 'head.procurement@tan90.demo', 'head.finance@tan90.demo', 'head.masterdata@tan90.demo'],
-                        'Level 3 / Managers' => ['manager.grn@tan90.demo', 'manager.qc@tan90.demo', 'manager.vendor@tan90.demo', 'manager.finance@tan90.demo', 'manager.masterdata@tan90.demo'],
-                        'Level 4 / Executives and Employees' => ['executive.grn@tan90.demo', 'executive.qc@tan90.demo', 'executive.grnqc@tan90.demo', 'executive.vendor@tan90.demo', 'executive.readonly@tan90.demo', 'executive.finance@tan90.demo', 'executive.masterdata@tan90.demo'],
-                    ];
-                    $demoUsers = \App\Models\User::whereIn('email', collect($demoGroups)->flatten())
-                        ->with(['accessRoles', 'accessPositions.vertical', 'accessPositions.unit', 'accessPositions.team', 'accessPositions.manager'])
-                        ->get()
-                        ->keyBy('email');
-                @endphp
-                @foreach ($demoGroups as $group => $emails)
-                    <details @open($loop->first)>
-                        <summary>{{ $group }}</summary>
-                        <div>
-                            @foreach ($emails as $email)
-                                @if ($demoUsers->has($email))
-                                    @php($demoUser = $demoUsers[$email])
-                                    <form method="post" action="{{ route('demo-login', $demoUser) }}">
-                                        @csrf
-                                        <button type="submit">
-                                            <strong>{{ $demoUser->name }}</strong>
-                                            <span>{{ $email }}</span>
-                                            <small>{{ $demoUser->accessRoles->pluck('name')->implode(', ') ?: 'Advanced access' }}</small>
-                                            @if($demoUser->accessPositions->first())
-                                                @php($position = $demoUser->accessPositions->first())
-                                                <small>{{ $position->vertical?->name ?? 'All verticals' }} / {{ $position->team?->name ?? 'All teams' }} / Reports to {{ $position->manager?->name ?? 'top level' }}</small>
-                                            @endif
-                                        </button>
-                                    </form>
-                                @endif
-                            @endforeach
-                        </div>
-                    </details>
-                @endforeach
-                <small>Manual password for all demo accounts: demo123</small>
-            </div>
-        @endif
+        <div class="tan90-divider"><span>manual login</span></div>
 
         <form wire:submit="login" class="tan90-manual-form">
             <div>
