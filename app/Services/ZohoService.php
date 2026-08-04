@@ -18,6 +18,8 @@ use App\Models\VendorMaster;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
+// (ZohoInventoryService lives in the same namespace — no import needed.)
+
 // Real Zoho CRM integration — replaces the React prototype's Vercel/Node
 // proxy, which only existed because a pure SPA has nowhere to hold an
 // OAuth Client Secret. A real Laravel backend just... has a backend: the
@@ -325,17 +327,22 @@ class ZohoService
             }
         });
 
-        VendorSubmission::orderBy('id')->chunk(100, function ($records) use (&$vendorBills, &$failed) {
-            foreach ($records as $submission) {
-                $this->pushVendorSubmission($submission) ? $vendorBills++ : $failed++;
-            }
-        });
+        // Vendor bills and finance records move to Zoho Inventory Bills once
+        // it's active (see ZohoInventoryService::pushOperationalData) — RFQ
+        // has no Inventory equivalent, so it stays on CRM Quotes regardless.
+        if (! app(ZohoInventoryService::class)->isActive()) {
+            VendorSubmission::orderBy('id')->chunk(100, function ($records) use (&$vendorBills, &$failed) {
+                foreach ($records as $submission) {
+                    $this->pushVendorSubmission($submission) ? $vendorBills++ : $failed++;
+                }
+            });
 
-        FinanceRecord::with('gateEntry')->orderBy('id')->chunk(100, function ($records) use (&$finance, &$failed) {
-            foreach ($records as $record) {
-                $this->pushFinanceRecord($record) ? $finance++ : $failed++;
-            }
-        });
+            FinanceRecord::with('gateEntry')->orderBy('id')->chunk(100, function ($records) use (&$finance, &$failed) {
+                foreach ($records as $record) {
+                    $this->pushFinanceRecord($record) ? $finance++ : $failed++;
+                }
+            });
+        }
 
         return ['rfqs' => $rfqs, 'vendor_bills' => $vendorBills, 'finance' => $finance, 'failed' => $failed];
     }
@@ -448,11 +455,17 @@ class ZohoService
             }
         });
 
-        GrnRecord::with('gateEntry')->orderBy('id')->chunk(100, function ($records) use (&$grnRecords, &$failed) {
-            foreach ($records as $record) {
-                $this->pushGrnRecord($record) ? $grnRecords++ : $failed++;
-            }
-        });
+        // GRN moves to Zoho Inventory Purchase Receives once it's active
+        // (see ZohoInventoryService::pushOperationalData) — Gate Entry, QC,
+        // and BOM/Recipe/Costing have no Inventory equivalent, so they stay
+        // on CRM notes regardless.
+        if (! app(ZohoInventoryService::class)->isActive()) {
+            GrnRecord::with('gateEntry')->orderBy('id')->chunk(100, function ($records) use (&$grnRecords, &$failed) {
+                foreach ($records as $record) {
+                    $this->pushGrnRecord($record) ? $grnRecords++ : $failed++;
+                }
+            });
+        }
 
         Bom::with(['finishedGood', 'currentVersion.lines.component'])->orderBy('id')->chunk(100, function ($records) use (&$bomRecords, &$failed) {
             foreach ($records as $record) {

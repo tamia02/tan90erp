@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\PurchaseOrder;
+use App\Services\ZohoInventoryService;
 use App\Services\ZohoService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -11,10 +12,16 @@ class PushZohoPurchaseOrders extends Command
 {
     protected $signature = 'zoho:push-purchase-orders {--fresh : Ignore the saved checkpoint and push local records again}';
 
-    protected $description = 'Push locally modified Tan90 purchase orders into Zoho CRM as the outbound backup sync.';
+    protected $description = 'Push locally modified Tan90 purchase orders into Zoho CRM as the outbound backup sync. Superseded by zoho:push-inventory-data once Zoho Inventory is active.';
 
-    public function handle(ZohoService $zoho): int
+    public function handle(ZohoService $zoho, ZohoInventoryService $inventory): int
     {
+        if ($inventory->isActive()) {
+            $this->info('Skipped — Zoho Inventory is active, PO sync now runs via zoho:push-inventory-data.');
+
+            return self::SUCCESS;
+        }
+
         $checkpointKey = 'zoho_purchase_orders_outbound_last_modified';
         $since = $this->option('fresh') ? null : Cache::get($checkpointKey);
 
