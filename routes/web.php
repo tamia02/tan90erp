@@ -34,62 +34,69 @@ Route::post('logout', function (Logout $logout) {
     return redirect('/login');
 })->middleware('auth')->name('logout');
 
-Route::get('role-login/{role}', function (string $role) {
-    $role = Role::from($role);
-    $user = User::where('role', $role)->firstOrFail();
+// Dev/demo convenience only — every route below logs a browser in as an
+// arbitrary account with zero credentials, so none of them may ever be
+// reachable in production. Gated at registration, not just hidden in the
+// UI, so the URL itself 404s outside local/dev (matches the role-login
+// backdoor fix already applied elsewhere in this app's history).
+if (! app()->isProduction()) {
+    Route::get('role-login/{role}', function (string $role) {
+        $role = Role::from($role);
+        $user = User::where('role', $role)->firstOrFail();
 
-    Auth::login($user);
-    Session::regenerate();
+        Auth::login($user);
+        Session::regenerate();
 
-    return redirect(rtrim(config('app.url'), '/').route($role->homeRouteName(), [], false));
-})->whereIn('role', Role::values())->name('role-login');
+        return redirect(rtrim(config('app.url'), '/').route($role->homeRouteName(), [], false));
+    })->whereIn('role', Role::values())->name('role-login');
 
-Route::get('tan90-role-login/{roleCode}', function (string $roleCode) {
-    $role = App\Models\Tan90\MasterData\Role::where('code', $roleCode)->firstOrFail();
-    $profile = UserProfile::where('tan90_role_id', $role->id)->firstOrFail();
+    Route::get('tan90-role-login/{roleCode}', function (string $roleCode) {
+        $role = App\Models\Tan90\MasterData\Role::where('code', $roleCode)->firstOrFail();
+        $profile = UserProfile::where('tan90_role_id', $role->id)->firstOrFail();
 
-    Auth::login($profile->user);
-    Session::regenerate();
+        Auth::login($profile->user);
+        Session::regenerate();
 
-    $bomOnlyCodes = ['ROLE-RND', 'ROLE-FORMULATION', 'ROLE-COSTING', 'ROLE-PRODUCTION-ENG', 'ROLE-QA-APPROVER'];
-    $homeRoute = in_array($roleCode, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
-
-    return redirect(rtrim(config('app.url'), '/').route($homeRoute, [], false));
-})->name('tan90-role-login');
-
-Route::get('demo-user-login/{user}', function (User $user) {
-    abort_unless($user->is_active, 404);
-
-    Auth::login($user);
-    Session::regenerate();
-
-    if ($user->role instanceof Role) {
-        return redirect(rtrim(config('app.url'), '/').route($user->role->homeRouteName(), [], false));
-    }
-
-    $profile = $user->tan90Profile()->with('role')->first();
-    if ($profile?->role) {
         $bomOnlyCodes = ['ROLE-RND', 'ROLE-FORMULATION', 'ROLE-COSTING', 'ROLE-PRODUCTION-ENG', 'ROLE-QA-APPROVER'];
-        $homeRoute = in_array($profile->role->code, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
+        $homeRoute = in_array($roleCode, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
 
         return redirect(rtrim(config('app.url'), '/').route($homeRoute, [], false));
-    }
+    })->name('tan90-role-login');
 
-    if (app(App\Services\Access\AccessControlService::class)->can($user, 'workspace.view')) {
+    Route::get('demo-user-login/{user}', function (User $user) {
+        abort_unless($user->is_active, 404);
+
+        Auth::login($user);
+        Session::regenerate();
+
+        if ($user->role instanceof Role) {
+            return redirect(rtrim(config('app.url'), '/').route($user->role->homeRouteName(), [], false));
+        }
+
+        $profile = $user->tan90Profile()->with('role')->first();
+        if ($profile?->role) {
+            $bomOnlyCodes = ['ROLE-RND', 'ROLE-FORMULATION', 'ROLE-COSTING', 'ROLE-PRODUCTION-ENG', 'ROLE-QA-APPROVER'];
+            $homeRoute = in_array($profile->role->code, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
+
+            return redirect(rtrim(config('app.url'), '/').route($homeRoute, [], false));
+        }
+
+        if (app(App\Services\Access\AccessControlService::class)->can($user, 'workspace.view')) {
+            return redirect()->route('workspace.index');
+        }
+
+        return redirect('/login');
+    })->name('demo-user-login');
+
+    Route::post('demo-login/{user}', function (User $user) {
+        abort_unless(str_ends_with($user->email, '@tan90.demo') && $user->access_mode === 'advanced', 403);
+
+        Auth::login($user);
+        Session::regenerate();
+
         return redirect()->route('workspace.index');
-    }
-
-    return redirect('/login');
-})->name('demo-user-login');
-
-Route::post('demo-login/{user}', function (User $user) {
-    abort_unless(str_ends_with($user->email, '@tan90.demo') && $user->access_mode === 'advanced', 403);
-
-    Auth::login($user);
-    Session::regenerate();
-
-    return redirect()->route('workspace.index');
-})->name('demo-login');
+    })->name('demo-login');
+}
 
 Route::get('oauth/claude/initiate', [ClaudeOAuthController::class, 'initiate'])->name('claude.initiate');
 Route::get('oauth/claude/callback', [ClaudeOAuthController::class, 'callback'])->name('claude.callback');

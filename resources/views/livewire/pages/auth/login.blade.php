@@ -34,6 +34,13 @@ new #[Layout('layouts.guest')] class extends Component
 
     public function loginAs(string $role): void
     {
+        // Public Livewire methods are callable directly over the wire
+        // protocol regardless of whether any button in this template
+        // invokes them — this needs its own production guard, not just
+        // the route-level one, even though nothing here currently renders
+        // a control that calls it.
+        abort_if(app()->isProduction(), 404);
+
         $role = Role::from($role);
         $user = User::where('role', $role)->firstOrFail();
 
@@ -87,6 +94,8 @@ new #[Layout('layouts.guest')] class extends Component
             <h2>Open your role workspace</h2>
         </div>
 
+        {{-- Every login shortcut below signs the browser in with zero credentials, so the whole block must never render in production — matches the route registration guard in routes/web.php. --}}
+        @unless (app()->isProduction())
         <div class="tan90-role-grid">
             @foreach (\App\Enums\Role::cases() as $role)
                 <a href="{{ route('role-login', $role->value) }}" class="tan90-role-card">
@@ -185,6 +194,7 @@ new #[Layout('layouts.guest')] class extends Component
             @endforeach
             <small>Manual password for all demo accounts: demo123</small>
         </div>
+        @endunless
 
         <div class="tan90-divider"><span>manual login</span></div>
 
