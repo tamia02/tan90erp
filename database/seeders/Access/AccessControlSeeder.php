@@ -6,6 +6,7 @@ use App\Enums\Role as LegacyRole;
 use App\Models\Access\AccessPermission;
 use App\Models\Access\AccessPosition;
 use App\Models\Access\AccessRole;
+use App\Models\Access\AccessRoleDashboardLayout;
 use App\Models\Access\AccessSavedView;
 use App\Models\Access\AccessTeam;
 use App\Models\Access\AccessUnit;
@@ -70,6 +71,7 @@ class AccessControlSeeder extends Seeder
         $users = $this->seedUsers($roles, $verticals, $units, $teams, $permissions);
         $this->seedSavedViews($users, $roles, $teams);
         $this->seedDashboards($users, $roles, $teams);
+        $this->seedRoleDashboardLayouts($roles);
         $this->seedReferenceRoles($verticals);
     }
 
@@ -268,6 +270,31 @@ class AccessControlSeeder extends Seeder
             ]);
         }
         DB::table('dashboard_assignments')->updateOrInsert(['template_id' => $template->id, 'assignable_type' => 'user', 'assignable_id' => $users['executive.grnqc@tan90.demo']->id], ['priority' => 100, 'assigned_by' => $users['manager.grn@tan90.demo']->id, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    /**
+     * Locks live on the role, not the person - an Executive (a role tied to
+     * one individual contributor) keeps full drag rights over their own
+     * Command Center, while a Manager's team-facing role pins/locks the one
+     * widget their whole team is expected to see in the same place. Heads
+     * configure dashboards through the admin Dashboard Builder template
+     * screen instead, so they don't need a role-level lock here either.
+     */
+    private function seedRoleDashboardLayouts(array $roles): void
+    {
+        $pins = [
+            'MANAGER-GRN' => ['widget' => 'grn_open_records', 'mandatory' => true, 'locked' => false],
+            'MANAGER-QC' => ['widget' => 'qc_queue', 'mandatory' => true, 'locked' => false],
+            'MANAGER-FINANCE' => ['widget' => 'finance_claims', 'mandatory' => true, 'locked' => false],
+            'MANAGER-MASTERDATA' => ['widget' => 'master_vendors', 'mandatory' => true, 'locked' => true],
+        ];
+
+        foreach ($pins as $roleKey => $pin) {
+            AccessRoleDashboardLayout::updateOrCreate(
+                ['role_id' => $roles[$roleKey]->id, 'widget_key' => $pin['widget']],
+                ['x' => 0, 'y' => 0, 'w' => 4, 'h' => 3, 'visible' => true, 'mandatory' => $pin['mandatory'], 'locked' => $pin['locked']],
+            );
+        }
     }
 
     private function seedReferenceRoles(array $verticals): void

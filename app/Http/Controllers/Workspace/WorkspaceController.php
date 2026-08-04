@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Workspace;
 
 use App\Http\Controllers\Controller;
+use App\Models\Access\AccessRoleDashboardLayout;
 use App\Models\Access\UserDashboardLayout;
 use App\Services\Access\AccessControlService;
 use Illuminate\Http\Request;
@@ -13,21 +14,39 @@ class WorkspaceController extends Controller
 
     public function index(Request $request)
     {
-        abort_unless($this->access->can($request->user(), 'workspace.view'), 403);
+        $user = $request->user();
+        abort_unless($this->access->can($user, 'workspace.view'), 403);
 
-        return view('workspace.index', ['widgets' => $this->widgetCards($request)]);
+        $personal = UserDashboardLayout::where('user_id', $user->id)->get()->keyBy('widget_key');
+        $cards = $this->widgetCards($request, $this->roleLocks($user), $personal);
+
+        // Mandatory widgets always show regardless of a personal hide; the
+        // rest follow the user's own visibility choice, then sort order.
+        $cards = $cards
+            ->filter(fn ($card) => $card['locks']['mandatory'] || ($card['layout']['visible'] ?? true))
+            ->sortBy(fn ($card) => $card['layout']['y'] ?? 999)
+            ->values();
+
+        return view('workspace.index', ['widgets' => $cards]);
     }
 
     public function customise(Request $request)
     {
-        abort_unless($this->access->can($request->user(), 'workspace.customise'), 403);
+        $user = $request->user();
+        abort_unless($this->access->can($user, 'workspace.customise'), 403);
 
-        return view('workspace.customise', ['widgets' => $this->widgetCards($request), 'layouts' => UserDashboardLayout::where('user_id', $request->user()->id)->get()->keyBy('widget_key')]);
+        $personal = UserDashboardLayout::where('user_id', $user->id)->get()->keyBy('widget_key');
+
+        return view('workspace.customise', [
+            'widgets' => $this->widgetCards($request, $this->roleLocks($user), $personal),
+        ]);
     }
 
     public function save(Request $request)
     {
-        abort_unless($this->access->can($request->user(), 'workspace.customise'), 403);
+        $user = $request->user();
+        abort_unless($this->access->can($user, 'workspace.customise'), 403);
+
         $data = $request->validate([
             'layouts' => ['required', 'array'],
             'layouts.*.widget_key' => ['required', 'string', 'exists:dashboard_widgets,key'],
@@ -37,25 +56,76 @@ class WorkspaceController extends Controller
             'layouts.*.h' => ['required', 'integer', 'min:1', 'max:12'],
             'layouts.*.visible' => ['boolean'],
         ]);
-        $allowed = $this->access->widgetsFor($request->user())->pluck('key');
+
+        $allowed = $this->access->widgetsFor($user)->pluck('key');
+        $locks = $this->roleLocks($user);
+
         foreach ($data['layouts'] as $layout) {
             abort_unless($allowed->contains($layout['widget_key']), 403);
+
+            $lock = $locks[$layout['widget_key']] ?? null;
+
+            // A role-level lock always wins over whatever the client sent —
+            // this is the actual enforcement point, the UI hiding drag
+            // handles on locked cards is just a courtesy, not the boundary.
+            if ($lock && $lock['locked']) {
+                continue;
+            }
+
+            if ($lock && $lock['mandatory']) {
+                $layout['visible'] = true;
+            }
+
             UserDashboardLayout::updateOrCreate(
-                ['user_id' => $request->user()->id, 'widget_key' => $layout['widget_key']],
+                ['user_id' => $user->id, 'widget_key' => $layout['widget_key']],
                 $layout + ['config_json' => null]
             );
         }
-        $this->access->audit($request->user(), 'workspace.layout.saved', $request->user(), null, $data);
+
+        $this->access->audit($user, 'workspace.layout.saved', $user, null, $data);
 
         return back()->with('status', 'Workspace layout saved.');
     }
 
-    private function widgetCards(Request $request)
+    /**
+     * Locks are defined per role, not per person — a Head/Manager/Executive
+     * profile inherits whatever their role says is locked/mandatory, so an
+     * individual profile with no role-level restriction gets full drag
+     * rights, while one under a locked role template doesn't.
+     *
+     * @return array<string, array{locked: bool, mandatory: bool}>
+     */
+    private function roleLocks(\App\Models\User $user): array
     {
-        return $this->access->widgetsFor($request->user())->map(function ($widget) use ($request) {
-            $provider = app($widget->provider_class);
+        $roleIds = $this->access->activeRoles($user)->pluck('id');
 
-            return ['widget' => $widget, 'data' => $provider->data($request->user())];
+        if ($roleIds->isEmpty()) {
+            return [];
+        }
+
+        return AccessRoleDashboardLayout::whereIn('role_id', $roleIds)
+            ->get()
+            ->groupBy('widget_key')
+            ->map(fn ($rows) => [
+                // Any role granting this user access to the widget locking it is enough to lock it for them.
+                'locked' => $rows->contains(fn ($row) => (bool) $row->locked),
+                'mandatory' => $rows->contains(fn ($row) => (bool) $row->mandatory),
+            ])
+            ->all();
+    }
+
+    private function widgetCards(Request $request, array $locks, $personal)
+    {
+        return $this->access->widgetsFor($request->user())->map(function ($widget) use ($request, $locks, $personal) {
+            $provider = app($widget->provider_class);
+            $layout = $personal->get($widget->key);
+
+            return [
+                'widget' => $widget,
+                'data' => $provider->data($request->user()),
+                'layout' => $layout ? ['x' => $layout->x, 'y' => $layout->y, 'w' => $layout->w, 'h' => $layout->h, 'visible' => $layout->visible] : null,
+                'locks' => $locks[$widget->key] ?? ['locked' => false, 'mandatory' => false],
+            ];
         });
     }
 }
