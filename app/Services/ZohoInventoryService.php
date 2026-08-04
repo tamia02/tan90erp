@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\FinanceRecord;
 use App\Models\GrnRecord;
 use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderLine;
 use App\Models\SkuMaster;
 use App\Models\VendorMaster;
 use App\Models\VendorSubmission;
@@ -359,6 +360,186 @@ class ZohoInventoryService
             : $this->inventoryRequest()->post($this->invUrl('/purchasereceives'), $payload);
 
         return $response->successful() && (int) $response->json('code') === 0;
+    }
+
+    /**
+     * @return array{vendors: int, items: int, failed: int}
+     */
+    public function syncMasterData(int $limit = 200): array
+    {
+        if (! $this->isActive()) {
+            return ['vendors' => 0, 'items' => 0, 'failed' => 1];
+        }
+
+        return [
+            'vendors' => $this->syncVendors($limit),
+            'items' => $this->syncItems($limit),
+            'failed' => 0,
+        ];
+    }
+
+    private function syncVendors(int $limit): int
+    {
+        $response = $this->inventoryRequest()->get($this->invUrl('/contacts', [
+            'contact_type' => 'vendor',
+            'per_page' => min(max($limit, 1), 200),
+            'sort_column' => 'last_modified_time',
+            'sort_order' => 'D',
+        ]));
+
+        if (! $response->successful()) {
+            return 0;
+        }
+
+        $count = 0;
+
+        foreach ($response->json('contacts', []) as $record) {
+            $name = trim((string) ($record['contact_name'] ?? ''));
+
+            if ($name === '') {
+                continue;
+            }
+
+            $existing = VendorMaster::where('vendor_name', $name)->first();
+            $primaryContact = $record['contact_persons'][0] ?? [];
+
+            // withoutEvents — this data just came FROM Inventory, so writing
+            // it back must not re-trigger the observer's outbound push.
+            VendorMaster::withoutEvents(fn () => VendorMaster::updateOrCreate(
+                ['vendor_name' => $name],
+                [
+                    'gst_number' => $record['gst_no'] ?: ($existing?->gst_number ?: 'ZOHO-N/A'),
+                    'contact_phone' => (string) (($primaryContact['phone'] ?? $existing?->contact_phone) ?: 'N/A'),
+                    'contact_email' => $primaryContact['email'] ?? $existing?->contact_email,
+                    'category' => $existing?->category ?: 'Zoho Vendor',
+                    'active' => ($record['status'] ?? 'active') !== 'inactive',
+                    'website' => $record['website'] ?? $existing?->website,
+                ],
+            ));
+
+            $count++;
+        }
+
+        return $count;
+    }
+
+    private function syncItems(int $limit): int
+    {
+        $response = $this->inventoryRequest()->get($this->invUrl('/items', [
+            'per_page' => min(max($limit, 1), 200),
+            'sort_column' => 'last_modified_time',
+            'sort_order' => 'D',
+        ]));
+
+        if (! $response->successful()) {
+            return 0;
+        }
+
+        $count = 0;
+
+        foreach ($response->json('items', []) as $record) {
+            $sku = trim((string) ($record['sku'] ?? $record['name'] ?? ''));
+
+            if ($sku === '') {
+                continue;
+            }
+
+            $existing = SkuMaster::where('sku', $sku)->first();
+
+            SkuMaster::withoutEvents(fn () => SkuMaster::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'category' => $existing?->category ?: ($record['category_name'] ?? 'Zoho Item'),
+                    'unit' => $record['unit'] ?? $existing?->unit,
+                    'active' => ($record['status'] ?? 'active') !== 'inactive',
+                    'product_code' => $record['sku'] ?? $existing?->product_code,
+                    'unit_price' => $record['rate'] ?? $existing?->unit_price,
+                    'quantity_in_stock' => $record['stock_on_hand'] ?? $existing?->quantity_in_stock,
+                ],
+            ));
+
+            $count++;
+        }
+
+        return $count;
+    }
+
+    private function syncPurchaseOrderData(?array $invPo): ?PurchaseOrder
+    {
+        if (! $invPo || empty($invPo['reference_number'])) {
+            return null;
+        }
+
+        $po = PurchaseOrder::withoutEvents(fn () => PurchaseOrder::updateOrCreate(
+            ['po_number' => $invPo['reference_number']],
+            [
+                'subject' => $invPo['reference_number'],
+                'vendor_name' => $invPo['vendor_name'] ?? 'Zoho Vendor',
+                'po_date' => $invPo['date'] ?? null,
+                'due_date' => $invPo['delivery_date'] ?? null,
+                'status' => 'Approved',
+                'description' => 'Synced from Zoho Inventory Purchase Orders.',
+            ],
+        ));
+
+        PurchaseOrderLine::withoutEvents(function () use ($po, $invPo) {
+            $po->lines()->delete();
+
+            foreach ($invPo['line_items'] ?? [] as $line) {
+                $po->lines()->create([
+                    'product' => $line['name'] ?? ($line['item_name'] ?? 'Zoho Item'),
+                    'quantity' => max(1, (float) ($line['quantity'] ?? 1)),
+                    'list_price' => max(0, (float) ($line['rate'] ?? 0)),
+                ]);
+            }
+        });
+
+        return $po->load('lines');
+    }
+
+    /**
+     * @return array{synced: int, skipped: int, failed: int, last_modified: ?string}
+     */
+    public function syncRecentlyModifiedPurchaseOrders(?string $since = null, int $limit = 100): array
+    {
+        if (! $this->isActive()) {
+            return ['synced' => 0, 'skipped' => 0, 'failed' => 1, 'last_modified' => $since];
+        }
+
+        $response = $this->inventoryRequest()->get($this->invUrl('/purchaseorders', [
+            'per_page' => min(max($limit, 1), 200),
+            'sort_column' => 'last_modified_time',
+            'sort_order' => 'D',
+        ]));
+
+        if (! $response->successful()) {
+            return ['synced' => 0, 'skipped' => 0, 'failed' => 1, 'last_modified' => $since];
+        }
+
+        $synced = 0;
+        $skipped = 0;
+        $failed = 0;
+        $latest = $since;
+
+        foreach ($response->json('purchaseorders', []) as $record) {
+            $modified = $record['last_modified_time'] ?? null;
+
+            if ($since && $modified && strcmp($modified, $since) <= 0) {
+                $skipped++;
+                continue;
+            }
+
+            // The list endpoint doesn't include line_items — fetch the full record.
+            $full = $this->inventoryRequest()->get($this->invUrl("/purchaseorders/{$record['purchaseorder_id']}"));
+            $po = $full->successful() ? $this->syncPurchaseOrderData($full->json('purchaseorder')) : null;
+            $po ? $synced++ : $failed++;
+
+            if ($modified && (! $latest || strcmp($modified, $latest) > 0)) {
+                $latest = $modified;
+            }
+        }
+
+        return ['synced' => $synced, 'skipped' => $skipped, 'failed' => $failed, 'last_modified' => $latest];
     }
 
     private function findContactByName(string $name): ?array

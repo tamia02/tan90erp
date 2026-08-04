@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\ZohoInventoryService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class PushZohoInventoryData extends Command
 {
@@ -20,6 +21,12 @@ class PushZohoInventoryData extends Command
 
             return self::SUCCESS;
         }
+
+        Cache::put('zoho_inventory_last_run:push-data', [
+            'at' => now()->toISOString(),
+            'failed' => $result['failed'],
+            'summary' => "{$result['items']} items, {$result['vendors']} vendors, {$result['purchase_orders']} POs, {$result['bills']} bills, {$result['purchase_receives']} receives",
+        ], now()->addHours(2));
 
         $this->info(sprintf(
             'Zoho Inventory push complete: %d items, %d vendors, %d purchase orders, %d bills, %d purchase receives, %d failed.',

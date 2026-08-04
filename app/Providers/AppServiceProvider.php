@@ -7,6 +7,8 @@ use App\Console\Commands\PushZohoPurchaseOrders;
 use App\Console\Commands\PushZohoMasterData;
 use App\Console\Commands\PushZohoOperationalData;
 use App\Console\Commands\PushZohoInventoryData;
+use App\Console\Commands\SyncZohoInventoryMasterData;
+use App\Console\Commands\SyncZohoInventoryPurchaseOrders;
 use App\Console\Commands\SyncZohoMasterData;
 use App\Console\Commands\PushZohoWorkflowData;
 use App\Models\FinanceRecord;
@@ -51,6 +53,8 @@ class AppServiceProvider extends ServiceProvider
             PushZohoWorkflowData::class,
             PushZohoOperationalData::class,
             PushZohoInventoryData::class,
+            SyncZohoInventoryMasterData::class,
+            SyncZohoInventoryPurchaseOrders::class,
         ]);
     }
 
@@ -109,6 +113,16 @@ class AppServiceProvider extends ServiceProvider
 
             $this->app->make(Schedule::class)
                 ->command(PushZohoInventoryData::class)
+                ->cron("*/{$minutes} * * * *")
+                ->withoutOverlapping();
+
+            $this->app->make(Schedule::class)
+                ->command(SyncZohoInventoryMasterData::class)
+                ->cron("*/{$minutes} * * * *")
+                ->withoutOverlapping();
+
+            $this->app->make(Schedule::class)
+                ->command(SyncZohoInventoryPurchaseOrders::class)
                 ->cron("*/{$minutes} * * * *")
                 ->withoutOverlapping();
         });
