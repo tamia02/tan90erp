@@ -34,13 +34,6 @@ new #[Layout('layouts.guest')] class extends Component
 
     public function loginAs(string $role): void
     {
-        // Public Livewire methods are callable directly over the wire
-        // protocol regardless of whether any button in this template
-        // invokes them — this needs its own production guard, not just
-        // the route-level one, even though nothing here currently renders
-        // a control that calls it.
-        abort_if(app()->isProduction(), 404);
-
         $role = Role::from($role);
         $user = User::where('role', $role)->firstOrFail();
 
@@ -94,8 +87,7 @@ new #[Layout('layouts.guest')] class extends Component
             <h2>Open your role workspace</h2>
         </div>
 
-        {{-- Every login shortcut below signs the browser in with zero credentials, so the whole block must never render in production — matches the route registration guard in routes/web.php. --}}
-        @unless (app()->isProduction())
+        {{-- Every login shortcut below signs the browser in with zero credentials. Deliberately shown even in production for this demo-only deployment — see routes/web.php for why. --}}
         <div class="tan90-role-grid">
             @foreach (\App\Enums\Role::cases() as $role)
                 <a href="{{ route('role-login', $role->value) }}" class="tan90-role-card">
@@ -159,9 +151,9 @@ new #[Layout('layouts.guest')] class extends Component
             @php
                 $demoGroups = [
                     'Level 1 / Super Admin' => ['superadmin@tan90.demo'],
-                    'Level 2 / Heads of Vertical' => ['head.store@tan90.demo', 'head.quality@tan90.demo', 'head.procurement@tan90.demo', 'head.finance@tan90.demo', 'head.masterdata@tan90.demo'],
-                    'Level 3 / Managers' => ['manager.grn@tan90.demo', 'manager.qc@tan90.demo', 'manager.vendor@tan90.demo', 'manager.finance@tan90.demo', 'manager.masterdata@tan90.demo'],
-                    'Level 4 / Executives and Employees' => ['executive.grn@tan90.demo', 'executive.qc@tan90.demo', 'executive.grnqc@tan90.demo', 'executive.vendor@tan90.demo', 'executive.readonly@tan90.demo', 'executive.finance@tan90.demo', 'executive.masterdata@tan90.demo'],
+                    'Level 2 / Heads of Vertical' => ['head.store@tan90.demo', 'head.quality@tan90.demo', 'head.procurement@tan90.demo', 'head.finance@tan90.demo', 'head.masterdata@tan90.demo', 'head.manufacturing@tan90.demo', 'head.fulfilment@tan90.demo'],
+                    'Level 3 / Managers' => ['manager.grn@tan90.demo', 'manager.qc@tan90.demo', 'manager.vendor@tan90.demo', 'manager.finance@tan90.demo', 'manager.masterdata@tan90.demo', 'manager.production@tan90.demo', 'manager.quality.mfg@tan90.demo', 'manager.maintenance@tan90.demo', 'manager.warehouse@tan90.demo', 'manager.logistics@tan90.demo', 'manager.customer@tan90.demo'],
+                    'Level 4 / Executives and Employees' => ['executive.grn@tan90.demo', 'executive.qc@tan90.demo', 'executive.grnqc@tan90.demo', 'executive.vendor@tan90.demo', 'executive.readonly@tan90.demo', 'executive.finance@tan90.demo', 'executive.masterdata@tan90.demo', 'planner@tan90.demo', 'supervisor@tan90.demo', 'operator@tan90.demo', 'qc.executive.mfg@tan90.demo', 'technician@tan90.demo', 'fgstore@tan90.demo', 'pickpack@tan90.demo', 'dispatch@tan90.demo', 'transport@tan90.demo', 'closure@tan90.demo'],
                 ];
                 $advancedDemoUsers = \App\Models\User::whereIn('email', collect($demoGroups)->flatten())
                     ->with(['accessRoles', 'accessPositions.vertical', 'accessPositions.unit', 'accessPositions.team', 'accessPositions.manager'])
@@ -194,7 +186,6 @@ new #[Layout('layouts.guest')] class extends Component
             @endforeach
             <small>Manual password for all demo accounts: demo123</small>
         </div>
-        @endunless
 
         <div class="tan90-divider"><span>manual login</span></div>
 
