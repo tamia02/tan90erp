@@ -16,6 +16,7 @@ use App\Models\VendorMaster;
 use App\Models\VendorStockUpdate;
 use App\Models\VendorSubmission;
 use Database\Seeders\Access\AccessControlSeeder;
+use Database\Seeders\Flow\FlowAccessSeeder;
 use Database\Seeders\Forge\ForgeAccessSeeder;
 use Illuminate\Database\Seeder;
 
@@ -50,6 +51,7 @@ class DatabaseSeeder extends Seeder
         $this->call(Tan90BomRecipeCostingSeeder::class);
         $this->call(AccessControlSeeder::class);
         $this->call(ForgeAccessSeeder::class);
+        $this->call(FlowAccessSeeder::class);
     }
 
     private function seedUsers(): void

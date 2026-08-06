@@ -19,6 +19,7 @@ class PermissionRegistry
             ['key' => 'access_control.module.access', 'module' => 'Access Control', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Control module'],
             ['key' => 'workspace.module.access', 'module' => 'Workspace', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Workspace module'],
             ['key' => 'forge.module.access', 'module' => 'Forge', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Forge module'],
+            ['key' => 'flow.module.access', 'module' => 'Flow', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Flow module'],
             ['key' => 'access.roles.view', 'module' => 'Access Control', 'screen' => 'Roles', 'category' => 'access_admin', 'action' => 'view', 'label' => 'View role list', 'route_name' => 'access.roles.index'],
             ['key' => 'access.roles.manage', 'module' => 'Access Control', 'screen' => 'Roles', 'category' => 'access_admin', 'action' => 'manage', 'label' => 'Create and edit lower roles', 'route_name' => 'access.roles.create', 'is_sensitive' => true],
             ['key' => 'access.people.view', 'module' => 'Access Control', 'screen' => 'People', 'category' => 'access_admin', 'action' => 'view', 'label' => 'View people', 'route_name' => 'access.people.index'],
@@ -114,6 +115,20 @@ class PermissionRegistry
             ['forge.deviation.view', 'Forge', 'Deviation, Rework & CAPA', 'page', 'view', 'View deviations and CAPA', 'forge.deviations.index'],
             ['forge.deviation.manage', 'Forge', 'Deviation, Rework & CAPA', 'action', 'manage', 'Open, disposition and close deviations/CAPA', 'forge.deviations.store'],
             ['forge.batch.trace', 'Forge', 'Batch Genealogy', 'page', 'view', 'Trace batch genealogy', 'forge.batches.index'],
+
+            ['flow.dashboard.view', 'Flow', 'Command Centre', 'page', 'view', 'View Fulfilment Command Centre', 'flow.dashboard'],
+            ['flow.inventory.view', 'Flow', 'FG Inventory', 'page', 'view', 'View FG inventory and ledger', 'flow.inventory.index'],
+            ['flow.inventory.receive', 'Flow', 'FG Inventory', 'action', 'receive', 'Receive finished goods from Forge', 'flow.inventory.receive'],
+            ['flow.inventory.putaway', 'Flow', 'FG Inventory', 'action', 'putaway', 'Put away staged FG lots', 'flow.inventory.putaway'],
+            ['flow.order.view', 'Flow', 'Customer Orders', 'page', 'view', 'View customer orders', 'flow.orders.index'],
+            ['flow.order.create', 'Flow', 'Customer Orders', 'action', 'create', 'Create customer orders', 'flow.orders.store'],
+            ['flow.order.release', 'Flow', 'Customer Orders', 'action', 'release', 'Validate, release, run ATP and allocate orders', 'flow.orders.release'],
+            ['flow.wave.manage', 'Flow', 'Wave Builder', 'page', 'manage', 'Build and publish picking waves', 'flow.waves.index'],
+            ['flow.pick.confirm', 'Flow', 'Picking', 'action', 'confirm', 'Confirm or short-pick a pick task', 'flow.waves.index'],
+            ['flow.pack.manage', 'Flow', 'Packing', 'page', 'manage', 'Pack and seal handling units', 'flow.packing.index'],
+            ['flow.dispatch.manage', 'Flow', 'Dispatch', 'page', 'manage', 'Create shipments, load and release dispatch', 'flow.dispatch.index'],
+            ['flow.delivery.manage', 'Flow', 'Delivery & POD', 'page', 'manage', 'Record POD and close delivery', 'flow.deliveries.index'],
+            ['flow.return.manage', 'Flow', 'Returns & Claims', 'page', 'manage', 'Manage RMA, inspection and claims', 'flow.returns.index'],
         ];
 
         foreach ($routes as [$key, $module, $screen, $category, $action, $label, $route]) {

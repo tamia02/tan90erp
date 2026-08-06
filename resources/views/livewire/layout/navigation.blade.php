@@ -42,6 +42,7 @@ new class extends Component
                 ['label' => 'Access Activity', 'route' => 'access.activity.index', 'permission' => 'access.activity.view'],
                 ['label' => 'Access Simulator', 'route' => 'access.simulator.index', 'permission' => 'access.simulator.view'],
                 ['label' => 'Forge (Manufacturing)', 'route' => 'forge.dashboard', 'permission' => 'forge.dashboard.view'],
+                ['label' => 'Flow (Warehouse & Delivery)', 'route' => 'flow.dashboard', 'permission' => 'flow.dashboard.view'],
             ] as $item) {
                 $canSeeItem = isset($item['permission_any'])
                     ? collect($item['permission_any'])->contains(fn ($permission) => $access->can($user, $permission))
@@ -93,6 +94,27 @@ new class extends Component
             }
 
             return ['navItems' => [...$forgeItems, ...$accessItems]];
+        }
+
+        if (request()->routeIs('flow.*')) {
+            $flowItems = [];
+            foreach ([
+                ['label' => 'Command Centre', 'route' => 'flow.dashboard', 'permission' => 'flow.dashboard.view'],
+                ['label' => 'FG Inventory & Ledger', 'route' => 'flow.inventory.index', 'permission' => 'flow.inventory.view'],
+                ['label' => 'Customer Orders', 'route' => 'flow.orders.index', 'permission' => 'flow.order.view'],
+                ['label' => 'Wave Builder & Picking', 'route' => 'flow.waves.index', 'permission' => 'flow.wave.manage'],
+                ['label' => 'Packing', 'route' => 'flow.packing.index', 'permission' => 'flow.pack.manage'],
+                ['label' => 'Dispatch', 'route' => 'flow.dispatch.index', 'permission' => 'flow.dispatch.manage'],
+                ['label' => 'Delivery & POD', 'route' => 'flow.deliveries.index', 'permission' => 'flow.delivery.manage'],
+                ['label' => 'Returns, RMA & Claims', 'route' => 'flow.returns.index', 'permission' => 'flow.return.manage'],
+            ] as $item) {
+                if ($access->can($user, $item['permission'])) {
+                    unset($item['permission']);
+                    $flowItems[] = $item + ['icon' => 'truck'];
+                }
+            }
+
+            return ['navItems' => [...$flowItems, ...$accessItems]];
         }
 
         return ['navItems' => $accessItems];

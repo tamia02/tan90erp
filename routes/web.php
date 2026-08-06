@@ -18,6 +18,14 @@ use App\Http\Controllers\Forge\ProductionPlanController;
 use App\Http\Controllers\Forge\QualityHoldController;
 use App\Http\Controllers\Forge\WastageController;
 use App\Http\Controllers\Forge\WorkOrderController;
+use App\Http\Controllers\Flow\CustomerOrderController;
+use App\Http\Controllers\Flow\DeliveryController;
+use App\Http\Controllers\Flow\DispatchController;
+use App\Http\Controllers\Flow\FlowDashboardController;
+use App\Http\Controllers\Flow\InventoryController;
+use App\Http\Controllers\Flow\PackingController;
+use App\Http\Controllers\Flow\ReturnController;
+use App\Http\Controllers\Flow\WaveController;
 use App\Http\Controllers\Workspace\ApprovalController;
 use App\Http\Controllers\Workspace\ExceptionController;
 use App\Http\Controllers\Workspace\TaskController;
@@ -319,6 +327,59 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::prefix('batches')->name('batches.')->group(function () {
             Route::get('/', [BatchController::class, 'index'])->name('index');
             Route::get('{batch}', [BatchController::class, 'show'])->name('show');
+        });
+    });
+
+    Route::prefix('flow')->name('flow.')->group(function () {
+        Route::get('/', [FlowDashboardController::class, 'index'])->name('dashboard');
+
+        Route::prefix('inventory')->name('inventory.')->group(function () {
+            Route::get('/', [InventoryController::class, 'index'])->name('index');
+            Route::post('receive/{batch}', [InventoryController::class, 'receive'])->name('receive');
+            Route::post('{lot}/putaway', [InventoryController::class, 'putaway'])->name('putaway');
+        });
+
+        Route::prefix('orders')->name('orders.')->group(function () {
+            Route::get('/', [CustomerOrderController::class, 'index'])->name('index');
+            Route::post('/', [CustomerOrderController::class, 'store'])->name('store');
+            Route::get('{order}', [CustomerOrderController::class, 'show'])->name('show');
+            Route::post('{order}/lines', [CustomerOrderController::class, 'addLine'])->name('lines.store');
+            Route::post('{order}/validate', [CustomerOrderController::class, 'validateOrder'])->name('validate');
+            Route::post('{order}/release', [CustomerOrderController::class, 'release'])->name('release');
+        });
+
+        Route::prefix('waves')->name('waves.')->group(function () {
+            Route::get('/', [WaveController::class, 'index'])->name('index');
+            Route::post('/', [WaveController::class, 'store'])->name('store');
+            Route::post('{wave}/publish', [WaveController::class, 'publish'])->name('publish');
+            Route::post('pick-tasks/{pickTask}/confirm', [WaveController::class, 'confirmPick'])->name('pick-tasks.confirm');
+        });
+
+        Route::prefix('packing')->name('packing.')->group(function () {
+            Route::get('/', [PackingController::class, 'index'])->name('index');
+            Route::post('{order}', [PackingController::class, 'store'])->name('store');
+            Route::post('handling-units/{handlingUnit}/seal', [PackingController::class, 'seal'])->name('seal');
+        });
+
+        Route::prefix('dispatch')->name('dispatch.')->group(function () {
+            Route::get('/', [DispatchController::class, 'index'])->name('index');
+            Route::post('/', [DispatchController::class, 'store'])->name('store');
+            Route::post('{shipment}/load/{handlingUnit}', [DispatchController::class, 'loadUnit'])->name('load');
+            Route::post('{shipment}/release', [DispatchController::class, 'release'])->name('release');
+            Route::post('{shipment}/temperature', [DispatchController::class, 'recordTemperature'])->name('temperature');
+            Route::post('temperature/{temperatureEvent}/disposition', [DispatchController::class, 'dispositionExcursion'])->name('temperature.disposition');
+        });
+
+        Route::prefix('deliveries')->name('deliveries.')->group(function () {
+            Route::get('/', [DeliveryController::class, 'index'])->name('index');
+            Route::post('{shipment}', [DeliveryController::class, 'store'])->name('store');
+            Route::post('{delivery}/close', [DeliveryController::class, 'close'])->name('close');
+        });
+
+        Route::prefix('returns')->name('returns.')->group(function () {
+            Route::get('/', [ReturnController::class, 'index'])->name('index');
+            Route::post('/', [ReturnController::class, 'store'])->name('store');
+            Route::post('{return}/inspect', [ReturnController::class, 'inspect'])->name('inspect');
         });
     });
 });
