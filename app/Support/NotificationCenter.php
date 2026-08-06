@@ -7,6 +7,8 @@ use App\Models\FinanceRecord;
 use App\Models\GateEntry;
 use App\Models\QcResult;
 use App\Models\ValidationIssue;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 // Mirrors the React prototype's buildNotices(role, store) — real,
 // role-adaptive alerts rather than a generic notification feed.
@@ -21,6 +23,7 @@ class NotificationCenter
             Role::Finance => self::finance(),
             Role::Qc => self::qc(),
             Role::Vendor => self::vendor(),
+            Role::Admin => self::admin(),
             default => [],
         };
     }
@@ -94,6 +97,36 @@ class NotificationCenter
                 'detail' => "{$pendingReturns} deliver".($pendingReturns === 1 ? 'y has' : 'ies have')." rejected quantity on QC hold — action the purchase return from your dashboard.",
                 'tone' => 'critical',
             ];
+        }
+
+        return $notices;
+    }
+
+    /** Surfaces failures from the last 30-minute Zoho Inventory cron run — the commands cache their own result under these keys, see PushZohoInventoryData / SyncZohoInventoryMasterData / SyncZohoInventoryPurchaseOrders. */
+    private static function admin(): array
+    {
+        $notices = [];
+
+        if (! config('services.zoho.inventory.organization_id') || ! config('services.zoho.inventory.refresh_token')) {
+            return $notices;
+        }
+
+        $runs = [
+            'push-data' => 'Zoho Inventory push',
+            'sync-master-data' => 'Zoho Inventory vendor/item sync',
+            'sync-purchase-orders' => 'Zoho Inventory PO sync',
+        ];
+
+        foreach ($runs as $key => $label) {
+            $last = Cache::get("zoho_inventory_last_run:{$key}");
+
+            if ($last && ($last['failed'] ?? 0) > 0) {
+                $notices[] = [
+                    'title' => "{$label} had failures",
+                    'detail' => "{$last['failed']} failed on the run at ".Carbon::parse($last['at'])->format('d M, H:i').' — check storage/logs/laravel.log for details.',
+                    'tone' => 'critical',
+                ];
+            }
         }
 
         return $notices;

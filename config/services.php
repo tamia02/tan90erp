@@ -44,7 +44,28 @@ return [
         'field_po' => env('ZOHO_FIELD_PO', 'PO_Number'),
         'field_vendor_name' => env('ZOHO_FIELD_VENDOR_NAME', 'Vendor_Name'),
         'field_subject' => env('ZOHO_FIELD_SUBJECT', 'Subject'),
-        'field_product_details' => env('ZOHO_FIELD_PRODUCT_DETAILS', 'Product_Details'),
+        'field_product_details' => env('ZOHO_FIELD_PRODUCT_DETAILS', 'Purchase_Items'),
+        'webhook_secret' => env('ZOHO_WEBHOOK_SECRET'),
+        'sync_minutes' => env('ZOHO_SYNC_MINUTES', 30),
+        'write_enabled' => env('ZOHO_WRITE_ENABLED', true),
+        'create_enabled' => env('ZOHO_CREATE_ENABLED', false),
+        'write_vendor_name' => env('ZOHO_WRITE_VENDOR_NAME', false),
+        'write_product_details' => env('ZOHO_WRITE_PRODUCT_DETAILS', false),
+
+        // Zoho Inventory — the operational sync target (Items, Vendors,
+        // Purchase Orders, Bills, Purchase Receives). Separate refresh token
+        // because it needs Inventory-scoped access; same OAuth client as CRM
+        // above unless the client registers a dedicated one. Inactive (and
+        // every ZohoInventoryService call a safe no-op) until both
+        // organization_id and refresh_token are filled in.
+        'inventory' => [
+            'organization_id' => env('ZOHO_INVENTORY_ORGANIZATION_ID'),
+            'refresh_token' => env('ZOHO_INVENTORY_REFRESH_TOKEN'),
+            'client_id' => env('ZOHO_INVENTORY_CLIENT_ID', env('ZOHO_CLIENT_ID')),
+            'client_secret' => env('ZOHO_INVENTORY_CLIENT_SECRET', env('ZOHO_CLIENT_SECRET')),
+            'api_base_url' => env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1'),
+            'write_enabled' => env('ZOHO_INVENTORY_WRITE_ENABLED', true),
+        ],
     ],
 
     'claude' => [

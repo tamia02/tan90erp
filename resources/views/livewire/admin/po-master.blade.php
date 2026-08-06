@@ -3,6 +3,7 @@
 use App\Models\PurchaseOrder;
 use App\Models\VendorMaster;
 use App\Services\AuditLogger;
+use App\Services\ZohoService;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
@@ -20,6 +21,7 @@ new #[Layout('layouts.app')] class extends Component
     public string $product = '';
     public string $quantity = '';
     public string $listPrice = '';
+    public string $zohoPoNumber = '';
 
     public array $statuses = ['Created', 'Approved', 'Delivered', 'Cancelled'];
 
@@ -50,8 +52,30 @@ new #[Layout('layouts.app')] class extends Component
 
         AuditLogger::log('Purchase Order added to master', "{$po->po_number} · {$po->vendor_name}", $po);
 
+        session()->flash('zohoStatus', 'Added locally. Zoho outbound sync runs automatically from the PO event.');
+
         $this->reset(['poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'product', 'quantity', 'listPrice', 'adding']);
         $this->status = 'Created';
+    }
+
+    public function fetchFromZoho(): void
+    {
+        $this->validate([
+            'zohoPoNumber' => ['required', 'string', 'max:255'],
+        ]);
+
+        $po = app(ZohoService::class)->syncPurchaseOrder($this->zohoPoNumber);
+
+        if (! $po) {
+            $this->addError('zohoPoNumber', 'No matching PO found in Zoho, or Zoho token refresh failed.');
+
+            return;
+        }
+
+        AuditLogger::log('Purchase Order synced from Zoho', "{$po->po_number} - {$po->vendor_name}", $po);
+        session()->flash('zohoStatus', "Synced {$po->po_number} from Zoho.");
+        $this->reset('zohoPoNumber');
+        $this->expanded = $po->id;
     }
 
     public function deletePo(int $id): void
@@ -79,6 +103,23 @@ new #[Layout('layouts.app')] class extends Component
         <button wire:click="$toggle('adding')" class="inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
             {{ $adding ? 'Cancel' : 'Add PO' }}
         </button>
+    </div>
+
+    <div class="rounded-lg border p-4 mb-4" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 sm:items-end">
+            <label class="flex flex-col gap-1.5 text-sm">
+                <span class="font-medium" style="color: var(--text-primary);">Fetch PO From Zoho</span>
+                <input wire:model="zohoPoNumber" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="898897889" />
+                @error('zohoPoNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+            </label>
+            <button wire:click="fetchFromZoho" class="rounded-lg px-3.5 py-2 text-sm font-medium text-white" style="background: var(--brand);">Fetch from Zoho</button>
+        </div>
+        @if (session('zohoStatus'))
+            <div class="mt-3 rounded-lg px-3 py-2 text-xs" style="background: var(--status-good-bg); color: var(--status-good);">{{ session('zohoStatus') }}</div>
+        @endif
+        @if (session('zohoWarning'))
+            <div class="mt-3 rounded-lg px-3 py-2 text-xs" style="background: var(--status-warning-bg); color: var(--status-warning);">{{ session('zohoWarning') }}</div>
+        @endif
     </div>
 
 

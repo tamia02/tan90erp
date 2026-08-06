@@ -7,6 +7,7 @@ use App\Models\ValidationIssue;
 use App\Models\VendorSubmission;
 use App\Services\AuditLogger;
 use App\Services\GateValidationService;
+use App\Services\ZohoService;
 use App\Support\SlaDirectives;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -19,6 +20,7 @@ new #[Layout('layouts.app')] class extends Component
     public string $gps = '';
     public ?array $saved = null;
     public bool $fetched = false;
+    public string $fetchedSource = '';
 
     public string $poNumber = '';
     public string $poBillDate = '';
@@ -83,17 +85,35 @@ new #[Layout('layouts.app')] class extends Component
 
         $submission = VendorSubmission::where('invoice_number', $this->invoiceNumber)->latest()->first();
 
-        if (! $submission) {
-            $this->fetched = false;
-            $this->addError('invoiceNumber', 'No vendor submission found for this bill number.');
+        if ($submission) {
+            $this->poNumber = $submission->po_number;
+            $this->vendorName = $submission->vendor_name;
+            $this->invoiceQty = (string) $submission->invoice_qty;
+            $this->material = $submission->material;
+            $this->fetchedSource = 'vendor submission';
+            $this->fetched = true;
 
             return;
         }
 
-        $this->poNumber = $submission->po_number;
-        $this->vendorName = $submission->vendor_name;
-        $this->invoiceQty = (string) $submission->invoice_qty;
-        $this->material = $submission->material;
+        $po = app(ZohoService::class)->syncPurchaseOrder($this->invoiceNumber);
+
+        if (! $po) {
+            $this->fetched = false;
+            $this->fetchedSource = '';
+            $this->addError('invoiceNumber', 'No vendor submission or Zoho PO found for this number.');
+
+            return;
+        }
+
+        $line = $po->primaryLine();
+        $this->poNumber = $po->po_number;
+        $this->vendorName = $po->vendor_name;
+        $this->invoiceQty = (string) ($line?->quantity ?? 1);
+        $this->rate = (string) ($line?->list_price ?? 0);
+        $this->material = $line?->product ?? 'Zoho Purchase Item';
+        $this->billScanned = true;
+        $this->fetchedSource = 'Zoho CRM';
         $this->fetched = true;
     }
 
@@ -221,6 +241,7 @@ new #[Layout('layouts.app')] class extends Component
         $this->gps = '';
         $this->saved = null;
         $this->fetched = false;
+        $this->fetchedSource = '';
         $this->poNumber = '';
         $this->poBillDate = '';
         $this->vendorName = '';
@@ -382,9 +403,9 @@ new #[Layout('layouts.app')] class extends Component
                         </label>
 
                         <label class="space-y-1.5 text-sm md:col-span-2">
-                            <span class="font-semibold" style="color: var(--text-primary);">Bill Number</span>
+                            <span class="font-semibold" style="color: var(--text-primary);">Bill / Zoho PO Number</span>
                             <div class="flex gap-2">
-                                <input wire:model="invoiceNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Bill number" />
+                                <input wire:model="invoiceNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Bill number or 898897889" />
                                 <button type="button" wire:click="fetchBillDetails" class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style="background: var(--brand);">Fetch</button>
                             </div>
                             @error('invoiceNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
@@ -392,6 +413,7 @@ new #[Layout('layouts.app')] class extends Component
 
                         @if ($fetched)
                             <div class="md:col-span-2 rounded-xl border p-3 text-xs" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--text-primary);">
+                                <div>Source: {{ $fetchedSource ?: 'source' }}</div>
                                 Fetched from vendor submission — PO {{ $poNumber }} · {{ $vendorName }} · Qty {{ $invoiceQty }} · {{ $material }}
                             </div>
                         @endif
