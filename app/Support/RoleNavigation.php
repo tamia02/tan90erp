@@ -56,6 +56,7 @@ class RoleNavigation
                 ['label' => 'Dashboard', 'route' => 'unloading.dashboard', 'icon' => 'gauge'],
                 ['label' => 'Loading Desk', 'route' => 'unloading.loading-desk', 'icon' => 'truck'],
                 ['label' => 'Unloading Desk', 'route' => 'unloading.desk', 'icon' => 'warehouse'],
+                ['label' => 'Dock Scheduling', 'route' => 'unloading.dock-scheduling', 'icon' => 'calendar-clock'],
                 ['label' => 'History', 'route' => 'unloading.history', 'icon' => 'history'],
             ],
             Role::Qc => [

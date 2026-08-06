@@ -5,6 +5,7 @@ namespace App\Http\Controllers\AccessControl;
 use App\Http\Controllers\Controller;
 use App\Models\Access\AccessPosition;
 use App\Models\Access\AccessRole;
+use App\Models\Access\AccessShift;
 use App\Models\Access\AccessTeam;
 use App\Models\Access\AccessUnit;
 use App\Models\Access\AccessVertical;
@@ -26,7 +27,8 @@ class HierarchyController extends Controller
             'units' => AccessUnit::with('vertical')->orderBy('name')->get(),
             'roles' => AccessRole::with(['vertical', 'users'])->withCount(['users', 'permissions'])->orderBy('level')->get(),
             'teams' => AccessTeam::with(['vertical', 'unit', 'manager'])->get(),
-            'positions' => AccessPosition::with(['user', 'vertical', 'unit', 'team', 'manager'])->where('status', 'active')->orderBy('hierarchy_level')->get(),
+            'shifts' => AccessShift::with(['team', 'unit'])->orderBy('starts_at')->get(),
+            'positions' => AccessPosition::with(['user', 'vertical', 'unit', 'team', 'shift', 'manager'])->where('status', 'active')->orderBy('hierarchy_level')->get(),
             'users' => User::where('access_mode', 'advanced')->orderBy('name')->get(),
         ]);
     }
@@ -81,6 +83,25 @@ class HierarchyController extends Controller
         return back()->with('status', 'Team created.');
     }
 
+    public function storeShift(Request $request)
+    {
+        abort_unless($this->access->can($request->user(), 'access.hierarchy.manage'), 403);
+
+        $data = $request->validate([
+            'team_id' => ['nullable', 'exists:access_teams,id'],
+            'unit_id' => ['nullable', 'exists:access_units,id'],
+            'code' => ['required', 'string', 'max:40'],
+            'name' => ['required', 'string', 'max:255'],
+            'starts_at' => ['required', 'date_format:H:i'],
+            'ends_at' => ['required', 'date_format:H:i'],
+        ]);
+
+        $shift = AccessShift::create($data + ['status' => 'active']);
+        $this->access->audit($request->user(), 'hierarchy.shift.created', $shift, null, $shift->toArray());
+
+        return back()->with('status', 'Shift created.');
+    }
+
     public function savePosition(Request $request)
     {
         abort_unless($this->access->can($request->user(), 'access.hierarchy.manage'), 403);
@@ -91,6 +112,7 @@ class HierarchyController extends Controller
             'vertical_id' => ['nullable', 'exists:access_verticals,id'],
             'unit_id' => ['nullable', 'exists:access_units,id'],
             'team_id' => ['nullable', 'exists:access_teams,id'],
+            'shift_id' => ['nullable', 'exists:access_shifts,id'],
             'reports_to_user_id' => ['nullable', 'different:user_id', 'exists:users,id'],
         ]);
 

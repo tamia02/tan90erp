@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Services\Access\AccessControlService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ActivityController extends Controller
 {
@@ -28,6 +30,37 @@ class ActivityController extends Controller
         $actors = User::whereIn('id', $logs->pluck('actor_id')->filter()->unique())->pluck('name', 'id');
 
         return view('access-control.activity', ['logs' => $logs, 'actors' => $actors]);
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        abort_unless($this->access->can($request->user(), 'access.activity.view'), 403);
+
+        $query = AccessAuditLog::latest('created_at');
+        if ($request->filled('action')) {
+            $query->where('action', 'like', '%'.$request->string('action').'%');
+        }
+
+        $actors = User::pluck('name', 'id');
+        $columns = ['When', 'Actor', 'Action', 'Target Type', 'Target ID', 'Reason'];
+
+        return response()->streamDownload(function () use ($query, $actors, $columns) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, $columns);
+            $query->chunk(200, function ($chunk) use ($out, $actors) {
+                foreach ($chunk as $log) {
+                    fputcsv($out, [
+                        $log->created_at?->format('d M Y, H:i'),
+                        $log->actor_id ? ($actors[$log->actor_id] ?? "User #{$log->actor_id}") : 'System',
+                        str($log->action)->replace(['.', '_'], ' ')->headline()->toString(),
+                        $log->target_type ? class_basename($log->target_type) : '',
+                        $log->target_id,
+                        $log->reason,
+                    ]);
+                }
+            });
+            fclose($out);
+        }, 'access-activity-'.now()->format('Ymd-His').'.csv');
     }
 
     public function show(Request $request, AccessAuditLog $log)

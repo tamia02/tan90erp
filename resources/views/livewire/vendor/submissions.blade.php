@@ -26,6 +26,12 @@ new #[Layout('layouts.app')] class extends Component
     #[Validate('nullable|string|max:255')]
     public string $material = '';
 
+    #[Validate('nullable|date|after:now')]
+    public string $expected_arrival_at = '';
+
+    #[Validate('nullable|string|max:255')]
+    public string $vehicle_number = '';
+
     #[Validate('nullable|file|max:5120')]
     public $invoice_file;
 
@@ -48,6 +54,8 @@ new #[Layout('layouts.app')] class extends Component
             'invoice_number' => $this->invoice_number,
             'invoice_qty' => $this->invoice_qty,
             'material' => $this->material,
+            'expected_arrival_at' => $this->expected_arrival_at ?: null,
+            'vehicle_number' => $this->vehicle_number ?: null,
             'has_invoice' => (bool) $this->invoice_file,
             'has_eway_bill' => (bool) $this->eway_bill_file,
             'has_lr_pod' => (bool) $this->lr_pod_file,
@@ -60,7 +68,7 @@ new #[Layout('layouts.app')] class extends Component
 
         AuditLogger::log('Vendor submission created', "{$submission->po_number} · {$submission->invoice_number}", $submission);
 
-        $this->reset(['po_number', 'invoice_number', 'invoice_qty', 'material', 'invoice_file', 'eway_bill_file', 'lr_pod_file', 'zoho_terms', 'adding']);
+        $this->reset(['po_number', 'invoice_number', 'invoice_qty', 'material', 'expected_arrival_at', 'vehicle_number', 'invoice_file', 'eway_bill_file', 'lr_pod_file', 'zoho_terms', 'adding']);
 
         session()->flash('success', 'Submission completed successfully! Documents validated.');
     }
@@ -149,6 +157,16 @@ new #[Layout('layouts.app')] class extends Component
                     <input type="number" wire:model="invoice_qty" class="w-full rounded border px-3 py-2 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
                     @error('invoice_qty') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                 </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">Expected Arrival (ASN)</label>
+                    <input type="datetime-local" wire:model="expected_arrival_at" class="w-full rounded border px-3 py-2 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                    @error('expected_arrival_at') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">Vehicle Number</label>
+                    <input type="text" wire:model="vehicle_number" class="w-full rounded border px-3 py-2 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                    @error('vehicle_number') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                </div>
             </div>
 
             <div class="border-t pt-6" style="border-color: var(--border);">
@@ -217,6 +235,7 @@ new #[Layout('layouts.app')] class extends Component
                     <th class="px-4 py-2.5 font-medium">PO Number</th>
                     <th class="px-4 py-2.5 font-medium">Invoice #</th>
                     <th class="px-4 py-2.5 font-medium">Documents</th>
+                    <th class="px-4 py-2.5 font-medium">Dock Slot</th>
                     <th class="px-4 py-2.5 font-medium">Status</th>
                     <th class="px-4 py-2.5 font-medium">Submitted On</th>
                     <th class="px-4 py-2.5 font-medium"></th>
@@ -233,6 +252,17 @@ new #[Layout('layouts.app')] class extends Component
                                 @if($sub->has_eway_bill)<span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">EWB</span>@endif
                                 @if($sub->has_lr_pod)<span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-800">LR</span>@endif
                             </div>
+                        </td>
+                        <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">
+                            @if ($sub->dock_number)
+                                <div style="color: var(--status-good);">{{ $sub->dock_number }}</div>
+                                <div>{{ $sub->dock_scheduled_at?->format('d M, H:i') }}</div>
+                            @elseif ($sub->expected_arrival_at)
+                                <div style="color: var(--status-warning);">Awaiting dock</div>
+                                <div>ETA {{ $sub->expected_arrival_at->format('d M, H:i') }}</div>
+                            @else
+                                <span style="color: var(--text-muted);">—</span>
+                            @endif
                         </td>
                         <td class="px-4 py-2.5">
                             <div style="color: {{ $sub->status == 'submitted' ? 'var(--status-good)' : 'var(--status-critical)' }};">
@@ -255,7 +285,7 @@ new #[Layout('layouts.app')] class extends Component
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No submissions found.</td></tr>
+                    <tr><td colspan="7" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No submissions found.</td></tr>
                 @endforelse
             </tbody>
         </table>

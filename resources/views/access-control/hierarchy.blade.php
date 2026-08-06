@@ -52,8 +52,23 @@
                 <select class="access-input" name="vertical_id"><option value="">All verticals</option>@foreach($verticals as $vertical)<option value="{{ $vertical->id }}">{{ $vertical->name }}</option>@endforeach</select>
                 <select class="access-input" name="unit_id"><option value="">No unit</option>@foreach($units as $unit)<option value="{{ $unit->id }}">{{ $unit->name }}</option>@endforeach</select>
                 <select class="access-input" name="team_id"><option value="">No team</option>@foreach($teams as $team)<option value="{{ $team->id }}">{{ $team->name }}</option>@endforeach</select>
+                <select class="access-input" name="shift_id"><option value="">No shift</option>@foreach($shifts as $shift)<option value="{{ $shift->id }}">{{ $shift->name }} ({{ \Illuminate\Support\Carbon::parse($shift->starts_at)->format('H:i') }}-{{ \Illuminate\Support\Carbon::parse($shift->ends_at)->format('H:i') }})</option>@endforeach</select>
                 <select class="access-input" name="reports_to_user_id"><option value="">Reports to nobody</option>@foreach($users as $user)<option value="{{ $user->id }}">{{ $user->name }}</option>@endforeach</select>
                 <button class="access-btn access-btn-primary">Save Position</button>
+            </form>
+
+            <form class="access-card p-4 space-y-3" method="post" action="{{ route('access.hierarchy.shifts.store') }}">
+                @csrf
+                <h2 class="font-bold">Add Shift</h2>
+                <select class="access-input" name="team_id"><option value="">No team</option>@foreach($teams as $team)<option value="{{ $team->id }}">{{ $team->name }}</option>@endforeach</select>
+                <select class="access-input" name="unit_id"><option value="">No unit</option>@foreach($units as $unit)<option value="{{ $unit->id }}">{{ $unit->name }}</option>@endforeach</select>
+                <input class="access-input" name="code" placeholder="MORNING">
+                <input class="access-input" name="name" placeholder="Morning Shift">
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="text-xs">Starts<input class="access-input mt-1" type="time" name="starts_at" value="06:00"></label>
+                    <label class="text-xs">Ends<input class="access-input mt-1" type="time" name="ends_at" value="14:00"></label>
+                </div>
+                <button class="access-btn access-btn-primary">Create Shift</button>
             </form>
         </div>
 
@@ -69,6 +84,7 @@
                                 <div class="hierarchy-person">
                                     <strong>{{ $position->user?->name }}</strong>
                                     <span>{{ $position->vertical?->name ?? 'All verticals' }} / {{ $position->unit?->name ?? 'All units' }} / {{ $position->team?->name ?? 'All teams' }}</span>
+                                    @if ($position->shift)<span>Shift: {{ $position->shift->name }}</span>@endif
                                     <small>Reports to: {{ $position->manager?->name ?? 'None' }}</small>
                                 </div>
                             @endforeach
@@ -107,6 +123,20 @@
                             <div class="access-muted text-sm">Manager: {{ $team->manager?->name ?? 'Unassigned' }} / Unit: {{ $team->unit?->name ?? 'None' }} / Vertical: {{ $team->vertical?->name ?? 'None' }}</div>
                         </div>
                     @endforeach
+                </div>
+            </section>
+
+            <section class="access-card p-5">
+                <h2 class="font-bold mb-3">Shifts</h2>
+                <div class="space-y-2">
+                    @forelse ($shifts as $shift)
+                        <div class="border rounded p-3" style="border-color:#dfe7e2">
+                            <div class="font-semibold">{{ $shift->name }} <span class="access-muted text-sm">({{ \Illuminate\Support\Carbon::parse($shift->starts_at)->format('H:i') }}-{{ \Illuminate\Support\Carbon::parse($shift->ends_at)->format('H:i') }})</span></div>
+                            <div class="access-muted text-sm">Team: {{ $shift->team?->name ?? 'None' }} / Unit: {{ $shift->unit?->name ?? 'None' }}</div>
+                        </div>
+                    @empty
+                        <p class="access-muted text-sm">No shifts defined yet.</p>
+                    @endforelse
                 </div>
             </section>
         </div>

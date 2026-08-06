@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AccessPosition extends Model
 {
-    protected $fillable = ['user_id', 'hierarchy_level', 'vertical_id', 'unit_id', 'team_id', 'reports_to_user_id', 'is_primary', 'starts_at', 'ends_at', 'status', 'created_by'];
+    protected $fillable = ['user_id', 'hierarchy_level', 'vertical_id', 'unit_id', 'team_id', 'shift_id', 'reports_to_user_id', 'is_primary', 'starts_at', 'ends_at', 'status', 'created_by'];
 
     protected function casts(): array
     {
@@ -38,5 +38,10 @@ class AccessPosition extends Model
     public function team(): BelongsTo
     {
         return $this->belongsTo(AccessTeam::class, 'team_id');
+    }
+
+    public function shift(): BelongsTo
+    {
+        return $this->belongsTo(AccessShift::class, 'shift_id');
     }
 }

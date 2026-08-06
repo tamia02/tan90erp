@@ -135,6 +135,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('loading-desk', 'unloading.loading-desk')->name('loading-desk');
         Volt::route('desk', 'unloading.desk')->name('desk');
         Volt::route('history', 'unloading.history')->name('history');
+        Volt::route('dock-scheduling', 'unloading.dock-scheduling')->name('dock-scheduling');
     });
 
     Route::middleware('role:qc')->prefix('qc')->name('qc.')->group(function () {
@@ -205,6 +206,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('hierarchy/verticals', [HierarchyController::class, 'storeVertical'])->name('hierarchy.verticals.store');
         Route::post('hierarchy/units', [HierarchyController::class, 'storeUnit'])->name('hierarchy.units.store');
         Route::post('hierarchy/teams', [HierarchyController::class, 'storeTeam'])->name('hierarchy.teams.store');
+        Route::post('hierarchy/shifts', [HierarchyController::class, 'storeShift'])->name('hierarchy.shifts.store');
         Route::post('hierarchy/positions', [HierarchyController::class, 'savePosition'])->name('hierarchy.positions.save');
         Route::get('teams', [HierarchyController::class, 'index'])->name('teams.index');
         Route::get('views', [SavedViewController::class, 'index'])->name('views.index');
@@ -214,6 +216,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('dashboard-builder', [DashboardBuilderController::class, 'index'])->name('dashboard-builder.index');
         Route::post('dashboard-builder', [DashboardBuilderController::class, 'save'])->name('dashboard-builder.save');
         Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');
+        Route::get('activity/export', [ActivityController::class, 'export'])->name('activity.export');
         Route::get('activity/{log}', [ActivityController::class, 'show'])->name('activity.show');
         Route::get('simulator', [AccessSimulatorController::class, 'index'])->name('simulator.index');
     });

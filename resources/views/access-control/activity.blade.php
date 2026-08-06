@@ -6,7 +6,11 @@
             <h1 class="text-2xl font-bold">Activity</h1>
             <p class="access-muted text-sm mt-1">Every role, permission and hierarchy change made in Access Control — click a row to see exactly what was filled in.</p>
         </div>
-        <form class="access-card p-4 flex gap-3"><input class="access-input max-w-sm" name="action" value="{{ request('action') }}" placeholder="Filter action"><button class="access-btn">Filter</button></form>
+        <form class="access-card p-4 flex gap-3 items-center">
+            <input class="access-input max-w-sm" name="action" value="{{ request('action') }}" placeholder="Filter action">
+            <button class="access-btn">Filter</button>
+            <a class="access-btn" href="{{ route('access.activity.export', request()->only('action')) }}">Export CSV</a>
+        </form>
         <div class="access-card overflow-hidden">
             <table class="access-table"><thead><tr><th>When</th><th>Who</th><th>What happened</th><th>Record</th></tr></thead><tbody>
                 @foreach($logs as $log)
