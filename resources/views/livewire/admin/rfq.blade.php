@@ -23,7 +23,7 @@ new #[Layout('layouts.app')] class extends Component
     {
         $rfq = Rfq::findOrFail($id);
 
-        if ($rfq->status === 'closed') {
+        if (in_array($rfq->status, ['closed', 'selected'])) {
             return;
         }
 
@@ -44,7 +44,7 @@ new #[Layout('layouts.app')] class extends Component
     {
         $rfq = Rfq::findOrFail($id);
 
-        if ($rfq->status === 'closed') {
+        if (in_array($rfq->status, ['closed', 'selected'])) {
             return;
         }
 
@@ -73,7 +73,7 @@ new #[Layout('layouts.app')] class extends Component
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->sku }} · {{ $r->vendor_name }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">Quantity {{ $r->quantity }} · {{ $r->created_at->format('d M, Y') }}</div>
                     </div>
-                    <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->status === 'quoted' ? 'var(--status-good)' : ($r->status === 'closed' ? 'var(--text-muted)' : 'var(--status-warning)') }};">{{ $r->status }}</span>
+                    <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->status === 'selected' ? 'var(--status-good)' : ($r->status === 'quoted' ? 'var(--text-primary)' : ($r->status === 'closed' ? 'var(--text-muted)' : 'var(--status-warning)')) }};">{{ $r->status }}</span>
                 </div>
 
                 @if ($r->notes)
@@ -101,13 +101,13 @@ new #[Layout('layouts.app')] class extends Component
                 @endif
 
                 <div class="flex gap-2 mt-3">
-                    @if ($editing !== $r->id && $r->status !== 'closed')
+                    @if ($editing !== $r->id && ! in_array($r->status, ['closed', 'selected']))
                         <button wire:click="edit({{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--border); color: var(--text-primary);">Add quote / notes</button>
                     @endif
                     @if ($editing === $r->id)
                         <button wire:click="markQuoted({{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-good); color: var(--status-good);">Save quote</button>
                     @endif
-                    @if ($r->status !== 'closed')
+                    @if (! in_array($r->status, ['closed', 'selected']))
                         <button wire:click="close({{ $r->id }})" wire:confirm="Close this RFQ?" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-critical); color: var(--status-critical);">Close</button>
                     @endif
                 </div>

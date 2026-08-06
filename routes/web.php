@@ -161,6 +161,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('vendors', 'admin.vendor-master')->name('vendors');
         Volt::route('po', 'admin.po-master')->name('po');
         Volt::route('rfq', 'admin.rfq')->name('rfq');
+        Volt::route('quote-comparison', 'admin.quote-comparison')->name('quote-comparison');
+        Volt::route('vendor-scorecard', 'admin.vendor-scorecard')->name('vendor-scorecard');
         Volt::route('integrations', 'admin.integrations')->name('integrations');
         Volt::route('reports', 'admin.reports')->name('reports');
     });
