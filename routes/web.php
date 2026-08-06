@@ -9,6 +9,15 @@ use App\Http\Controllers\AccessControl\DashboardBuilderController;
 use App\Http\Controllers\AccessControl\HierarchyController;
 use App\Http\Controllers\AccessControl\SavedViewController;
 use App\Http\Controllers\ClaudeOAuthController;
+use App\Http\Controllers\Forge\BatchController;
+use App\Http\Controllers\Forge\DeviationController;
+use App\Http\Controllers\Forge\FinalQcController;
+use App\Http\Controllers\Forge\ForgeDashboardController;
+use App\Http\Controllers\Forge\MachineController;
+use App\Http\Controllers\Forge\ProductionPlanController;
+use App\Http\Controllers\Forge\QualityHoldController;
+use App\Http\Controllers\Forge\WastageController;
+use App\Http\Controllers\Forge\WorkOrderController;
 use App\Http\Controllers\Workspace\ApprovalController;
 use App\Http\Controllers\Workspace\ExceptionController;
 use App\Http\Controllers\Workspace\TaskController;
@@ -243,6 +252,74 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/', [ExceptionController::class, 'store'])->name('store');
         Route::post('{exception}/acknowledge', [ExceptionController::class, 'acknowledge'])->name('acknowledge');
         Route::post('{exception}/resolve', [ExceptionController::class, 'resolve'])->name('resolve');
+    });
+
+    Route::prefix('forge')->name('forge.')->group(function () {
+        Route::get('/', [ForgeDashboardController::class, 'index'])->name('dashboard');
+
+        Route::prefix('plans')->name('plans.')->group(function () {
+            Route::get('/', [ProductionPlanController::class, 'index'])->name('index');
+            Route::post('/', [ProductionPlanController::class, 'store'])->name('store');
+            Route::post('{plan}/approve', [ProductionPlanController::class, 'approve'])->name('approve');
+        });
+
+        Route::prefix('workorders')->name('workorders.')->group(function () {
+            Route::get('/', [WorkOrderController::class, 'index'])->name('index');
+            Route::post('/', [WorkOrderController::class, 'store'])->name('store');
+            Route::get('{workOrder}', [WorkOrderController::class, 'show'])->name('show');
+            Route::post('{workOrder}/release', [WorkOrderController::class, 'release'])->name('release');
+            Route::post('{workOrder}/reserve-material', [WorkOrderController::class, 'reserveMaterial'])->name('reserve-material');
+            Route::post('{workOrder}/issue-material', [WorkOrderController::class, 'issueMaterial'])->name('issue-material');
+            Route::post('{workOrder}/start', [WorkOrderController::class, 'start'])->name('start');
+            Route::post('{workOrder}/record-production', [WorkOrderController::class, 'recordProduction'])->name('record-production');
+            Route::post('{workOrder}/send-to-final-qc', [WorkOrderController::class, 'sendToFinalQc'])->name('send-to-final-qc');
+            Route::post('{workOrder}/close', [WorkOrderController::class, 'close'])->name('close');
+        });
+
+        Route::prefix('job-cards')->name('job-cards.')->group(function () {
+            Route::post('{jobCard}/start', [WorkOrderController::class, 'startJobCard'])->name('start');
+            Route::post('{jobCard}/pause', [WorkOrderController::class, 'pauseJobCard'])->name('pause');
+            Route::post('{jobCard}/resume', [WorkOrderController::class, 'resumeJobCard'])->name('resume');
+            Route::post('{jobCard}/complete', [WorkOrderController::class, 'completeJobCard'])->name('complete');
+        });
+
+        Route::post('production-entries/{entry}/approve', [WorkOrderController::class, 'approveProduction'])->name('production.approve');
+
+        Route::prefix('machines')->name('machines.')->group(function () {
+            Route::get('/', [MachineController::class, 'index'])->name('index');
+            Route::post('{machine}/downtime', [MachineController::class, 'startDowntime'])->name('downtime');
+            Route::post('{machine}/state', [MachineController::class, 'setState'])->name('state');
+            Route::post('downtime/{downtime}/close', [MachineController::class, 'closeDowntime'])->name('downtime.close');
+        });
+
+        Route::prefix('wastage')->name('wastage.')->group(function () {
+            Route::get('/', [WastageController::class, 'index'])->name('index');
+            Route::post('/', [WastageController::class, 'store'])->name('store');
+            Route::post('{wastage}/approve', [WastageController::class, 'approve'])->name('approve');
+        });
+
+        Route::prefix('quality-holds')->name('quality-holds.')->group(function () {
+            Route::get('/', [QualityHoldController::class, 'index'])->name('index');
+            Route::post('/', [QualityHoldController::class, 'store'])->name('store');
+            Route::post('{qualityHold}/release', [QualityHoldController::class, 'release'])->name('release');
+        });
+
+        Route::prefix('final-qc')->name('final-qc.')->group(function () {
+            Route::get('/', [FinalQcController::class, 'index'])->name('index');
+            Route::post('{workOrder}', [FinalQcController::class, 'store'])->name('store');
+            Route::post('{finalQcResult}/release', [FinalQcController::class, 'release'])->name('release');
+        });
+
+        Route::prefix('deviations')->name('deviations.')->group(function () {
+            Route::get('/', [DeviationController::class, 'index'])->name('index');
+            Route::post('/', [DeviationController::class, 'store'])->name('store');
+            Route::put('{deviation}', [DeviationController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('batches')->name('batches.')->group(function () {
+            Route::get('/', [BatchController::class, 'index'])->name('index');
+            Route::get('{batch}', [BatchController::class, 'show'])->name('show');
+        });
     });
 });
 

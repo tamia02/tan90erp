@@ -41,6 +41,7 @@ new class extends Component
                 ['label' => 'Saved Views', 'route' => 'access.views.index', 'permission' => 'views.use_assigned'],
                 ['label' => 'Access Activity', 'route' => 'access.activity.index', 'permission' => 'access.activity.view'],
                 ['label' => 'Access Simulator', 'route' => 'access.simulator.index', 'permission' => 'access.simulator.view'],
+                ['label' => 'Forge (Manufacturing)', 'route' => 'forge.dashboard', 'permission' => 'forge.dashboard.view'],
             ] as $item) {
                 $canSeeItem = isset($item['permission_any'])
                     ? collect($item['permission_any'])->contains(fn ($permission) => $access->can($user, $permission))
@@ -70,6 +71,28 @@ new class extends Component
 
         if (request()->routeIs('tan90.master-data.*')) {
             return ['navItems' => [...Tan90ModuleNavigation::forMasterData(), ...$accessItems]];
+        }
+
+        if (request()->routeIs('forge.*')) {
+            $forgeItems = [];
+            foreach ([
+                ['label' => 'Command Centre', 'route' => 'forge.dashboard', 'permission' => 'forge.dashboard.view'],
+                ['label' => 'Production Plans', 'route' => 'forge.plans.index', 'permission' => 'forge.plan.view'],
+                ['label' => 'Work Orders', 'route' => 'forge.workorders.index', 'permission' => 'forge.workorder.view'],
+                ['label' => 'Machines & OEE', 'route' => 'forge.machines.index', 'permission' => 'forge.machine.view'],
+                ['label' => 'Wastage & Scrap', 'route' => 'forge.wastage.index', 'permission' => 'forge.wastage.record'],
+                ['label' => 'In-Process Quality', 'route' => 'forge.quality-holds.index', 'permission' => 'forge.ipqc.record'],
+                ['label' => 'Final QC & FG Release', 'route' => 'forge.final-qc.index', 'permission' => 'forge.finalqc.record'],
+                ['label' => 'Deviation & CAPA', 'route' => 'forge.deviations.index', 'permission' => 'forge.deviation.view'],
+                ['label' => 'Batch Genealogy', 'route' => 'forge.batches.index', 'permission' => 'forge.batch.trace'],
+            ] as $item) {
+                if ($access->can($user, $item['permission'])) {
+                    unset($item['permission']);
+                    $forgeItems[] = $item + ['icon' => 'factory'];
+                }
+            }
+
+            return ['navItems' => [...$forgeItems, ...$accessItems]];
         }
 
         return ['navItems' => $accessItems];

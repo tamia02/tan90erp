@@ -16,6 +16,7 @@ use App\Models\VendorMaster;
 use App\Models\VendorStockUpdate;
 use App\Models\VendorSubmission;
 use Database\Seeders\Access\AccessControlSeeder;
+use Database\Seeders\Forge\ForgeAccessSeeder;
 use Illuminate\Database\Seeder;
 
 // Ports the React prototype's src/lib/seed.ts — a closed-loop demo (Thermocore
@@ -48,6 +49,7 @@ class DatabaseSeeder extends Seeder
         $this->call(Tan90MasterDataGapRolesSeeder::class);
         $this->call(Tan90BomRecipeCostingSeeder::class);
         $this->call(AccessControlSeeder::class);
+        $this->call(ForgeAccessSeeder::class);
     }
 
     private function seedUsers(): void
