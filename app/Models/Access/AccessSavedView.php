@@ -2,7 +2,9 @@
 
 namespace App\Models\Access;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AccessSavedView extends Model
 {
@@ -11,5 +13,10 @@ class AccessSavedView extends Model
     protected function casts(): array
     {
         return ['columns_json' => 'array', 'filters_json' => 'array', 'sort_json' => 'array', 'group_json' => 'array', 'display_json' => 'array', 'row_actions_json' => 'array', 'locked_parts_json' => 'array'];
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_user_id');
     }
 }

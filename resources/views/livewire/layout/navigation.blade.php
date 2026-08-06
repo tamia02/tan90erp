@@ -40,6 +40,7 @@ new class extends Component
                 ['label' => 'Hierarchy', 'route' => 'access.hierarchy.index', 'permission' => 'access.hierarchy.view'],
                 ['label' => 'Saved Views', 'route' => 'access.views.index', 'permission' => 'views.use_assigned'],
                 ['label' => 'Access Activity', 'route' => 'access.activity.index', 'permission' => 'access.activity.view'],
+                ['label' => 'Access Simulator', 'route' => 'access.simulator.index', 'permission' => 'access.simulator.view'],
             ] as $item) {
                 $canSeeItem = isset($item['permission_any'])
                     ? collect($item['permission_any'])->contains(fn ($permission) => $access->can($user, $permission))

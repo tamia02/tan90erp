@@ -24,6 +24,7 @@ class PermissionRegistry
             ['key' => 'access.people.manage', 'module' => 'Access Control', 'screen' => 'People', 'category' => 'access_admin', 'action' => 'assign', 'label' => 'Assign/revoke user roles', 'route_name' => 'access.people.index', 'is_sensitive' => true],
             ['key' => 'access.hierarchy.view', 'module' => 'Access Control', 'screen' => 'Hierarchy', 'category' => 'access_admin', 'action' => 'view', 'label' => 'View hierarchy', 'route_name' => 'access.hierarchy.index'],
             ['key' => 'access.activity.view', 'module' => 'Access Control', 'screen' => 'Activity', 'category' => 'access_admin', 'action' => 'view', 'label' => 'View access activity', 'route_name' => 'access.activity.index'],
+            ['key' => 'access.simulator.view', 'module' => 'Access Control', 'screen' => 'Simulator', 'category' => 'access_admin', 'action' => 'view', 'label' => 'Simulate an access decision', 'route_name' => 'access.simulator.index'],
             ['key' => 'views.use_assigned', 'module' => 'Saved Views', 'screen' => 'Views', 'category' => 'view', 'action' => 'use', 'label' => 'Use assigned saved views'],
             ['key' => 'views.create_personal', 'module' => 'Saved Views', 'screen' => 'Views', 'category' => 'view', 'action' => 'create', 'label' => 'Create personal saved views'],
             ['key' => 'views.manage_role', 'module' => 'Saved Views', 'screen' => 'Views', 'category' => 'view', 'action' => 'manage', 'label' => 'Manage role saved views'],

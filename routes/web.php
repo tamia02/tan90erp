@@ -3,6 +3,7 @@
 use App\Enums\Role;
 use App\Http\Controllers\AccessControl\AccessPeopleController;
 use App\Http\Controllers\AccessControl\AccessRoleController;
+use App\Http\Controllers\AccessControl\AccessSimulatorController;
 use App\Http\Controllers\AccessControl\ActivityController;
 use App\Http\Controllers\AccessControl\DashboardBuilderController;
 use App\Http\Controllers\AccessControl\HierarchyController;
@@ -190,10 +191,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('hierarchy/positions', [HierarchyController::class, 'savePosition'])->name('hierarchy.positions.save');
         Route::get('teams', [HierarchyController::class, 'index'])->name('teams.index');
         Route::get('views', [SavedViewController::class, 'index'])->name('views.index');
+        Route::post('views', [SavedViewController::class, 'store'])->name('views.store');
+        Route::post('views/{view}/assign', [SavedViewController::class, 'assign'])->name('views.assign');
+        Route::post('views/{view}/publish', [SavedViewController::class, 'publish'])->name('views.publish');
         Route::get('dashboard-builder', [DashboardBuilderController::class, 'index'])->name('dashboard-builder.index');
         Route::post('dashboard-builder', [DashboardBuilderController::class, 'save'])->name('dashboard-builder.save');
         Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');
         Route::get('activity/{log}', [ActivityController::class, 'show'])->name('activity.show');
+        Route::get('simulator', [AccessSimulatorController::class, 'index'])->name('simulator.index');
     });
 
     Route::get('workspace', [WorkspaceController::class, 'index'])->name('workspace.index');
