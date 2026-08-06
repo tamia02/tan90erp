@@ -40,6 +40,36 @@
                   @endcan
                 </td>
               </tr>
+              <tr style="border-top: 1px dashed var(--border);">
+                <td></td>
+                <td colspan="5" class="py-2 pl-2">
+                  <div class="text-xs font-medium mb-1.5" style="color: var(--text-muted);">QC checkpoints / process parameters</div>
+                  @forelse ($operation->processParameters as $param)
+                    <div class="text-xs mb-1" style="color: var(--text-secondary);">
+                      <span class="rounded-full px-1.5 py-0.5 font-semibold" style="background: {{ $param->criticality === 'Critical' ? 'var(--status-critical-bg)' : ($param->criticality === 'Major' ? 'var(--status-warning-bg)' : 'var(--surface-2)') }}; color: {{ $param->criticality === 'Critical' ? 'var(--status-critical)' : ($param->criticality === 'Major' ? 'var(--status-warning)' : 'var(--text-muted)') }};">{{ $param->criticality }}</span>
+                      {{ $param->parameter_name }}: {{ $param->min_value ?? '—' }}–{{ $param->max_value ?? '—' }} {{ $param->uom }} (target {{ $param->target_value ?? '—' }})
+                    </div>
+                  @empty
+                    <div class="text-xs" style="color: var(--text-muted);">None set.</div>
+                  @endforelse
+                  @can('update', $routing)
+                    <form method="POST" action="{{ route('tan90.brc.routing-operations.process-parameters.store', $operation->id) }}" class="grid grid-cols-6 gap-1.5 mt-2">
+                      @csrf
+                      <input type="text" name="parameter_name" placeholder="Parameter (e.g. Seal Temp)" class="rounded-lg border px-2 py-1 text-xs col-span-2" style="border-color: var(--border);" required>
+                      <input type="text" name="min_value" placeholder="Min" class="rounded-lg border px-2 py-1 text-xs" style="border-color: var(--border);">
+                      <input type="text" name="max_value" placeholder="Max" class="rounded-lg border px-2 py-1 text-xs" style="border-color: var(--border);">
+                      <input type="text" name="uom" placeholder="Unit" class="rounded-lg border px-2 py-1 text-xs" style="border-color: var(--border);">
+                      <select name="criticality" class="rounded-lg border px-2 py-1 text-xs" style="border-color: var(--border);">
+                        <option value="Minor">Minor</option>
+                        <option value="Major">Major</option>
+                        <option value="Critical">Critical</option>
+                      </select>
+                      <input type="text" name="target_value" placeholder="Target value" class="rounded-lg border px-2 py-1 text-xs col-span-2" style="border-color: var(--border);">
+                      <button type="submit" class="rounded-lg px-2 py-1 text-xs font-medium border col-span-4" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">Add checkpoint</button>
+                    </form>
+                  @endcan
+                </td>
+              </tr>
             @empty
               <tr><td colspan="6" class="py-10 text-center text-sm" style="color: var(--text-muted);">No operations yet.</td></tr>
             @endforelse
