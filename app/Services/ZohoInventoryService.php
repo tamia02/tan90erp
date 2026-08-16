@@ -11,6 +11,7 @@ use App\Models\VendorMaster;
 use App\Models\VendorSubmission;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 // Zoho Inventory integration — the operational counterpart to ZohoService
 // (which talks to Zoho CRM). CRM has no real Items, Purchase Orders, Bills,
@@ -151,8 +152,24 @@ class ZohoInventoryService
 
         $records = $query->orderBy('updated_at')->orderBy('id')->limit($limit)->get();
 
-        $records->each(function ($record) use ($pusher, &$count, &$failed) {
-            $pusher($record) ? $count++ : $failed++;
+        $records->each(function ($record) use ($pusher, $checkpointKey, &$count, &$failed) {
+            $this->lastError = null;
+
+            if ($pusher($record)) {
+                $count++;
+
+                return;
+            }
+
+            $failed++;
+            // The scheduler discards each command's stdout, so this is the only place
+            // a failure's actual cause (rate limit, validation, network) is recorded —
+            // without it, "exit code 1" in the log is indistinguishable from a real bug.
+            Log::warning('Zoho Inventory push failed', [
+                'entity' => $checkpointKey,
+                'model_id' => $record->id,
+                'error' => $this->lastError ?: 'no error detail captured',
+            ]);
         });
 
         // Only advance past this batch if everything in it actually succeeded — e.g.
@@ -271,12 +288,17 @@ class ZohoInventoryService
             : $this->inventoryRequest()->post($this->invUrl('/purchaseorders'), $payload);
 
         $success = $response->successful() && (int) $response->json('code') === 0;
+        $message = $success ? 'ok' : (string) ($response->json('message') ?: $response->body());
+
+        if (! $success) {
+            $this->lastError = "Zoho Inventory PO upsert failed for {$po->po_number}: {$message}";
+        }
 
         return [
             'success' => $success,
             'action' => $existing ? 'updated' : 'created',
             'status' => $response->status(),
-            'message' => $success ? 'ok' : (string) ($response->json('message') ?: $response->body()),
+            'message' => $message,
             'zoho_id' => $response->json('purchaseorder.purchaseorder_id'),
         ];
     }
@@ -353,11 +375,15 @@ class ZohoInventoryService
 
         $poNumber = $record->gateEntry?->po_number;
         if (! $poNumber) {
+            $this->lastError = "Zoho Inventory purchase receive for GRN #{$record->id}: no PO number on its gate entry.";
+
             return false;
         }
 
         $po = $this->findPurchaseOrderByReference($poNumber);
         if (! $po || empty($po['line_items'][0])) {
+            $this->lastError = "Zoho Inventory purchase receive for GRN #{$record->id}: PO {$poNumber} not found in Inventory or has no line items.";
+
             return false;
         }
 
@@ -366,6 +392,8 @@ class ZohoInventoryService
         $poLineItemId = $primaryLine['line_item_id'] ?? $primaryLine['purchaseorder_item_id'] ?? null;
 
         if (! $itemId || ! $poLineItemId) {
+            $this->lastError = "Zoho Inventory purchase receive for GRN #{$record->id}: PO {$poNumber} line item missing item_id/line_item_id.";
+
             return false;
         }
 
@@ -386,7 +414,13 @@ class ZohoInventoryService
             ? $this->inventoryRequest()->put($this->invUrl("/purchasereceives/{$existing['purchasereceive_id']}"), $payload)
             : $this->inventoryRequest()->post($this->invUrl('/purchasereceives'), $payload);
 
-        return $response->successful() && (int) $response->json('code') === 0;
+        if ($response->successful() && (int) $response->json('code') === 0) {
+            return true;
+        }
+
+        $this->lastError = "Zoho Inventory purchase receive upsert failed for GRN #{$record->id} (PO {$poNumber}): ".$response->body();
+
+        return false;
     }
 
     /**
@@ -598,7 +632,13 @@ class ZohoInventoryService
             ? $this->inventoryRequest()->put($this->invUrl("/contacts/{$existing['contact_id']}"), $payload)
             : $this->inventoryRequest()->post($this->invUrl('/contacts'), $payload);
 
-        return $response->successful() && (int) $response->json('code') === 0;
+        if ($response->successful() && (int) $response->json('code') === 0) {
+            return true;
+        }
+
+        $this->lastError = "Zoho Inventory contact upsert failed for {$name}: ".$response->body();
+
+        return false;
     }
 
     /**
@@ -660,7 +700,13 @@ class ZohoInventoryService
             ? $this->inventoryRequest()->put($this->invUrl("/items/{$existing['item_id']}"), $payload)
             : $this->inventoryRequest()->post($this->invUrl('/items'), $payload);
 
-        return $response->successful() && (int) $response->json('code') === 0;
+        if ($response->successful() && (int) $response->json('code') === 0) {
+            return true;
+        }
+
+        $this->lastError = "Zoho Inventory item upsert failed for {$sku}: ".$response->body();
+
+        return false;
     }
 
     /**
@@ -745,7 +791,13 @@ class ZohoInventoryService
             ? $this->inventoryRequest()->put($this->invUrl("/bills/{$existing['bill_id']}"), $payload)
             : $this->inventoryRequest()->post($this->invUrl('/bills'), $payload);
 
-        return $response->successful() && (int) $response->json('code') === 0;
+        if ($response->successful() && (int) $response->json('code') === 0) {
+            return true;
+        }
+
+        $this->lastError = "Zoho Inventory bill upsert failed for {$billNumber}: ".$response->body();
+
+        return false;
     }
 
     private function findPurchaseReceiveForPo(string $purchaseOrderId): ?array
