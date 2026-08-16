@@ -155,7 +155,14 @@ class ZohoInventoryService
             $pusher($record) ? $count++ : $failed++;
         });
 
-        if ($records->isNotEmpty()) {
+        // Only advance past this batch if everything in it actually succeeded — e.g.
+        // during a rate-limit outage every push in the batch fails, and advancing
+        // anyway would permanently mark those rows "handled" without ever having
+        // synced them. Matches the same all-or-nothing convention already used by
+        // the PO pull-side checkpoint below (only persists last_modified when
+        // failed === 0), so one non-transient bad row can still stall an entity's
+        // checkpoint — an accepted, pre-existing tradeoff, not a new one.
+        if ($records->isNotEmpty() && $failed === 0) {
             $last = $records->last();
             Cache::forever($cacheKey, ['at' => $last->updated_at->toDateTimeString(), 'id' => $last->id]);
         }
