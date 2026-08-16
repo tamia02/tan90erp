@@ -165,7 +165,11 @@ class ZohoInventoryService
             // The scheduler discards each command's stdout, so this is the only place
             // a failure's actual cause (rate limit, validation, network) is recorded —
             // without it, "exit code 1" in the log is indistinguishable from a real bug.
-            Log::warning('Zoho Inventory push failed', [
+            // error, not warning — production's log level (confirmed 0 WARNING lines
+            // across 36k+ log entries, vs 1,645 ERROR lines that came through fine)
+            // filters warning-level out entirely, which would make this addition a
+            // no-op there.
+            Log::error('Zoho Inventory push failed', [
                 'entity' => $checkpointKey,
                 'model_id' => $record->id,
                 'error' => $this->lastError ?: 'no error detail captured',
