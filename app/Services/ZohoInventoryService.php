@@ -83,64 +83,84 @@ class ZohoInventoryService
     /**
      * @return array{items: int, vendors: int, purchase_orders: int, bills: int, purchase_receives: int, failed: int, skipped: bool}
      */
-    public function pushOperationalData(): array
+    public function pushOperationalData(int $limit = 200): array
     {
         if (! $this->isActive()) {
             return ['items' => 0, 'vendors' => 0, 'purchase_orders' => 0, 'bills' => 0, 'purchase_receives' => 0, 'failed' => 0, 'skipped' => true];
         }
 
-        $items = 0;
-        $vendors = 0;
-        $purchaseOrders = 0;
-        $bills = 0;
-        $purchaseReceives = 0;
-        $failed = 0;
-
-        VendorMaster::orderBy('id')->chunk(100, function ($records) use (&$vendors, &$failed) {
-            foreach ($records as $vendor) {
-                $this->pushVendorContact($vendor) ? $vendors++ : $failed++;
-            }
-        });
-
-        SkuMaster::orderBy('id')->chunk(100, function ($records) use (&$items, &$failed) {
-            foreach ($records as $sku) {
-                $this->pushItem($sku) ? $items++ : $failed++;
-            }
-        });
-
-        PurchaseOrder::with('lines')->orderBy('id')->chunk(50, function ($records) use (&$purchaseOrders, &$failed) {
-            foreach ($records as $po) {
-                $this->pushPurchaseOrder($po)['success'] ? $purchaseOrders++ : $failed++;
-            }
-        });
-
-        VendorSubmission::orderBy('id')->chunk(100, function ($records) use (&$bills, &$failed) {
-            foreach ($records as $submission) {
-                $this->pushVendorBill($submission) ? $bills++ : $failed++;
-            }
-        });
-
-        FinanceRecord::with('gateEntry')->orderBy('id')->chunk(100, function ($records) use (&$bills, &$failed) {
-            foreach ($records as $record) {
-                $this->pushFinanceBill($record) ? $bills++ : $failed++;
-            }
-        });
-
-        GrnRecord::with('gateEntry')->orderBy('id')->chunk(100, function ($records) use (&$purchaseReceives, &$failed) {
-            foreach ($records as $record) {
-                $this->pushPurchaseReceive($record) ? $purchaseReceives++ : $failed++;
-            }
-        });
+        $vendorResult = $this->pushChangedSince(VendorMaster::class, 'vendors', $limit, null, fn ($vendor) => $this->pushVendorContact($vendor));
+        $itemResult = $this->pushChangedSince(SkuMaster::class, 'items', $limit, null, fn ($sku) => $this->pushItem($sku));
+        $poResult = $this->pushChangedSince(PurchaseOrder::class, 'purchase_orders', $limit, fn ($query) => $query->with('lines'), fn ($po) => $this->pushPurchaseOrder($po)['success']);
+        $vendorBillResult = $this->pushChangedSince(VendorSubmission::class, 'vendor_bills', $limit, null, fn ($submission) => $this->pushVendorBill($submission));
+        $financeBillResult = $this->pushChangedSince(FinanceRecord::class, 'finance_bills', $limit, fn ($query) => $query->with('gateEntry'), fn ($record) => $this->pushFinanceBill($record));
+        $receiveResult = $this->pushChangedSince(GrnRecord::class, 'purchase_receives', $limit, fn ($query) => $query->with('gateEntry'), fn ($record) => $this->pushPurchaseReceive($record));
 
         return [
-            'items' => $items,
-            'vendors' => $vendors,
-            'purchase_orders' => $purchaseOrders,
-            'bills' => $bills,
-            'purchase_receives' => $purchaseReceives,
-            'failed' => $failed,
+            'items' => $itemResult['count'],
+            'vendors' => $vendorResult['count'],
+            'purchase_orders' => $poResult['count'],
+            'bills' => $vendorBillResult['count'] + $financeBillResult['count'],
+            'purchase_receives' => $receiveResult['count'],
+            'failed' => $vendorResult['failed'] + $itemResult['failed'] + $poResult['failed']
+                + $vendorBillResult['failed'] + $financeBillResult['failed'] + $receiveResult['failed'],
             'skipped' => false,
         ];
+    }
+
+    /**
+     * Pushes only rows changed since this entity's last run — each cron cycle used to
+     * re-push every Vendor/Item/PO/Bill/GRN in the database regardless of whether
+     * anything changed, which burned through Zoho's daily API call cap (error code 45)
+     * within a couple of 30-minute cycles and made every push fail afterward. The
+     * checkpoint (like the one already used for pulling POs) bounds each run to real
+     * deltas; $limit caps a single run's cost even when the delta or the initial
+     * backfill is large, spreading it across multiple scheduled runs instead of
+     * spending the whole day's quota in one shot.
+     *
+     * Cursor is (updated_at, id), not updated_at alone — seeded/bulk-imported rows
+     * routinely share the same updated_at down to the second, and a plain "> checkpoint"
+     * comparison silently strands every row tied with the last one in a batch forever
+     * (confirmed locally: a 4-row table with 2 tied timestamps left 2 rows unsynced
+     * indefinitely under a naive timestamp-only cursor).
+     *
+     * @return array{count: int, failed: int}
+     */
+    private function pushChangedSince(string $modelClass, string $checkpointKey, int $limit, ?\Closure $queryModifier, callable $pusher): array
+    {
+        $cacheKey = "zoho_inventory_push_checkpoint:{$checkpointKey}";
+        $since = Cache::get($cacheKey);
+
+        $count = 0;
+        $failed = 0;
+
+        $query = $modelClass::query();
+
+        if ($queryModifier) {
+            $queryModifier($query);
+        }
+
+        if ($since) {
+            $query->where(function ($q) use ($since) {
+                $q->where('updated_at', '>', $since['at'])
+                    ->orWhere(function ($q2) use ($since) {
+                        $q2->where('updated_at', '=', $since['at'])->where('id', '>', $since['id']);
+                    });
+            });
+        }
+
+        $records = $query->orderBy('updated_at')->orderBy('id')->limit($limit)->get();
+
+        $records->each(function ($record) use ($pusher, &$count, &$failed) {
+            $pusher($record) ? $count++ : $failed++;
+        });
+
+        if ($records->isNotEmpty()) {
+            $last = $records->last();
+            Cache::forever($cacheKey, ['at' => $last->updated_at->toDateTimeString(), 'id' => $last->id]);
+        }
+
+        return ['count' => $count, 'failed' => $failed];
     }
 
     public function pushVendorContact(VendorMaster $vendor): bool

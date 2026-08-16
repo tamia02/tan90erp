@@ -8,13 +8,13 @@ use Illuminate\Support\Facades\Cache;
 
 class PushZohoInventoryData extends Command
 {
-    protected $signature = 'zoho:push-inventory-data';
+    protected $signature = 'zoho:push-inventory-data {--limit=200 : Max changed rows to push per entity in this run}';
 
-    protected $description = 'Push Tan90 SKU/Vendor Master, Purchase Orders, vendor bills, and GRN receiving into Zoho Inventory (Items, Contacts, Purchase Orders, Bills, Purchase Receives).';
+    protected $description = 'Push Tan90 SKU/Vendor Master, Purchase Orders, vendor bills, and GRN receiving into Zoho Inventory (Items, Contacts, Purchase Orders, Bills, Purchase Receives). Only pushes rows changed since the last successful run per entity.';
 
     public function handle(ZohoInventoryService $inventory): int
     {
-        $result = $inventory->pushOperationalData();
+        $result = $inventory->pushOperationalData((int) $this->option('limit'));
 
         if ($result['skipped']) {
             $this->info('Zoho Inventory push skipped — organization_id and/or refresh token not configured yet.');
