@@ -199,13 +199,20 @@ class ZohoInventoryService
 
         $email = trim((string) $vendor->contact_email);
         $phone = trim((string) $vendor->contact_phone);
+        // Zoho rejects anything that isn't a real 15-char GSTIN with code 2
+        // ("Invalid value passed for gst_no") — placeholders like 'ZOHO-N/A'
+        // (the fallback this app itself writes when a vendor's GST is unknown,
+        // see syncVendors()) fail that check and permanently block the push.
+        // GST is optional in Zoho, so just omit it rather than block the vendor.
+        $gstNumber = strtoupper(trim((string) $vendor->gst_number));
+        $validGst = (bool) preg_match('/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}Z[A-Z\d]{1}$/', $gstNumber);
 
         $payload = array_filter([
             'contact_name' => $vendor->vendor_name,
             'company_name' => $vendor->vendor_name,
             'contact_type' => 'vendor',
             'website' => $vendor->website,
-            'gst_no' => $vendor->gst_number,
+            'gst_no' => $validGst ? $gstNumber : null,
         ], fn ($value) => $value !== null && $value !== '');
 
         if ($email !== '' || $phone !== '') {
