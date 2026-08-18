@@ -65,6 +65,10 @@ return [
             'client_secret' => env('ZOHO_INVENTORY_CLIENT_SECRET', env('ZOHO_CLIENT_SECRET')),
             'api_base_url' => env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1'),
             'write_enabled' => env('ZOHO_INVENTORY_WRITE_ENABLED', true),
+            // How long push/sync pause entirely after hitting Zoho's daily API call
+            // cap (error code 45), so the 30-minute cron can't immediately re-exhaust
+            // quota the moment it frees up. See ZohoInventoryService::inRateLimitCooldown().
+            'rate_limit_cooldown_minutes' => env('ZOHO_INVENTORY_RATE_LIMIT_COOLDOWN_MINUTES', 180),
         ],
     ],
 

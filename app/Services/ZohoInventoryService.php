@@ -33,6 +33,42 @@ class ZohoInventoryService
             && (bool) config('services.zoho.inventory.refresh_token');
     }
 
+    private const RATE_LIMIT_COOLDOWN_CACHE_KEY = 'zoho_inventory_rate_limit_cooldown_until';
+
+    /**
+     * Circuit breaker: push and sync both share one Zoho org's daily API call cap, and
+     * both used to keep retrying their full backlog every 30 minutes even while rate
+     * limited — each retry re-consumed whatever quota had freed up before it could ever
+     * accumulate enough for a real success (confirmed live: still hitting error code 45
+     * more than 24 hours after the first hit, with 6,000+ failed attempts logged in that
+     * window). Once either side sees the rate-limit signature, both stay off entirely
+     * for a cooldown window instead of hammering it every cycle.
+     */
+    private function inRateLimitCooldown(): bool
+    {
+        $until = Cache::get(self::RATE_LIMIT_COOLDOWN_CACHE_KEY);
+
+        return $until && \Illuminate\Support\Carbon::parse($until)->isFuture();
+    }
+
+    private function startRateLimitCooldown(): void
+    {
+        $minutes = (int) config('services.zoho.inventory.rate_limit_cooldown_minutes', 180);
+        $until = now()->addMinutes($minutes);
+
+        Cache::put(self::RATE_LIMIT_COOLDOWN_CACHE_KEY, $until->toDateTimeString(), $until);
+
+        Log::error("Zoho Inventory rate limit hit — pausing all push/sync until {$until->toDateTimeString()} to let the daily quota recover.");
+    }
+
+    private function isRateLimitSignature(?string $text): bool
+    {
+        return $text !== null && (
+            str_contains($text, '"code":45')
+            || str_contains(strtolower($text), 'exceeded the maximum call rate limit')
+        );
+    }
+
     private function accessToken(): ?string
     {
         if (! $this->isActive()) {
@@ -86,25 +122,53 @@ class ZohoInventoryService
      */
     public function pushOperationalData(int $limit = 200): array
     {
-        if (! $this->isActive()) {
+        if (! $this->isActive() || $this->inRateLimitCooldown()) {
             return ['items' => 0, 'vendors' => 0, 'purchase_orders' => 0, 'bills' => 0, 'purchase_receives' => 0, 'failed' => 0, 'skipped' => true];
         }
 
-        $vendorResult = $this->pushChangedSince(VendorMaster::class, 'vendors', $limit, null, fn ($vendor) => $this->pushVendorContact($vendor));
-        $itemResult = $this->pushChangedSince(SkuMaster::class, 'items', $limit, null, fn ($sku) => $this->pushItem($sku));
-        $poResult = $this->pushChangedSince(PurchaseOrder::class, 'purchase_orders', $limit, fn ($query) => $query->with('lines'), fn ($po) => $this->pushPurchaseOrder($po)['success']);
-        $vendorBillResult = $this->pushChangedSince(VendorSubmission::class, 'vendor_bills', $limit, null, fn ($submission) => $this->pushVendorBill($submission));
-        $financeBillResult = $this->pushChangedSince(FinanceRecord::class, 'finance_bills', $limit, fn ($query) => $query->with('gateEntry'), fn ($record) => $this->pushFinanceBill($record));
-        $receiveResult = $this->pushChangedSince(GrnRecord::class, 'purchase_receives', $limit, fn ($query) => $query->with('gateEntry'), fn ($record) => $this->pushPurchaseReceive($record));
+        $items = 0;
+        $vendors = 0;
+        $purchaseOrders = 0;
+        $bills = 0;
+        $purchaseReceives = 0;
+        $failed = 0;
+
+        $entities = [
+            ['vendors', VendorMaster::class, null, fn ($v) => $this->pushVendorContact($v)],
+            ['items', SkuMaster::class, null, fn ($v) => $this->pushItem($v)],
+            ['purchase_orders', PurchaseOrder::class, fn ($q) => $q->with('lines'), fn ($v) => $this->pushPurchaseOrder($v)['success']],
+            ['vendor_bills', VendorSubmission::class, null, fn ($v) => $this->pushVendorBill($v)],
+            ['finance_bills', FinanceRecord::class, fn ($q) => $q->with('gateEntry'), fn ($v) => $this->pushFinanceBill($v)],
+            ['purchase_receives', GrnRecord::class, fn ($q) => $q->with('gateEntry'), fn ($v) => $this->pushPurchaseReceive($v)],
+        ];
+
+        foreach ($entities as [$key, $modelClass, $queryModifier, $pusher]) {
+            $result = $this->pushChangedSince($modelClass, $key, $limit, $queryModifier, $pusher);
+            $failed += $result['failed'];
+
+            match ($key) {
+                'vendors' => $vendors += $result['count'],
+                'items' => $items += $result['count'],
+                'purchase_orders' => $purchaseOrders += $result['count'],
+                'vendor_bills', 'finance_bills' => $bills += $result['count'],
+                'purchase_receives' => $purchaseReceives += $result['count'],
+            };
+
+            // Stop entirely once rate-limited — every remaining entity would fail
+            // for the same reason, and each attempt just burns more of the quota
+            // this run is trying to let recover.
+            if ($result['rate_limited']) {
+                break;
+            }
+        }
 
         return [
-            'items' => $itemResult['count'],
-            'vendors' => $vendorResult['count'],
-            'purchase_orders' => $poResult['count'],
-            'bills' => $vendorBillResult['count'] + $financeBillResult['count'],
-            'purchase_receives' => $receiveResult['count'],
-            'failed' => $vendorResult['failed'] + $itemResult['failed'] + $poResult['failed']
-                + $vendorBillResult['failed'] + $financeBillResult['failed'] + $receiveResult['failed'],
+            'items' => $items,
+            'vendors' => $vendors,
+            'purchase_orders' => $purchaseOrders,
+            'bills' => $bills,
+            'purchase_receives' => $purchaseReceives,
+            'failed' => $failed,
             'skipped' => false,
         ];
     }
@@ -125,7 +189,7 @@ class ZohoInventoryService
      * (confirmed locally: a 4-row table with 2 tied timestamps left 2 rows unsynced
      * indefinitely under a naive timestamp-only cursor).
      *
-     * @return array{count: int, failed: int}
+     * @return array{count: int, failed: int, rate_limited: bool}
      */
     private function pushChangedSince(string $modelClass, string $checkpointKey, int $limit, ?\Closure $queryModifier, callable $pusher): array
     {
@@ -134,6 +198,7 @@ class ZohoInventoryService
 
         $count = 0;
         $failed = 0;
+        $rateLimited = false;
 
         $query = $modelClass::query();
 
@@ -151,14 +216,20 @@ class ZohoInventoryService
         }
 
         $records = $query->orderBy('updated_at')->orderBy('id')->limit($limit)->get();
+        $lastAttempted = null;
 
-        $records->each(function ($record) use ($pusher, $checkpointKey, &$count, &$failed) {
+        foreach ($records as $record) {
+            if ($rateLimited) {
+                break;
+            }
+
             $this->lastError = null;
+            $lastAttempted = $record;
 
             if ($pusher($record)) {
                 $count++;
 
-                return;
+                continue;
             }
 
             $failed++;
@@ -174,21 +245,25 @@ class ZohoInventoryService
                 'model_id' => $record->id,
                 'error' => $this->lastError ?: 'no error detail captured',
             ]);
-        });
 
-        // Only advance past this batch if everything in it actually succeeded — e.g.
-        // during a rate-limit outage every push in the batch fails, and advancing
-        // anyway would permanently mark those rows "handled" without ever having
-        // synced them. Matches the same all-or-nothing convention already used by
-        // the PO pull-side checkpoint below (only persists last_modified when
-        // failed === 0), so one non-transient bad row can still stall an entity's
-        // checkpoint — an accepted, pre-existing tradeoff, not a new one.
-        if ($records->isNotEmpty() && $failed === 0) {
-            $last = $records->last();
-            Cache::forever($cacheKey, ['at' => $last->updated_at->toDateTimeString(), 'id' => $last->id]);
+            if ($this->isRateLimitSignature($this->lastError)) {
+                $rateLimited = true;
+                $this->startRateLimitCooldown();
+            }
         }
 
-        return ['count' => $count, 'failed' => $failed];
+        // Only advance past what was actually attempted, and only if every attempted
+        // row succeeded — e.g. during a rate-limit outage every push fails, and
+        // advancing anyway would permanently mark those rows "handled" without ever
+        // having synced them. Matches the same all-or-nothing convention already used
+        // by the PO pull-side checkpoint below (only persists last_modified when
+        // failed === 0), so one non-transient bad row can still stall an entity's
+        // checkpoint — an accepted, pre-existing tradeoff, not a new one.
+        if ($lastAttempted && $failed === 0) {
+            Cache::forever($cacheKey, ['at' => $lastAttempted->updated_at->toDateTimeString(), 'id' => $lastAttempted->id]);
+        }
+
+        return ['count' => $count, 'failed' => $failed, 'rate_limited' => $rateLimited];
     }
 
     public function pushVendorContact(VendorMaster $vendor): bool
@@ -574,8 +649,8 @@ class ZohoInventoryService
      */
     public function syncRecentlyModifiedPurchaseOrders(?string $since = null, int $limit = 100): array
     {
-        if (! $this->isActive()) {
-            return ['synced' => 0, 'skipped' => 0, 'failed' => 1, 'last_modified' => $since];
+        if (! $this->isActive() || $this->inRateLimitCooldown()) {
+            return ['synced' => 0, 'skipped' => 0, 'failed' => 0, 'last_modified' => $since];
         }
 
         $response = $this->inventoryRequest()->get($this->invUrl('/purchaseorders', [
@@ -585,6 +660,12 @@ class ZohoInventoryService
         ]));
 
         if (! $response->successful()) {
+            if ($this->isRateLimitSignature($response->body())) {
+                $this->startRateLimitCooldown();
+
+                return ['synced' => 0, 'skipped' => 0, 'failed' => 0, 'last_modified' => $since];
+            }
+
             return ['synced' => 0, 'skipped' => 0, 'failed' => 1, 'last_modified' => $since];
         }
 
@@ -603,6 +684,12 @@ class ZohoInventoryService
 
             // The list endpoint doesn't include line_items — fetch the full record.
             $full = $this->inventoryRequest()->get($this->invUrl("/purchaseorders/{$record['purchaseorder_id']}"));
+
+            if (! $full->successful() && $this->isRateLimitSignature($full->body())) {
+                $this->startRateLimitCooldown();
+                break;
+            }
+
             $po = $full->successful() ? $this->syncPurchaseOrderData($full->json('purchaseorder')) : null;
             $po ? $synced++ : $failed++;
 
