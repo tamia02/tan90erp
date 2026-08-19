@@ -32,7 +32,9 @@ class AccessControlHierarchyTest extends TestCase
         $this->actingAs($user)->get(route('access.people.index'))->assertOk()->assertSee('Manage Users');
         $this->actingAs($user)->get(route('access.hierarchy.index'))->assertOk()->assertSee('Hierarchy Structure');
         $this->actingAs($user)->get(route('access.dashboard-builder.index'))->assertOk()->assertSee('Role Permission Dashboard Builder');
-        $this->actingAs($user)->get(route('workspace.index'))->assertOk()->assertSee('My Workspace');
+        // The page's h1 is "Command Center" (workspace/index.blade.php), not "My Workspace" —
+        // this assertion was written against an older copy of the page and never updated.
+        $this->actingAs($user)->get(route('workspace.index'))->assertOk()->assertSee('Command Center');
     }
 
     public function test_head_cannot_create_head_or_super_role(): void

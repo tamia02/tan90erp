@@ -81,7 +81,7 @@ class CsvImportService
         $invalid = 0;
         $duplicate = 0;
         $seenKeys = [];
-        $codeField = $entity['code'];
+        $codeField = $entity['import_key'] ?? $entity['code'];
         $modelClass = $entity['model'];
 
         DB::transaction(function () use ($rows, $header, $columnMap, $rules, $job, $codeField, $modelClass, &$valid, &$invalid, &$duplicate, &$seenKeys) {
@@ -198,8 +198,13 @@ class CsvImportService
     {
         $map = [];
         foreach ($entity['fields'] as $field) {
-            $needle = strtolower($field['name']);
-            $labelNeedle = strtolower(str_replace(' ', '', $field['label']));
+            // Both sides must be normalized the same way — a header column that
+            // matches the field name exactly except for underscores/spaces/hyphens
+            // (e.g. CSV column "tan90_item_category_id" vs field name
+            // "tan90_item_category_id") was never matching, because only the
+            // header side had them stripped before comparing.
+            $needle = strtolower(str_replace([' ', '_', '-'], '', $field['name']));
+            $labelNeedle = strtolower(str_replace([' ', '_', '-'], '', $field['label']));
             $match = null;
             foreach ($header as $column) {
                 $clean = strtolower(str_replace([' ', '_', '-'], '', $column));

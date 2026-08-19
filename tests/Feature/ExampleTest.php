@@ -10,10 +10,12 @@ class ExampleTest extends TestCase
     /**
      * A basic test example.
      */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_the_application_redirects_guests_to_login(): void
     {
+        // Unmodified default Laravel scaffold test — '/' now requires auth and
+        // redirects guests, so a plain 200 was never realistic for this app.
         $response = $this->get('/');
 
-        $response->assertStatus(200);
+        $response->assertRedirect(route('login'));
     }
 }

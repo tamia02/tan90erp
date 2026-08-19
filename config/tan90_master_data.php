@@ -251,6 +251,11 @@ return [
             'icon' => 'SK',
             'primary' => 'masking_code',
             'code' => 'masking_code',
+            // 'code' above is deliberately masking_code (client requirement: chemical
+            // identity never shown outside the edit form) — but that means it's never
+            // present in an imported CSV, so it can't serve as the CSV row de-dup key.
+            // import_key names the real natural key CSV rows actually carry.
+            'import_key' => 'sku',
             'columns' => ['masking_code', 'category.name', 'uom.code', 'hsn', 'qc_required', 'approval_status'],
             'searchable' => ['sku', 'code', 'name', 'hsn', 'masking_code'],
             'critical_fields' => ['tan90_uom_id', 'hsn', 'standard_cost'],

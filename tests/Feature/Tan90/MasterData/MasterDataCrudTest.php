@@ -77,7 +77,12 @@ class MasterDataCrudTest extends TestCase
 
     public function test_archive_is_soft_delete_and_restore_brings_it_back(): void
     {
-        $user = $this->masterDataManager();
+        // masterDataManager()'s grants deliberately exclude 'delete' — using it here
+        // made the destroy route 403 before ever touching the record, which looked
+        // like a broken archive/restore flow but was actually just the wrong fixture
+        // user for what this test is exercising (the archive/restore behavior itself,
+        // not who's allowed to trigger it).
+        $user = $this->superAdmin();
         $entity = LegalEntity::factory()->create();
 
         $this->actingAs($user)->delete(route('tan90.master-data.destroy', ['legal-entities', $entity->id]));

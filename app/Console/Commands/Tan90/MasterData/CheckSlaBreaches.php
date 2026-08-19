@@ -42,7 +42,11 @@ class CheckSlaBreaches extends Command
                 return;
             }
 
-            $elapsedHours = now()->diffInMinutes($progress->submitted_at) / 60;
+            // abs() because Carbon's diffInMinutes() returns a signed value here, and
+            // now()->diffInMinutes($pastDate) comes back negative — without it, elapsed
+            // time versus a threshold like ">= 1 hour" was always false for anything
+            // actually in the past, so no warning/escalation could ever fire.
+            $elapsedHours = abs(now()->diffInMinutes($progress->submitted_at)) / 60;
             $label = "{$entity['title']} #{$progress->entity_id}";
 
             if (! $progress->sla_warned_at && $policy->warningAtHours() !== null && $elapsedHours >= $policy->warningAtHours()) {
@@ -69,7 +73,7 @@ class CheckSlaBreaches extends Command
         $changePolicy = SlaPolicy::where('code', 'SLA-CRITICAL-CHANGE')->where('status', 'active')->first();
         if ($changePolicy) {
             MasterChangeRequest::whereIn('approval_status', ['pending', 'review'])->get()->each(function (MasterChangeRequest $cr) use ($changePolicy, $auditLogger, $notifications, &$warned, &$escalated) {
-                $elapsedHours = now()->diffInMinutes($cr->created_at) / 60;
+                $elapsedHours = abs(now()->diffInMinutes($cr->created_at)) / 60;
 
                 if ($changePolicy->escalateAtHours() !== null && $elapsedHours >= $changePolicy->escalateAtHours()) {
                     // Change requests have no warned/escalated tracking column of their own;
