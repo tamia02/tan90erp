@@ -17,7 +17,7 @@ class PushZohoInventoryData extends Command
         $result = $inventory->pushOperationalData((int) $this->option('limit'));
 
         if ($result['skipped']) {
-            $this->info('Zoho Inventory push skipped — organization_id and/or refresh token not configured yet.');
+            $this->info('Zoho Inventory push skipped — Inventory credentials are missing or the Zoho rate-limit cooldown is active.');
 
             return self::SUCCESS;
         }
