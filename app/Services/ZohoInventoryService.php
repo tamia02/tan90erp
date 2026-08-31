@@ -2,6 +2,10 @@
 
 namespace App\Services;
 
+use App\Services\Zoho\ZohoApiGate;
+use App\Services\Zoho\ZohoResult;
+use GuzzleHttp\Promise\Create;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use App\Models\FinanceRecord;
 use App\Models\GrnRecord;
 use App\Models\PurchaseOrder;
@@ -26,6 +30,8 @@ use Illuminate\Support\Facades\Log;
 class ZohoInventoryService
 {
     private ?string $lastError = null;
+
+    public function __construct(private readonly ZohoApiGate $apiGate) {}
 
     public function isActive(): bool
     {
@@ -75,9 +81,19 @@ class ZohoInventoryService
             return null;
         }
 
+        // Cache refresh failures briefly. Cache::remember() does not retain null,
+        // which previously caused every data request to hammer the token endpoint
+        // again when Zoho authentication was unavailable.
+        if (Cache::get('zoho_inventory_access_token_failed')) {
+            return null;
+        }
+
         return Cache::remember('zoho_inventory_access_token', 3300, function () {
             $accountsBase = config('services.zoho.accounts_base_url');
-            $response = Http::asForm()->post("{$accountsBase}/oauth/v2/token", [
+            $response = Http::asForm()
+                ->connectTimeout((int) config('services.zoho.inventory.connect_timeout', 5))
+                ->timeout((int) config('services.zoho.inventory.timeout', 15))
+                ->post("{$accountsBase}/oauth/v2/token", [
                 'refresh_token' => config('services.zoho.inventory.refresh_token'),
                 'client_id' => config('services.zoho.inventory.client_id'),
                 'client_secret' => config('services.zoho.inventory.client_secret'),
@@ -85,8 +101,12 @@ class ZohoInventoryService
             ]);
 
             if (! $response->successful() || $response->json('error')) {
+                Cache::put('zoho_inventory_access_token_failed', true, now()->addMinutes(10));
+
                 return null;
             }
+
+            Cache::forget('zoho_inventory_access_token_failed');
 
             return $response->json('access_token');
         });
@@ -106,7 +126,42 @@ class ZohoInventoryService
     {
         $token = $this->accessToken();
 
-        return Http::withHeaders(['Authorization' => "Zoho-oauthtoken {$token}"]);
+        return Http::withHeaders(['Authorization' => "Zoho-oauthtoken {$token}"])
+            ->connectTimeout((int) config('services.zoho.inventory.connect_timeout', 5))
+            ->timeout((int) config('services.zoho.inventory.timeout', 15))
+            ->withMiddleware(function (callable $handler): callable {
+                return function ($request, array $options) use ($handler) {
+                    if ($reason = $this->apiGate->acquire()) {
+                        $body = json_encode([
+                            'code' => 45,
+                            'message' => $reason,
+                            'blocked_locally' => true,
+                        ], JSON_THROW_ON_ERROR);
+
+                        return Create::promiseFor(new Psr7Response(
+                            429,
+                            ['Content-Type' => 'application/json', 'X-Tan90-Zoho-Blocked' => '1'],
+                            $body,
+                        ));
+                    }
+
+                    return $handler($request, $options)->then(function ($response) {
+                        $raw = (string) $response->getBody();
+                        $body = json_decode($raw, true);
+                        $body = is_array($body) ? $body : [];
+                        $outcome = $this->apiGate->classify($response->getStatusCode(), $body, $raw);
+
+                        $this->apiGate->record(new ZohoResult(
+                            $outcome,
+                            $response->getStatusCode(),
+                            $body,
+                            (string) ($body['message'] ?? $raw),
+                        ));
+
+                        return $response;
+                    });
+                };
+            });
     }
 
     /** Every Inventory endpoint needs organization_id on the query string, including POST/PUT — bake it into the URL so every verb gets it the same way. */
