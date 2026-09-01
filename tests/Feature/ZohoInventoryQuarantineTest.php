@@ -5,14 +5,20 @@ namespace Tests\Feature;
 use App\Models\VendorMaster;
 use App\Models\ZohoEntityLink;
 use App\Services\ZohoInventoryService;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
+/**
+ * RefreshDatabase, not DatabaseTransactions: pushOperationalData() sweeps every
+ * VendorMaster row, so this test needs a guaranteed-empty vendors table, not just
+ * isolation from its own writes — a transaction alone leaves pre-existing seeded
+ * demo vendors visible and blows the fixed Http::fake() response count.
+ */
 class ZohoInventoryQuarantineTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     protected function setUp(): void
     {
