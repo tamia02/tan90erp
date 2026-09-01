@@ -13,6 +13,7 @@ use App\Models\PurchaseOrderLine;
 use App\Models\SkuMaster;
 use App\Models\VendorMaster;
 use App\Models\VendorSubmission;
+use App\Models\ZohoEntityLink;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -39,42 +40,16 @@ class ZohoInventoryService
             && (bool) config('services.zoho.inventory.refresh_token');
     }
 
-    private const RATE_LIMIT_COOLDOWN_CACHE_KEY = 'zoho_inventory_rate_limit_cooldown_until';
-
     /**
-     * Circuit breaker: push and sync both share one Zoho org's daily API call cap, and
-     * both used to keep retrying their full backlog every 30 minutes even while rate
-     * limited — each retry re-consumed whatever quota had freed up before it could ever
-     * accumulate enough for a real success (confirmed live: still hitting error code 45
-     * more than 24 hours after the first hit, with 6,000+ failed attempts logged in that
-     * window). Once either side sees the rate-limit signature, both stay off entirely
-     * for a cooldown window instead of hammering it every cycle.
+     * Superseded by App\Services\Zoho\ZohoApiGate, which is now the sole authority on
+     * blocking — it gates every HTTP call directly (see inventoryRequest()) rather than
+     * this class independently deciding to pause based on string-matching a response
+     * body. Keeping both created a real bug: this class's old signature check matched
+     * on the gate's own "blocked locally" synthetic response (it deliberately echoes
+     * Zoho's code:45 shape), so every local block re-armed *this* class's separate
+     * 180-minute cooldown — confirmed live, stuck open a full hour after the gate's own
+     * breaker had already closed. One authority, not two disagreeing ones.
      */
-    private function inRateLimitCooldown(): bool
-    {
-        $until = Cache::get(self::RATE_LIMIT_COOLDOWN_CACHE_KEY);
-
-        return $until && \Illuminate\Support\Carbon::parse($until)->isFuture();
-    }
-
-    private function startRateLimitCooldown(): void
-    {
-        $minutes = (int) config('services.zoho.inventory.rate_limit_cooldown_minutes', 180);
-        $until = now()->addMinutes($minutes);
-
-        Cache::put(self::RATE_LIMIT_COOLDOWN_CACHE_KEY, $until->toDateTimeString(), $until);
-
-        Log::error("Zoho Inventory rate limit hit — pausing all push/sync until {$until->toDateTimeString()} to let the daily quota recover.");
-    }
-
-    private function isRateLimitSignature(?string $text): bool
-    {
-        return $text !== null && (
-            str_contains($text, '"code":45')
-            || str_contains(strtolower($text), 'exceeded the maximum call rate limit')
-        );
-    }
-
     private function accessToken(): ?string
     {
         if (! $this->isActive()) {
@@ -177,7 +152,7 @@ class ZohoInventoryService
      */
     public function pushOperationalData(int $limit = 200): array
     {
-        if (! $this->isActive() || $this->inRateLimitCooldown()) {
+        if (! $this->isActive()) {
             return ['items' => 0, 'vendors' => 0, 'purchase_orders' => 0, 'bills' => 0, 'purchase_receives' => 0, 'failed' => 0, 'skipped' => true];
         }
 
@@ -272,10 +247,21 @@ class ZohoInventoryService
 
         $records = $query->orderBy('updated_at')->orderBy('id')->limit($limit)->get();
         $lastAttempted = null;
+        $maxFailures = (int) config('services.zoho.inventory.max_record_failures', 3);
 
         foreach ($records as $record) {
             if ($rateLimited) {
                 break;
+            }
+
+            // A record that has burned through its failure budget keeps rejecting for
+            // the same content reason every time — Zoho isn't going to change its mind
+            // between cron runs. Skipping it here is what actually stops one bad GST
+            // number or a stale duplicate-item conflict from consuming API calls on an
+            // outcome that's already known, forever.
+            $link = ZohoEntityLink::for($record, $checkpointKey);
+            if ($link->isQuarantined()) {
+                continue;
             }
 
             $this->lastError = null;
@@ -283,6 +269,10 @@ class ZohoInventoryService
 
             if ($pusher($record)) {
                 $count++;
+
+                if ($link->exists && $link->failure_count > 0) {
+                    $link->forceFill(['failure_count' => 0, 'last_error' => null, 'quarantined_at' => null])->save();
+                }
 
                 continue;
             }
@@ -301,10 +291,20 @@ class ZohoInventoryService
                 'error' => $this->lastError ?: 'no error detail captured',
             ]);
 
-            if ($this->isRateLimitSignature($this->lastError)) {
+            // The gate's own synthetic block response is the only reliable "this call
+            // never left the process" signal — it's our own marker, not Zoho's wording,
+            // so it can't drift out of sync the way matching Zoho's error text did.
+            if (str_contains((string) $this->lastError, '"blocked_locally":true')) {
                 $rateLimited = true;
-                $this->startRateLimitCooldown();
+
+                continue;
             }
+
+            // Not a blocked call, so Zoho actually answered and rejected this record's
+            // content — a data problem, not a quota problem. Count it toward
+            // quarantine so it stops being retried once it's clearly never going to
+            // succeed as-is.
+            $link->markPermanentFailure($this->lastError ?: 'unknown error', $maxFailures);
         }
 
         // Only advance past what was actually attempted, and only if every attempted
@@ -424,6 +424,10 @@ class ZohoInventoryService
 
         $existing = $this->findPurchaseOrderByReference($po->po_number);
 
+        if ($existing === false) {
+            return ['success' => false, 'action' => 'failed', 'status' => null, 'message' => "Zoho Inventory PO lookup failed for {$po->po_number} — not attempting an upsert blind, to avoid creating a duplicate.", 'zoho_id' => null];
+        }
+
         $response = $existing
             ? $this->inventoryRequest()->put($this->invUrl("/purchaseorders/{$existing['purchaseorder_id']}"), $payload)
             : $this->inventoryRequest()->post($this->invUrl('/purchaseorders'), $payload);
@@ -522,6 +526,11 @@ class ZohoInventoryService
         }
 
         $po = $this->findPurchaseOrderByReference($poNumber);
+        if ($po === false) {
+            $this->lastError = "Zoho Inventory purchase receive for GRN #{$record->id}: PO lookup for {$poNumber} failed — not attempting blind, to avoid creating a duplicate.";
+
+            return false;
+        }
         if (! $po || empty($po['line_items'][0])) {
             $this->lastError = "Zoho Inventory purchase receive for GRN #{$record->id}: PO {$poNumber} not found in Inventory or has no line items.";
 
@@ -550,6 +559,12 @@ class ZohoInventoryService
         ]];
 
         $existing = $this->findPurchaseReceiveForPo((string) $po['purchaseorder_id']);
+
+        if ($existing === false) {
+            $this->lastError = "Zoho Inventory purchase receive lookup failed for GRN #{$record->id} (PO {$poNumber}) — not attempting an upsert blind, to avoid creating a duplicate.";
+
+            return false;
+        }
 
         $response = $existing
             ? $this->inventoryRequest()->put($this->invUrl("/purchasereceives/{$existing['purchasereceive_id']}"), $payload)
@@ -704,7 +719,7 @@ class ZohoInventoryService
      */
     public function syncRecentlyModifiedPurchaseOrders(?string $since = null, int $limit = 100): array
     {
-        if (! $this->isActive() || $this->inRateLimitCooldown()) {
+        if (! $this->isActive()) {
             return ['synced' => 0, 'skipped' => 0, 'failed' => 0, 'last_modified' => $since];
         }
 
@@ -715,13 +730,11 @@ class ZohoInventoryService
         ]));
 
         if (! $response->successful()) {
-            if ($this->isRateLimitSignature($response->body())) {
-                $this->startRateLimitCooldown();
+            // A locally-blocked call (gate closed the door before this ever reached
+            // the wire) isn't a real failure — nothing to log or count.
+            $blocked = str_contains($response->body(), '"blocked_locally":true');
 
-                return ['synced' => 0, 'skipped' => 0, 'failed' => 0, 'last_modified' => $since];
-            }
-
-            return ['synced' => 0, 'skipped' => 0, 'failed' => 1, 'last_modified' => $since];
+            return ['synced' => 0, 'skipped' => 0, 'failed' => $blocked ? 0 : 1, 'last_modified' => $since];
         }
 
         $synced = 0;
@@ -740,8 +753,7 @@ class ZohoInventoryService
             // The list endpoint doesn't include line_items — fetch the full record.
             $full = $this->inventoryRequest()->get($this->invUrl("/purchaseorders/{$record['purchaseorder_id']}"));
 
-            if (! $full->successful() && $this->isRateLimitSignature($full->body())) {
-                $this->startRateLimitCooldown();
+            if (! $full->successful() && str_contains($full->body(), '"blocked_locally":true')) {
                 break;
             }
 
@@ -756,12 +768,20 @@ class ZohoInventoryService
         return ['synced' => $synced, 'skipped' => $skipped, 'failed' => $failed, 'last_modified' => $latest];
     }
 
-    private function findContactByName(string $name): ?array
+    /**
+     * Returns the matching contact, null when the lookup succeeded and genuinely found
+     * nothing, or false when the lookup call itself failed. That distinction matters:
+     * every caller used to treat "couldn't check" the same as "doesn't exist" and went
+     * on to create a new record — which is exactly how a transient failure on this GET
+     * turned into a real "Item already exists" / duplicate-contact rejection on the
+     * POST right after it.
+     */
+    private function findContactByName(string $name): array|false|null
     {
         $response = $this->inventoryRequest()->get($this->invUrl('/contacts', ['contact_name' => $name]));
 
         if (! $response->successful()) {
-            return null;
+            return false;
         }
 
         foreach ($response->json('contacts', []) as $contact) {
@@ -780,6 +800,12 @@ class ZohoInventoryService
         }
 
         $existing = $this->findContactByName($name);
+
+        if ($existing === false) {
+            $this->lastError = "Zoho Inventory contact lookup failed for {$name} — not attempting an upsert blind, to avoid creating a duplicate.";
+
+            return false;
+        }
 
         $response = $existing
             ? $this->inventoryRequest()->put($this->invUrl("/contacts/{$existing['contact_id']}"), $payload)
@@ -805,6 +831,11 @@ class ZohoInventoryService
         }
 
         $existing = $this->findContactByName($name);
+        if ($existing === false) {
+            $this->lastError = "Zoho Inventory vendor lookup failed for {$name} — not attempting create to avoid a duplicate.";
+
+            return null;
+        }
         if ($existing) {
             return $existing;
         }
@@ -824,12 +855,13 @@ class ZohoInventoryService
         return $response->json('contact');
     }
 
-    private function findItemBySku(string $sku): ?array
+    /** See findContactByName() — same false-on-lookup-failure vs null-on-genuinely-not-found distinction. */
+    private function findItemBySku(string $sku): array|false|null
     {
         $response = $this->inventoryRequest()->get($this->invUrl('/items', ['sku' => $sku]));
 
         if (! $response->successful()) {
-            return null;
+            return false;
         }
 
         foreach ($response->json('items', []) as $item) {
@@ -848,6 +880,12 @@ class ZohoInventoryService
         }
 
         $existing = $this->findItemBySku($sku);
+
+        if ($existing === false) {
+            $this->lastError = "Zoho Inventory item lookup failed for {$sku} — not attempting an upsert blind, to avoid creating a duplicate.";
+
+            return false;
+        }
 
         $response = $existing
             ? $this->inventoryRequest()->put($this->invUrl("/items/{$existing['item_id']}"), $payload)
@@ -873,6 +911,11 @@ class ZohoInventoryService
         }
 
         $existing = $this->findItemBySku($sku);
+        if ($existing === false) {
+            $this->lastError = "Zoho Inventory item lookup failed for {$sku} — not attempting create to avoid a duplicate.";
+
+            return null;
+        }
         if ($existing) {
             return $existing;
         }
@@ -895,12 +938,13 @@ class ZohoInventoryService
         return $response->json('item');
     }
 
-    private function findPurchaseOrderByReference(string $reference): ?array
+    /** See findContactByName() — same false-on-lookup-failure vs null-on-genuinely-not-found distinction. */
+    private function findPurchaseOrderByReference(string $reference): array|false|null
     {
         $response = $this->inventoryRequest()->get($this->invUrl('/purchaseorders', ['reference_number' => $reference]));
 
         if (! $response->successful()) {
-            return null;
+            return false;
         }
 
         foreach ($response->json('purchaseorders', []) as $po) {
@@ -915,12 +959,13 @@ class ZohoInventoryService
         return null;
     }
 
-    private function findBillByNumber(string $billNumber): ?array
+    /** See findContactByName() — same false-on-lookup-failure vs null-on-genuinely-not-found distinction. */
+    private function findBillByNumber(string $billNumber): array|false|null
     {
         $response = $this->inventoryRequest()->get($this->invUrl('/bills', ['bill_number' => $billNumber]));
 
         if (! $response->successful()) {
-            return null;
+            return false;
         }
 
         foreach ($response->json('bills', []) as $bill) {
@@ -940,6 +985,12 @@ class ZohoInventoryService
 
         $existing = $this->findBillByNumber($billNumber);
 
+        if ($existing === false) {
+            $this->lastError = "Zoho Inventory bill lookup failed for {$billNumber} — not attempting an upsert blind, to avoid creating a duplicate.";
+
+            return false;
+        }
+
         $response = $existing
             ? $this->inventoryRequest()->put($this->invUrl("/bills/{$existing['bill_id']}"), $payload)
             : $this->inventoryRequest()->post($this->invUrl('/bills'), $payload);
@@ -953,12 +1004,13 @@ class ZohoInventoryService
         return false;
     }
 
-    private function findPurchaseReceiveForPo(string $purchaseOrderId): ?array
+    /** See findContactByName() — same false-on-lookup-failure vs null-on-genuinely-not-found distinction. */
+    private function findPurchaseReceiveForPo(string $purchaseOrderId): array|false|null
     {
         $response = $this->inventoryRequest()->get($this->invUrl('/purchasereceives', ['purchaseorder_id' => $purchaseOrderId]));
 
         if (! $response->successful()) {
-            return null;
+            return false;
         }
 
         return $response->json('purchasereceives.0');
