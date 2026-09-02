@@ -13,6 +13,13 @@ new #[Layout('layouts.app')] class extends Component
     public function setStatus(int $id, string $status): void
     {
         $record = FinanceRecord::findOrFail($id);
+
+        if ($status === 'cleared' && $record->match_status !== 'matched') {
+            $this->addError('match', 'Only invoices that have passed the three-way match can be cleared for payment.');
+
+            return;
+        }
+
         $record->update(['vendor_status' => $status, 'notes' => $this->notes ?: $record->notes]);
 
         AuditLogger::log("Vendor status set to {$status}", (string) $record->gate_entry_id, $record);
@@ -22,13 +29,15 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        return ['records' => FinanceRecord::with('gateEntry')->orderByDesc('created_at')->get()];
+        return ['records' => FinanceRecord::with(['gateEntry', 'debitNotes'])->orderByDesc('created_at')->get()];
     }
 }; ?>
 
 <div class="max-w-4xl mx-auto">
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Finance Review</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Every payable, deductions and vendor closure status.</p>
+
+    @error('match') <div class="mb-4 p-3 rounded text-sm text-red-800 bg-red-100">{{ $message }}</div> @enderror
 
     <div class="flex flex-col gap-3">
         @forelse ($records as $r)
@@ -38,8 +47,19 @@ new #[Layout('layouts.app')] class extends Component
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }} · {{ $r->vendor_name }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">Invoice {{ $r->invoice_number ?? '—' }} · Rate ₹{{ $r->rate_per_unit }}/unit</div>
                     </div>
-                    <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->vendor_status === 'cleared' ? 'var(--status-good)' : ($r->vendor_status === 'hold' ? 'var(--status-critical)' : 'var(--status-warning)') }};">{{ $r->vendor_status }}</span>
+                    <div class="flex gap-2">
+                        <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->match_status === 'matched' ? 'var(--status-good)' : ($r->match_status === 'exception' ? 'var(--status-critical)' : 'var(--text-muted)') }};">match: {{ $r->match_status }}</span>
+                        <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->vendor_status === 'cleared' ? 'var(--status-good)' : ($r->vendor_status === 'hold' ? 'var(--status-critical)' : 'var(--status-warning)') }};">{{ $r->vendor_status }}</span>
+                    </div>
                 </div>
+                @if ($r->match_status === 'exception' && $r->match_notes)
+                    <div class="text-xs mt-2" style="color: var(--status-critical);">{{ $r->match_notes }}</div>
+                @endif
+                @if ($r->debitNotes->isNotEmpty())
+                    <div class="text-xs mt-2" style="color: var(--text-secondary);">
+                        Debit notes: {{ $r->debitNotes->map(fn ($d) => "{$d->reason} (₹".number_format($d->amount, 2).")")->implode(', ') }}
+                    </div>
+                @endif
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-xs">
                     <div><div style="color: var(--text-muted);">Invoice Value</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->invoice_value, 2) }}</div></div>
                     <div><div style="color: var(--text-muted);">Accepted Value</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->accepted_value, 2) }}</div></div>
@@ -60,7 +80,13 @@ new #[Layout('layouts.app')] class extends Component
                     @if ($editing !== $r->id)
                         <button wire:click="$set('editing', {{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--border); color: var(--text-primary);">Add note</button>
                     @endif
-                    <button wire:click="setStatus({{ $r->id }}, 'cleared')" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-good); color: var(--status-good);">Clear</button>
+                    <button
+                        wire:click="setStatus({{ $r->id }}, 'cleared')"
+                        @disabled($r->match_status !== 'matched')
+                        title="{{ $r->match_status !== 'matched' ? 'Blocked until the three-way match passes' : '' }}"
+                        class="text-xs font-medium rounded-lg px-2.5 py-1.5 border disabled:opacity-40 disabled:cursor-not-allowed"
+                        style="border-color: var(--status-good); color: var(--status-good);"
+                    >Clear</button>
                     <button wire:click="setStatus({{ $r->id }}, 'hold')" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-critical); color: var(--status-critical);">Hold</button>
                 </div>
             </div>

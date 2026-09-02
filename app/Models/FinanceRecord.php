@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'created_by', 'gate_entry_id', 'vendor_name', 'invoice_number', 'rate_per_unit',
     'invoice_value', 'accepted_value', 'deduction_defective', 'deduction_rejected',
-    'deduction_missing', 'final_payable', 'vendor_status', 'notes',
+    'deduction_missing', 'final_payable', 'match_status', 'match_notes', 'vendor_status', 'notes',
 ])]
 class FinanceRecord extends Model
 {
@@ -30,5 +30,15 @@ class FinanceRecord extends Model
     public function gateEntry(): BelongsTo
     {
         return $this->belongsTo(GateEntry::class);
+    }
+
+    public function debitNotes(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DebitNote::class);
+    }
+
+    public function totalDeductions(): float
+    {
+        return (float) $this->deduction_defective + (float) $this->deduction_rejected + (float) $this->deduction_missing;
     }
 }

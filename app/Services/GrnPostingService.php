@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\DebitNote;
 use App\Models\FinanceRecord;
 use App\Models\GateEntry;
 use App\Models\GrnRecord;
@@ -15,6 +16,8 @@ use App\Models\LedgerEntry;
 class GrnPostingService
 {
     private const RATE_PER_UNIT = 42; // matches the React prototype's placeholder rate
+
+    public function __construct(private readonly ThreeWayMatchService $threeWayMatch) {}
 
     public function post(GateEntry $gate, string $suggestedBin): ?GrnRecord
     {
@@ -58,7 +61,7 @@ class GrnPostingService
         }
 
         $rate = self::RATE_PER_UNIT;
-        FinanceRecord::create([
+        $financeRecord = FinanceRecord::create([
             'created_by' => auth()->id(),
             'gate_entry_id' => $gate->id,
             'vendor_name' => $gate->vendor_name ?? 'Unknown Vendor',
@@ -73,10 +76,33 @@ class GrnPostingService
             'vendor_status' => 'pending',
         ]);
 
+        $this->threeWayMatch->check($financeRecord);
+        $this->issueDebitNoteIfNeeded($financeRecord);
+
         $gate->update(['status' => 'closed']);
 
         AuditLogger::log('GRN Check posted, stock updated', "{$gate->gate_no} · bin {$suggestedBin}", $grn);
 
         return $grn;
+    }
+
+    /** One debit note per deduction reason, raised automatically the moment the deduction is known — not left for someone to remember to do manually. */
+    private function issueDebitNoteIfNeeded(FinanceRecord $record): void
+    {
+        foreach ([
+            'Defective goods' => $record->deduction_defective,
+            'Rejected goods' => $record->deduction_rejected,
+            'Missing quantity' => $record->deduction_missing,
+        ] as $reason => $amount) {
+            if ((float) $amount > 0) {
+                DebitNote::create([
+                    'finance_record_id' => $record->id,
+                    'vendor_name' => $record->vendor_name,
+                    'reason' => $reason,
+                    'amount' => $amount,
+                    'status' => 'issued',
+                ]);
+            }
+        }
     }
 }

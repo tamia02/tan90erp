@@ -147,6 +147,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('submissions', 'vendor.submissions')->name('submissions');
         Volt::route('stock', 'vendor.stock-update')->name('stock');
         Volt::route('submissions/{submission}/activity', 'vendor.submission-activity')->name('submission-activity');
+        Volt::route('purchase-orders', 'vendor.purchase-orders')->name('purchase-orders');
+        Volt::route('claims', 'vendor.claims')->name('claims');
     });
 
     Route::middleware('role:storeExec')->prefix('unloading')->name('unloading.')->group(function () {
@@ -187,6 +189,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('review', 'finance.review')->name('review');
         Volt::route('claims', 'finance.vendor-claims')->name('claims');
         Volt::route('reports', 'finance.reports')->name('reports');
+        Volt::route('ap-aging', 'finance.ap-aging')->name('ap-aging');
     });
 
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
@@ -198,6 +201,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('rfq', 'admin.rfq')->name('rfq');
         Volt::route('quote-comparison', 'admin.quote-comparison')->name('quote-comparison');
         Volt::route('vendor-scorecard', 'admin.vendor-scorecard')->name('vendor-scorecard');
+        Volt::route('supplier-claims', 'admin.supplier-claims')->name('supplier-claims');
         Volt::route('integrations', 'admin.integrations')->name('integrations');
         Volt::route('reports', 'admin.reports')->name('reports');
     });
