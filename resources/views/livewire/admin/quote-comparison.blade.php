@@ -62,6 +62,7 @@ new #[Layout('layouts.app')] class extends Component
                                 <th class="py-2 pr-2 font-medium">Vendor</th>
                                 <th class="py-2 pr-2 font-medium">Quantity</th>
                                 <th class="py-2 pr-2 font-medium">Quoted Price</th>
+                                <th class="py-2 pr-2 font-medium">Weighted Score</th>
                                 <th class="py-2 pr-2 font-medium">Status</th>
                                 <th class="py-2 font-medium"></th>
                             </tr>
@@ -72,6 +73,7 @@ new #[Layout('layouts.app')] class extends Component
                                     <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $row->vendor_name }}</td>
                                     <td class="py-2 pr-2" style="color: var(--text-secondary);">{{ $row->quantity }}</td>
                                     <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $row->quoted_price ? '₹'.number_format($row->quoted_price, 2) : '—' }}</td>
+                                    <td class="py-2 pr-2" style="color: var(--text-primary);">{{ $row->weightedScore() ?? '—' }}</td>
                                     <td class="py-2 pr-2">
                                         <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $row->status === 'selected' ? 'var(--status-good)' : ($row->status === 'quoted' ? 'var(--text-primary)' : 'var(--status-warning)') }};">{{ $row->status }}</span>
                                     </td>

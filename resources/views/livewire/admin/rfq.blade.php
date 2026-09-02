@@ -55,6 +55,31 @@ new #[Layout('layouts.app')] class extends Component
         $this->reset(['editing', 'quotedPrice', 'adminNotes']);
     }
 
+    public string $technicalScore = '';
+
+    public string $commercialScore = '';
+
+    public function evaluate(int $id): void
+    {
+        $rfq = Rfq::findOrFail($id);
+
+        $this->validate([
+            'technicalScore' => ['required', 'integer', 'min:0', 'max:100'],
+            'commercialScore' => ['required', 'integer', 'min:0', 'max:100'],
+        ]);
+
+        $rfq->update([
+            'technical_score' => $this->technicalScore,
+            'commercial_score' => $this->commercialScore,
+            'evaluated_by' => auth()->id(),
+            'evaluated_at' => now(),
+        ]);
+
+        AuditLogger::log('RFQ evaluated', "{$rfq->sku} · {$rfq->vendor_name} · weighted {$rfq->weightedScore()}", $rfq);
+
+        $this->reset(['technicalScore', 'commercialScore']);
+    }
+
     public function with(): array
     {
         return ['rfqs' => Rfq::orderByDesc('created_at')->get()];
@@ -85,6 +110,9 @@ new #[Layout('layouts.app')] class extends Component
                 @if ($r->admin_notes)
                     <div class="text-xs mt-1" style="color: var(--text-muted);">Admin notes: {{ $r->admin_notes }}</div>
                 @endif
+                @if ($r->weightedScore() !== null)
+                    <div class="text-xs mt-1" style="color: var(--text-primary);">Evaluation: technical {{ $r->technical_score }}/100 · commercial {{ $r->commercial_score }}/100 · weighted <strong>{{ $r->weightedScore() }}</strong></div>
+                @endif
 
                 @if ($editing === $r->id)
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -100,12 +128,30 @@ new #[Layout('layouts.app')] class extends Component
                     </div>
                 @endif
 
+                @if ($r->status === 'quoted')
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                        <label class="flex flex-col gap-1.5 text-sm">
+                            <span class="font-medium" style="color: var(--text-primary);">Technical score (0-100)</span>
+                            <input wire:model="technicalScore" type="number" min="0" max="100" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                            @error('technicalScore') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="flex flex-col gap-1.5 text-sm">
+                            <span class="font-medium" style="color: var(--text-primary);">Commercial score (0-100)</span>
+                            <input wire:model="commercialScore" type="number" min="0" max="100" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                            @error('commercialScore') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                        </label>
+                    </div>
+                @endif
+
                 <div class="flex gap-2 mt-3">
                     @if ($editing !== $r->id && ! in_array($r->status, ['closed', 'selected']))
                         <button wire:click="edit({{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--border); color: var(--text-primary);">Add quote / notes</button>
                     @endif
                     @if ($editing === $r->id)
                         <button wire:click="markQuoted({{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-good); color: var(--status-good);">Save quote</button>
+                    @endif
+                    @if ($r->status === 'quoted')
+                        <button wire:click="evaluate({{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--primary); color: var(--primary);">Save evaluation</button>
                     @endif
                     @if (! in_array($r->status, ['closed', 'selected']))
                         <button wire:click="close({{ $r->id }})" wire:confirm="Close this RFQ?" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-critical); color: var(--status-critical);">Close</button>
