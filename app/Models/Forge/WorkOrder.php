@@ -24,7 +24,7 @@ class WorkOrder extends Model
     protected $table = 'forge_work_orders';
 
     protected $fillable = [
-        'wo_number', 'production_plan_id', 'finished_good_id', 'bom_id', 'recipe_id', 'routing_id',
+        'wo_number', 'production_plan_id', 'source_deviation_id', 'finished_good_id', 'bom_id', 'recipe_id', 'routing_id',
         'plant', 'batch_number', 'target_qty', 'good_qty', 'rework_qty', 'rejected_qty', 'uom',
         'status', 'created_by', 'released_by', 'released_at', 'closed_at',
     ];
@@ -40,6 +40,11 @@ class WorkOrder extends Model
     public function productionPlan(): BelongsTo
     {
         return $this->belongsTo(ProductionPlan::class, 'production_plan_id');
+    }
+
+    public function sourceDeviation(): BelongsTo
+    {
+        return $this->belongsTo(Deviation::class, 'source_deviation_id');
     }
 
     public function finishedGood(): BelongsTo

@@ -8,6 +8,8 @@ use App\Models\Access\AccessRole;
 use App\Models\Access\AccessTeam;
 use App\Models\Access\AccessUnit;
 use App\Models\Access\AccessVertical;
+use App\Models\Forge\Freezer;
+use App\Models\Forge\FreezerReading;
 use App\Models\Forge\JobCard;
 use App\Models\Forge\Machine;
 use App\Models\Forge\ProductionPlan;
@@ -116,19 +118,22 @@ class ForgeAccessSeeder extends Seeder
             'forge.plan.view', 'forge.plan.create', 'forge.plan.approve',
             'forge.workorder.view', 'forge.workorder.create', 'forge.workorder.release', 'forge.material.issue', 'forge.jobcard.record',
             'forge.machine.view', 'forge.machine.downtime',
+            'forge.freezer.view', 'forge.freezer.monitor',
             'forge.production.record', 'forge.production.approve',
-            'forge.wastage.record', 'forge.wastage.approve',
+            'forge.wastage.record', 'forge.wastage.approve', 'forge.yield.view',
             'forge.deviation.view', 'forge.deviation.manage', 'forge.batch.trace',
         ]), 'team', true);
 
         $sync($roles['MANAGER-QUALITY'], array_merge($common, [
-            'forge.workorder.view', 'forge.ipqc.record', 'forge.ipqc.release',
-            'forge.finalqc.record', 'forge.finalqc.release',
+            'forge.workorder.view', 'forge.workorder.create', 'forge.ipqc.record', 'forge.ipqc.release',
+            'forge.finalqc.record', 'forge.finalqc.release', 'forge.yield.view',
             'forge.deviation.view', 'forge.deviation.manage', 'forge.batch.trace',
         ]), 'team', true);
 
         $sync($roles['MANAGER-MAINTENANCE'], array_merge($common, [
-            'forge.machine.view', 'forge.machine.downtime', 'forge.deviation.view', 'forge.deviation.manage',
+            'forge.machine.view', 'forge.machine.downtime',
+            'forge.freezer.view', 'forge.freezer.monitor',
+            'forge.deviation.view', 'forge.deviation.manage',
         ]), 'team', true);
 
         $sync($roles['EXEC-PLANNER'], array_merge($common, [
@@ -137,6 +142,7 @@ class ForgeAccessSeeder extends Seeder
 
         $sync($roles['EXEC-SUPERVISOR'], array_merge($common, [
             'forge.workorder.view', 'forge.material.issue', 'forge.jobcard.record', 'forge.machine.view',
+            'forge.freezer.view', 'forge.freezer.monitor',
             'forge.production.record', 'forge.wastage.record', 'forge.deviation.view',
         ]), 'assigned');
 
@@ -150,6 +156,7 @@ class ForgeAccessSeeder extends Seeder
 
         $sync($roles['EXEC-MAINTENANCE'], array_merge($common, [
             'forge.machine.view', 'forge.machine.downtime',
+            'forge.freezer.view', 'forge.freezer.monitor',
         ]), 'assigned');
     }
 
@@ -239,6 +246,39 @@ class ForgeAccessSeeder extends Seeder
                     'machine_id' => $machine->id,
                     'planned_qty' => $wo->target_qty,
                     'status' => 'pending',
+                ]);
+            }
+        }
+
+        $this->seedFreezers($workCenter->plant);
+    }
+
+    private function seedFreezers(?string $plant): void
+    {
+        $freezerOne = Freezer::updateOrCreate(['code' => 'BF-PCM-01'], [
+            'name' => 'Blast Freezer 1', 'plant' => $plant, 'capacity' => 2000,
+            'threshold_temp_min' => -25, 'threshold_temp_max' => -18, 'state' => 'idle', 'status' => 'active',
+        ]);
+        $freezerTwo = Freezer::updateOrCreate(['code' => 'BF-PCM-02'], [
+            'name' => 'Blast Freezer 2', 'plant' => $plant, 'capacity' => 1500,
+            'threshold_temp_min' => -25, 'threshold_temp_max' => -18, 'state' => 'idle', 'status' => 'active',
+        ]);
+
+        // A short, in-range reading history so the dashboard shows a real trend
+        // on a fresh install rather than an empty chart.
+        if ($freezerOne->readings()->count() === 0) {
+            foreach ([-20.1, -19.8, -20.4, -19.6, -20.0] as $i => $temp) {
+                FreezerReading::create([
+                    'freezer_id' => $freezerOne->id, 'temperature' => $temp, 'humidity' => 62,
+                    'is_alert' => false, 'recorded_at' => now()->subHours(5 - $i),
+                ]);
+            }
+        }
+        if ($freezerTwo->readings()->count() === 0) {
+            foreach ([-21.0, -20.7, -21.2] as $i => $temp) {
+                FreezerReading::create([
+                    'freezer_id' => $freezerTwo->id, 'temperature' => $temp, 'humidity' => 58,
+                    'is_alert' => false, 'recorded_at' => now()->subHours(3 - $i),
                 ]);
             }
         }

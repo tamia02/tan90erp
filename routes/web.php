@@ -13,7 +13,9 @@ use App\Http\Controllers\Forge\BatchController;
 use App\Http\Controllers\Forge\DeviationController;
 use App\Http\Controllers\Forge\FinalQcController;
 use App\Http\Controllers\Forge\ForgeDashboardController;
+use App\Http\Controllers\Forge\FreezerController;
 use App\Http\Controllers\Forge\MachineController;
+use App\Http\Controllers\Forge\YieldAnalysisController;
 use App\Http\Controllers\Forge\ProductionPlanController;
 use App\Http\Controllers\Forge\QualityHoldController;
 use App\Http\Controllers\Forge\WastageController;
@@ -300,6 +302,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('downtime/{downtime}/close', [MachineController::class, 'closeDowntime'])->name('downtime.close');
         });
 
+        Route::prefix('freezers')->name('freezers.')->group(function () {
+            Route::get('/', [FreezerController::class, 'index'])->name('index');
+            Route::post('{freezer}/readings', [FreezerController::class, 'recordReading'])->name('readings.store');
+            Route::post('{freezer}/assign', [FreezerController::class, 'assignBatch'])->name('assign');
+            Route::post('logs/{log}/release', [FreezerController::class, 'releaseBatch'])->name('release');
+        });
+
+        Route::get('yield', [YieldAnalysisController::class, 'index'])->name('yield.index');
+
         Route::prefix('wastage')->name('wastage.')->group(function () {
             Route::get('/', [WastageController::class, 'index'])->name('index');
             Route::post('/', [WastageController::class, 'store'])->name('store');
@@ -322,6 +333,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/', [DeviationController::class, 'index'])->name('index');
             Route::post('/', [DeviationController::class, 'store'])->name('store');
             Route::put('{deviation}', [DeviationController::class, 'update'])->name('update');
+            Route::post('{deviation}/rework-order', [DeviationController::class, 'createReworkOrder'])->name('rework-order');
         });
 
         Route::prefix('batches')->name('batches.')->group(function () {

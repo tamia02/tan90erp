@@ -25,6 +25,8 @@
                     <option value="machine">Machine</option>
                     <option value="traceability">Traceability</option>
                 </select>
+                <input class="access-input" type="number" step="0.001" name="qty" placeholder="Affected qty">
+                <input class="access-input" name="uom" placeholder="UOM">
             </div>
             <textarea class="access-input" name="description" placeholder="Description" required></textarea>
             <textarea class="access-input" name="containment" placeholder="Immediate containment"></textarea>
@@ -41,6 +43,23 @@
                             <span class="access-chip ml-2">{{ str($dev->status)->headline() }}</span>
                         </summary>
                         <p class="mt-2 text-sm">{{ $dev->description }}</p>
+                        @if ($dev->qty)
+                            <p class="access-muted text-sm">Affected qty: {{ $dev->qty }} {{ $dev->uom }}</p>
+                        @endif
+
+                        @if ($dev->disposition === 'rework')
+                            @if ($dev->reworkWorkOrder)
+                                <p class="text-sm">Rework order: <a href="{{ route('forge.workorders.show', $dev->reworkWorkOrder) }}" class="underline">{{ $dev->reworkWorkOrder->wo_number }}</a> ({{ str($dev->reworkWorkOrder->status)->headline() }})</p>
+                            @elseif ($dev->qty)
+                                <form method="post" action="{{ route('forge.deviations.rework-order', $dev) }}">
+                                    @csrf
+                                    <button class="access-btn access-btn-primary">Create Rework Work Order</button>
+                                </form>
+                            @else
+                                <p class="access-muted text-sm">No affected quantity was recorded when this deviation was opened, so a rework work order can't be created for it.</p>
+                            @endif
+                        @endif
+
                         <form class="space-y-2 mt-3" method="post" action="{{ route('forge.deviations.update', $dev) }}">
                             @csrf
                             @method('PUT')
