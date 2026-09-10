@@ -580,17 +580,18 @@ class ZohoInventoryService
     }
 
     /**
-     * @return array{vendors: int, items: int, failed: int}
+     * @return array{vendors: int, items: int, customers: int, failed: int}
      */
     public function syncMasterData(int $limit = 200): array
     {
         if (! $this->isActive()) {
-            return ['vendors' => 0, 'items' => 0, 'failed' => 1];
+            return ['vendors' => 0, 'items' => 0, 'customers' => 0, 'failed' => 1];
         }
 
         return [
             'vendors' => $this->syncVendors($limit),
             'items' => $this->syncItems($limit),
+            'customers' => $this->syncCustomers($limit),
             'failed' => 0,
         ];
     }
@@ -770,6 +771,79 @@ class ZohoInventoryService
                 'tan90_item_category_id' => $existing?->tan90_item_category_id ?? $category->id,
                 'tan90_uom_id' => $existing?->tan90_uom_id ?? $uom->id,
                 'standard_cost' => $record['rate'] ?? $existing?->standard_cost,
+                'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
+                'approval_status' => 'approved',
+            ],
+        );
+    }
+
+    private function syncCustomers(int $limit): int
+    {
+        $response = $this->inventoryRequest()->get($this->invUrl('/contacts', [
+            'contact_type' => 'customer',
+            'per_page' => min(max($limit, 1), 200),
+            'sort_column' => 'last_modified_time',
+            'sort_order' => 'D',
+        ]));
+
+        if (! $response->successful()) {
+            return 0;
+        }
+
+        $count = 0;
+
+        foreach ($response->json('contacts', []) as $record) {
+            $name = trim((string) ($record['contact_name'] ?? ''));
+
+            if ($name === '') {
+                continue;
+            }
+
+            $this->syncToMasterDataCustomer($record, $name);
+
+            $count++;
+        }
+
+        return $count;
+    }
+
+    /**
+     * Same disconnect found and fixed for Vendors/Items, on the customer
+     * side: Zoho's /contacts endpoint returns both vendors and customers
+     * (filtered by contact_type), but only the vendor half was ever synced
+     * anywhere. Tan90\MasterData\Customer (tan90_customers) had no Zoho
+     * sync at all — confirmed live: 24 real customer contacts in the Zoho
+     * org (Bharat Serums and Vaccines, TATA 1MG Technologies, Amazon Seller
+     * Services, etc.) with nothing on the app side reflecting them. Matched
+     * on name for the same reason as syncToMasterDataVendor: the live org
+     * has distinct contact_ids sharing a name, and collapsing by name is
+     * what avoided the duplicate-row bug found and fixed there.
+     */
+    private function syncToMasterDataCustomer(array $record, string $name): void
+    {
+        $existing = \App\Models\Tan90\MasterData\Customer::where('name', $name)->first();
+        $code = $existing?->code ?? 'ZC-'.str($name)->slug()->upper();
+
+        $gstNumber = ($record['gst_no'] ?? null) ?: null;
+        $billingAddress = $record['billing_address'] ?? [];
+
+        \App\Models\Tan90\MasterData\Customer::updateOrCreate(
+            ['name' => $name],
+            [
+                'code' => $code,
+                'gstin' => $gstNumber ?: $existing?->gstin,
+                // tan90_customers.segment is a fixed enum (Pharma/Frozen
+                // Foods/Dairy/Agriculture/E-commerce/Other) — Zoho contacts
+                // carry no equivalent field, so this falls back to the same
+                // "Other" default the column itself uses, for an admin to
+                // reclassify later, rather than writing a value the enum
+                // rejects outright.
+                'segment' => $existing?->segment ?: 'Other',
+                'state' => $billingAddress['state'] ?? $existing?->state,
+                'city' => $billingAddress['city'] ?? $existing?->city,
+                'credit_limit' => $record['credit_limit'] ?? $existing?->credit_limit,
+                'payment_terms' => $record['payment_terms_label'] ?? $existing?->payment_terms,
+                'sales_owner' => $existing?->sales_owner,
                 'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
                 'approval_status' => 'approved',
             ],
