@@ -850,16 +850,29 @@ class ZohoInventoryService
         );
     }
 
+    /**
+     * `reference_number` is an optional free-text field on a Zoho Inventory
+     * purchase order — usually blank, and never the PO's actual identifier.
+     * This previously keyed po_number off it directly, which meant every PO
+     * without one filled in failed to sync at all (confirmed live: "1
+     * synced, 0 skipped, 1 failed" against real Zoho data), and even the one
+     * that did sync got the wrong number. `purchaseorder_number` is Zoho's
+     * real PO identifier (e.g. "PO-000001") — reference_number now only
+     * fills the separate requisition_number field it was already meant for
+     * (see DatabaseSeeder's real Zoho CRM test PO: po_number '898897889'
+     * with a distinct requisition_number '86868689').
+     */
     private function syncPurchaseOrderData(?array $invPo): ?PurchaseOrder
     {
-        if (! $invPo || empty($invPo['reference_number'])) {
+        if (! $invPo || empty($invPo['purchaseorder_number'])) {
             return null;
         }
 
         $po = PurchaseOrder::withoutEvents(fn () => PurchaseOrder::updateOrCreate(
-            ['po_number' => $invPo['reference_number']],
+            ['po_number' => $invPo['purchaseorder_number']],
             [
-                'subject' => $invPo['reference_number'],
+                'subject' => $invPo['reference_number'] ?: $invPo['purchaseorder_number'],
+                'requisition_number' => $invPo['reference_number'] ?: null,
                 'vendor_name' => $invPo['vendor_name'] ?? 'Zoho Vendor',
                 'po_date' => $invPo['date'] ?? null,
                 'due_date' => $invPo['delivery_date'] ?? null,
