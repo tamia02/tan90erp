@@ -653,15 +653,19 @@ class ZohoInventoryService
      * never-synced set of records to whatever Zoho Inventory actually had —
      * confirmed live (4 unrelated demo rows vs. the 6 real VendorMaster
      * rows). This keeps both screens showing the same Zoho-sourced data.
+     *
+     * Matched on name, not Zoho's contact_id: the live org has several
+     * distinct Zoho contact records sharing the same name (demo-data cruft
+     * from earlier testing), and VendorMaster above already collapses those
+     * into one row by name. Keying this table on contact_id instead produced
+     * four separate "Tan90 Demo Vendor" rows for what VendorMaster treats as
+     * a single vendor — confirmed live. Matching on name keeps both tables
+     * showing the same count and the same identity for the same vendor.
      */
     private function syncToMasterDataVendor(array $record, string $name, string $gstNumber, array $primaryContact): void
     {
-        $zohoContactId = $record['contact_id'] ?? null;
-        if (! $zohoContactId) {
-            return;
-        }
-
-        $existing = \App\Models\Tan90\MasterData\Vendor::where('code', "ZOHO-{$zohoContactId}")->first();
+        $existing = \App\Models\Tan90\MasterData\Vendor::where('name', $name)->first();
+        $code = $existing?->code ?? 'ZOHO-'.str($name)->slug()->upper();
         $realGst = $gstNumber !== 'ZOHO-N/A' ? $gstNumber : null;
 
         // No withoutEvents here (unlike VendorMaster above): this model has no
@@ -670,9 +674,9 @@ class ZohoInventoryService
         // module is designed to record — an admin should be able to see that
         // a vendor row came from a Zoho sync, same as any other change.
         \App\Models\Tan90\MasterData\Vendor::updateOrCreate(
-            ['code' => "ZOHO-{$zohoContactId}"],
+            ['name' => $name],
             [
-                'name' => $name,
+                'code' => $code,
                 'gstin' => $realGst ?: $existing?->gstin,
                 'gst_status' => $realGst ? 'verified' : ($existing?->gst_status ?? 'pending'),
                 'category' => $existing?->category ?: 'Zoho Vendor',

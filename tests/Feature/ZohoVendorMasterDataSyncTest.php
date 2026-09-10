@@ -53,9 +53,9 @@ class ZohoVendorMasterDataSyncTest extends TestCase
         $this->assertNotNull($vendorMaster);
         $this->assertSame('27AAAFH1234K1Z9', $vendorMaster->gst_number);
 
-        $masterDataVendor = MasterDataVendor::where('code', 'ZOHO-zoho-9001')->first();
+        $masterDataVendor = MasterDataVendor::where('name', 'Hindustan Chemical Corporation')->first();
         $this->assertNotNull($masterDataVendor);
-        $this->assertSame('Hindustan Chemical Corporation', $masterDataVendor->name);
+        $this->assertSame('ZOHO-HINDUSTAN-CHEMICAL-CORPORATION', $masterDataVendor->code);
         $this->assertSame('27AAAFH1234K1Z9', $masterDataVendor->gstin);
         $this->assertSame('verified', $masterDataVendor->gst_status);
         $this->assertSame('approved', $masterDataVendor->approval_status);
@@ -80,25 +80,31 @@ class ZohoVendorMasterDataSyncTest extends TestCase
         $service->syncMasterData(200);
         $service->syncMasterData(200);
 
-        $this->assertSame(1, MasterDataVendor::where('code', 'ZOHO-zoho-9002')->count());
+        $this->assertSame(1, MasterDataVendor::where('name', 'Sharp Polymers')->count());
     }
 
-    public function test_a_vendor_without_a_zoho_contact_id_is_skipped_for_master_data_safely(): void
+    /**
+     * The exact scenario found live: the Zoho org has several distinct
+     * contact records sharing the same name. VendorMaster already collapses
+     * these into one row by name; Master Data must do the same rather than
+     * creating a separate row per contact_id, which produced four "Tan90
+     * Demo Vendor" rows in production before this fix.
+     */
+    public function test_two_zoho_contacts_sharing_a_name_collapse_to_one_master_data_row(): void
     {
         Http::fake([
             '*contacts*' => Http::response([
-                'contacts' => [[
-                    'contact_name' => 'No Contact Id Vendor',
-                    'status' => 'active',
-                ]],
+                'contacts' => [
+                    ['contact_id' => 'zoho-A', 'contact_name' => 'Tan90 Demo Vendor', 'status' => 'active'],
+                    ['contact_id' => 'zoho-B', 'contact_name' => 'Tan90 Demo Vendor', 'status' => 'active'],
+                ],
             ], 200),
             '*items*' => Http::response(['items' => []], 200),
         ]);
 
-        $result = app(ZohoInventoryService::class)->syncMasterData(200);
+        app(ZohoInventoryService::class)->syncMasterData(200);
 
-        $this->assertSame(1, $result['vendors']);
-        $this->assertNotNull(VendorMaster::where('vendor_name', 'No Contact Id Vendor')->first());
-        $this->assertSame(0, MasterDataVendor::count());
+        $this->assertSame(1, VendorMaster::where('vendor_name', 'Tan90 Demo Vendor')->count());
+        $this->assertSame(1, MasterDataVendor::where('name', 'Tan90 Demo Vendor')->count());
     }
 }
