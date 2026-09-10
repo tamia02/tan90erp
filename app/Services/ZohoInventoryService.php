@@ -724,10 +724,56 @@ class ZohoInventoryService
                 ],
             ));
 
+            $this->syncToMasterDataItem($record, $sku);
+
             $count++;
         }
 
         return $count;
+    }
+
+    /**
+     * Same disconnect as Vendor (see syncToMasterDataVendor): the Master Data
+     * module's own Products/SKUs screen (Tan90\MasterData\Item / tan90_items)
+     * is a separate table from SkuMaster above, never previously touched by
+     * Zoho sync. Matched on sku, same key SkuMaster already uses, so both
+     * stay consistently identified for the same item — no risk of the
+     * name-collision duplication bug found and fixed on the vendor side.
+     *
+     * Item has two required foreign keys SkuMaster doesn't (category, UOM),
+     * so this resolves or creates a minimal "Zoho Item" category and a UOM
+     * matching Zoho's reported unit, rather than leaving them unset.
+     */
+    private function syncToMasterDataItem(array $record, string $sku): void
+    {
+        $existing = \App\Models\Tan90\MasterData\Item::where('sku', $sku)->first();
+
+        $category = \App\Models\Tan90\MasterData\ItemCategory::firstOrCreate(
+            ['code' => 'ZOHO-ITEM'],
+            ['name' => 'Zoho Item', 'qc_required' => 'No', 'batch_tracking' => 'Optional', 'approval_status' => 'approved'],
+        );
+
+        $unitLabel = trim((string) ($record['unit'] ?? '')) ?: 'EA';
+        $uomCode = str($unitLabel)->slug()->upper()->value() ?: 'EA';
+        $uom = \App\Models\Tan90\MasterData\Uom::firstOrCreate(
+            ['code' => $uomCode],
+            ['name' => $unitLabel, 'base_uom' => $uomCode, 'conversion_factor' => 1, 'approval_status' => 'approved'],
+        );
+
+        $code = $existing?->code ?? 'ZI-'.str($sku)->slug()->upper();
+
+        \App\Models\Tan90\MasterData\Item::updateOrCreate(
+            ['sku' => $sku],
+            [
+                'code' => $code,
+                'name' => (string) ($record['name'] ?? $sku),
+                'tan90_item_category_id' => $existing?->tan90_item_category_id ?? $category->id,
+                'tan90_uom_id' => $existing?->tan90_uom_id ?? $uom->id,
+                'standard_cost' => $record['rate'] ?? $existing?->standard_cost,
+                'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
+                'approval_status' => 'approved',
+            ],
+        );
     }
 
     private function syncPurchaseOrderData(?array $invPo): ?PurchaseOrder
