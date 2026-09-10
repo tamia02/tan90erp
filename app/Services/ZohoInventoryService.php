@@ -620,12 +620,14 @@ class ZohoInventoryService
             $existing = VendorMaster::where('vendor_name', $name)->first();
             $primaryContact = $record['contact_persons'][0] ?? [];
 
+            $gstNumber = ($record['gst_no'] ?? null) ?: ($existing?->gst_number ?: 'ZOHO-N/A');
+
             // withoutEvents — this data just came FROM Inventory, so writing
             // it back must not re-trigger the observer's outbound push.
             VendorMaster::withoutEvents(fn () => VendorMaster::updateOrCreate(
                 ['vendor_name' => $name],
                 [
-                    'gst_number' => ($record['gst_no'] ?? null) ?: ($existing?->gst_number ?: 'ZOHO-N/A'),
+                    'gst_number' => $gstNumber,
                     'contact_phone' => (string) (($primaryContact['phone'] ?? $existing?->contact_phone) ?: 'N/A'),
                     'contact_email' => $primaryContact['email'] ?? $existing?->contact_email,
                     'category' => $existing?->category ?: 'Zoho Vendor',
@@ -634,10 +636,53 @@ class ZohoInventoryService
                 ],
             ));
 
+            $this->syncToMasterDataVendor($record, $name, $gstNumber, $primaryContact);
+
             $count++;
         }
 
         return $count;
+    }
+
+    /**
+     * The Master Data module (Tan90\MasterData\Vendor / tan90_vendors) is a
+     * separate governance-oriented vendor master with its own approval
+     * workflow, built independently of the GRN pipeline's VendorMaster
+     * this method already updates above. Nothing previously kept the two in
+     * sync, so the Master Data "Vendors" screen showed an entirely different,
+     * never-synced set of records to whatever Zoho Inventory actually had —
+     * confirmed live (4 unrelated demo rows vs. the 6 real VendorMaster
+     * rows). This keeps both screens showing the same Zoho-sourced data.
+     */
+    private function syncToMasterDataVendor(array $record, string $name, string $gstNumber, array $primaryContact): void
+    {
+        $zohoContactId = $record['contact_id'] ?? null;
+        if (! $zohoContactId) {
+            return;
+        }
+
+        $existing = \App\Models\Tan90\MasterData\Vendor::where('code', "ZOHO-{$zohoContactId}")->first();
+        $realGst = $gstNumber !== 'ZOHO-N/A' ? $gstNumber : null;
+
+        // No withoutEvents here (unlike VendorMaster above): this model has no
+        // outbound-Zoho-push observer to guard against, and its own audit
+        // trail (via IsMasterRecord) is exactly the kind of provenance this
+        // module is designed to record — an admin should be able to see that
+        // a vendor row came from a Zoho sync, same as any other change.
+        \App\Models\Tan90\MasterData\Vendor::updateOrCreate(
+            ['code' => "ZOHO-{$zohoContactId}"],
+            [
+                'name' => $name,
+                'gstin' => $realGst ?: $existing?->gstin,
+                'gst_status' => $realGst ? 'verified' : ($existing?->gst_status ?? 'pending'),
+                'category' => $existing?->category ?: 'Zoho Vendor',
+                'contact' => $primaryContact['first_name'] ?? $existing?->contact,
+                'phone' => $primaryContact['phone'] ?? $existing?->phone,
+                'email' => $primaryContact['email'] ?? $existing?->email,
+                'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
+                'approval_status' => 'approved',
+            ],
+        );
     }
 
     private function syncItems(int $limit): int
