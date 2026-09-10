@@ -868,14 +868,22 @@ class ZohoInventoryService
             return null;
         }
 
+        // Zoho sometimes omits these keys entirely and sometimes sends them
+        // as an empty string rather than omitting them when unset — plain
+        // '??' only catches the first case, and MySQL strict mode rejects
+        // '' as an invalid date value outright (confirmed live: PO-00002
+        // has no delivery_date set). ?? first guards the missing-key case,
+        // then ?: collapses an empty string to the same fallback.
+        $referenceNumber = ($invPo['reference_number'] ?? null) ?: null;
+
         $po = PurchaseOrder::withoutEvents(fn () => PurchaseOrder::updateOrCreate(
             ['po_number' => $invPo['purchaseorder_number']],
             [
-                'subject' => $invPo['reference_number'] ?: $invPo['purchaseorder_number'],
-                'requisition_number' => $invPo['reference_number'] ?: null,
-                'vendor_name' => $invPo['vendor_name'] ?? 'Zoho Vendor',
-                'po_date' => $invPo['date'] ?? null,
-                'due_date' => $invPo['delivery_date'] ?? null,
+                'subject' => $referenceNumber ?? $invPo['purchaseorder_number'],
+                'requisition_number' => $referenceNumber,
+                'vendor_name' => ($invPo['vendor_name'] ?? null) ?: 'Zoho Vendor',
+                'po_date' => ($invPo['date'] ?? null) ?: null,
+                'due_date' => ($invPo['delivery_date'] ?? null) ?: null,
                 'status' => 'Approved',
                 'description' => 'Synced from Zoho Inventory Purchase Orders.',
             ],

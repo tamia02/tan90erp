@@ -65,6 +65,40 @@ class ZohoPurchaseOrderSyncTest extends TestCase
         $this->assertSame(1, $po->lines()->count());
     }
 
+    public function test_an_empty_string_delivery_date_does_not_crash_the_sync(): void
+    {
+        Http::fake([
+            '*purchaseorders?*' => Http::response([
+                'purchaseorders' => [[
+                    'purchaseorder_id' => 'zoho-po-3',
+                    'last_modified_time' => '2026-09-10T10:00:00+0530',
+                ]],
+            ], 200),
+            '*purchaseorders/zoho-po-3*' => Http::response([
+                'purchaseorder' => [
+                    'purchaseorder_id' => 'zoho-po-3',
+                    'purchaseorder_number' => 'PO-00002',
+                    'reference_number' => '',
+                    'vendor_name' => 'Tan90 Demo Vendor',
+                    'date' => '2026-09-10',
+                    // Zoho returns these as '' rather than omitting the key
+                    // when unset — confirmed live, this crashed the sync
+                    // with a MySQL strict-mode "invalid date" error.
+                    'delivery_date' => '',
+                ],
+            ], 200),
+        ]);
+
+        $result = app(ZohoInventoryService::class)->syncRecentlyModifiedPurchaseOrders();
+
+        $this->assertSame(1, $result['synced']);
+        $this->assertSame(0, $result['failed']);
+
+        $po = PurchaseOrder::where('po_number', 'PO-00002')->first();
+        $this->assertNotNull($po);
+        $this->assertNull($po->due_date);
+    }
+
     public function test_a_reference_number_when_present_is_stored_as_requisition_number_not_po_number(): void
     {
         Http::fake([
