@@ -18,6 +18,7 @@ class Tan90ModuleNavigation
             ['label' => 'Approval Queue', 'route' => 'tan90.master-data.approval-queue', 'icon' => 'check'],
             ['label' => 'Items', 'route' => 'tan90.master-data.index', 'icon' => 'box', 'params' => ['items']],
             ['label' => 'Vendors', 'route' => 'tan90.master-data.index', 'icon' => 'truck', 'params' => ['vendors']],
+            ['label' => 'Customers', 'route' => 'tan90.master-data.index', 'icon' => 'users', 'params' => ['customers']],
             ['label' => 'Plants', 'route' => 'tan90.master-data.index', 'icon' => 'building', 'params' => ['plants']],
             ['label' => 'Import / Export', 'route' => 'tan90.master-data.import.index', 'icon' => 'upload'],
             ['label' => 'Data Quality', 'route' => 'tan90.master-data.data-quality.index', 'icon' => 'shield'],

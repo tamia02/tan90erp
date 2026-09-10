@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tan90\MasterData;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tan90\MasterData\Customer;
 use App\Models\Tan90\MasterData\Item;
 use App\Models\Tan90\MasterData\MasterAuditLog;
 use App\Models\Tan90\MasterData\MasterChangeRequest;
@@ -31,6 +32,7 @@ class DashboardController extends Controller
                 'active_items' => Item::active()->count(),
                 'pending_approvals' => $pending,
                 'active_vendors' => Vendor::active()->count(),
+                'active_customers' => Customer::active()->count(),
             ],
             'recentAudit' => MasterAuditLog::latest('occurred_at')->limit(6)->get(),
             'navGroups' => $this->registry->navGroups(),
