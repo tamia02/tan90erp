@@ -18,10 +18,11 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        $this->entry->loadMissing(['qcResult', 'grnRecord', 'financeRecord']);
+        $this->entry->loadMissing(['qcResult', 'grnRecord', 'financeRecord', 'validationIssues']);
 
         return [
             'fields' => $this->describe($this->entry),
+            'issues' => $this->entry->validationIssues,
             'qcFields' => $this->entry->qcResult ? $this->describe($this->entry->qcResult) : [],
             'grnFields' => $this->entry->grnRecord ? $this->describe($this->entry->grnRecord) : [],
             'financeFields' => $this->entry->financeRecord ? $this->describe($this->entry->financeRecord) : [],
@@ -80,6 +81,24 @@ new #[Layout('layouts.app')] class extends Component
             @endforeach
         </div>
     </div>
+
+    @if ($issues->isNotEmpty())
+        <div class="rounded-lg border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+            <h2 class="text-sm font-semibold mb-3" style="color: var(--text-primary);">Validation issues</h2>
+            <p class="text-xs mb-3" style="color: var(--text-muted);">Raised automatically against PO / Vendor / SKU master data at save time. Hard-fail and red-flag issues below are why this entry is held at "Pending Validation" — the Store Manager clears them once the underlying master data or paperwork is corrected.</p>
+            <div class="flex flex-col gap-2">
+                @foreach ($issues as $issue)
+                    <div class="rounded-lg border p-3 text-sm" style="border-color: var(--border); background: {{ $issue->status === 'open' ? 'var(--status-critical-bg)' : 'var(--surface-2)' }};">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-medium" style="color: var(--text-primary);">{{ $issue->title }}</span>
+                            <span class="text-xs capitalize shrink-0" style="color: var(--text-muted);">{{ $issue->severity }} &bull; {{ $issue->status }}</span>
+                        </div>
+                        <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $issue->description }}</div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     @if ($qcFields)
         <div class="rounded-lg border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">

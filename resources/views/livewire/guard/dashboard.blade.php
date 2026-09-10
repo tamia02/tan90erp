@@ -7,7 +7,10 @@ use Livewire\Volt\Component;
 
 new #[Layout('layouts.app')] class extends Component
 {
-    private const ACTIVITY_KEYWORDS = ['Gate entry', 'Security Guard'];
+    // bill-scan.blade.php's saveEntry() logs "{Inward|Outward|Visitor} entry
+    // created" — 'Gate entry'/'Security Guard' never appeared in that string,
+    // so this feed was silently empty for every guard, always.
+    private const ACTIVITY_KEYWORDS = ['entry created'];
 
     public bool $showAllActivity = false;
 
@@ -21,7 +24,9 @@ new #[Layout('layouts.app')] class extends Component
             'todayCount' => $today->count(),
             'pendingCount' => GateEntry::where('status', 'pending_validation')->count(),
             'breachedCount' => GateEntry::where('status', '!=', 'closed')->where('sla_deadline', '<', now())->count(),
-            'recent' => GateEntry::orderByDesc('created_at')->limit(5)->get(),
+            // Scoped to today, not just "most recent 5 ever" — this panel
+            // sits under the "Today's Entries" stat and is meant to mirror it.
+            'recent' => $today->sortByDesc('created_at')->take(5)->values(),
             'activityTotal' => $activity->count(),
             'recentActivity' => $this->showAllActivity ? $activity : $activity->take(5),
         ];
@@ -33,18 +38,18 @@ new #[Layout('layouts.app')] class extends Component
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Today's gate activity at a glance.</p>
 
     <div class="grid grid-cols-3 gap-3 mb-6">
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <a href="{{ route('guard.entries') }}" wire:navigate class="rounded-lg border p-4 block hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Today's Entries</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $todayCount }}</div>
-        </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        </a>
+        <a href="{{ route('guard.entries', ['status' => 'pending_validation']) }}" wire:navigate class="rounded-lg border p-4 block hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Pending Validation</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--status-warning);">{{ $pendingCount }}</div>
-        </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        </a>
+        <a href="{{ route('guard.entries', ['breached' => 1]) }}" wire:navigate class="rounded-lg border p-4 block hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">SLA Breached</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--status-critical);">{{ $breachedCount }}</div>
-        </div>
+        </a>
     </div>
 
     <div class="rounded-lg border p-4 mb-6" style="background: var(--surface-3); border-color: var(--border);">

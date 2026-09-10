@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'created_by', 'gate_no', 'entry_type', 'po_number', 'po_bill_date', 'vendor_name', 'vendor_gst',
     'invoice_number', 'invoice_qty', 'invoice_amount', 'rate', 'material',
     'vehicle_number', 'driver_name', 'transporter', 'location', 'gps',
-    'bill_scanned', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
+    'bill_scanned', 'bill_document_path', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
 ])]
 class GateEntry extends Model
 {

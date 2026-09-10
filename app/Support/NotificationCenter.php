@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Cache;
 // role-adaptive alerts rather than a generic notification feed.
 class NotificationCenter
 {
-    /** @return array<int, array{title: string, detail: string, tone: string}> */
+    /** @return array<int, array{title: string, detail: string, tone: string, url?: string}> */
     public static function forRole(Role $role): array
     {
         return match ($role) {
@@ -31,9 +31,29 @@ class NotificationCenter
     private static function guard(): array
     {
         $notices = [];
+
+        // Previously only surfaced SLA breaches — a guard had no way to tell
+        // from the notification summary which entries actually need
+        // attention (pending validation, held with open hard-fail/red-flag
+        // issues) versus entries just moving normally through the pipeline.
+        $pending = GateEntry::where('status', 'pending_validation')->count();
+        if ($pending > 0) {
+            $notices[] = [
+                'title' => 'Entries pending validation',
+                'detail' => "{$pending} gate entr".($pending === 1 ? 'y is' : 'ies are')." held pending validation — open Guard Entries to see why.",
+                'tone' => 'warning',
+                'url' => route('guard.entries', ['status' => 'pending_validation']),
+            ];
+        }
+
         $breached = GateEntry::where('status', '!=', 'closed')->where('sla_deadline', '<', now())->count();
         if ($breached > 0) {
-            $notices[] = ['title' => 'SLA breached', 'detail' => "{$breached} gate entr".($breached === 1 ? 'y has' : 'ies have')." breached the 12-hour GRN SLA.", 'tone' => 'critical'];
+            $notices[] = [
+                'title' => 'SLA breached',
+                'detail' => "{$breached} gate entr".($breached === 1 ? 'y has' : 'ies have')." breached the 12-hour GRN SLA.",
+                'tone' => 'critical',
+                'url' => route('guard.entries', ['breached' => 1]),
+            ];
         }
 
         return $notices;

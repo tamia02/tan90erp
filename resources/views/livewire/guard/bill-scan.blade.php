@@ -10,13 +10,20 @@ use App\Services\GateValidationService;
 use App\Services\ZohoService;
 use App\Support\SlaDirectives;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new #[Layout('layouts.app')] class extends Component
 {
+    use WithFileUploads;
+
     public string $entryType = 'inward';
     public bool $billScanned = false;
     public bool $ocrReady = false;
+
+    #[Validate('nullable|file|mimes:jpg,jpeg,png,pdf|max:10240')]
+    public $billFile = null;
     public string $gps = '';
     public ?array $saved = null;
     public bool $fetched = false;
@@ -73,6 +80,15 @@ new #[Layout('layouts.app')] class extends Component
     {
         $selected = self::LOCATIONS[$this->location] ?? self::LOCATIONS['bhiwandi'];
         $this->gps = $selected['gps'].' ('.$selected['code'].')';
+    }
+
+    /** Fires once Livewire finishes uploading the selected file, so
+     * billScanned only flips to true after a real file arrives — not the
+     * moment the picker opens, which is all the old wire:click did. */
+    public function updatedBillFile(): void
+    {
+        $this->validateOnly('billFile');
+        $this->billScanned = (bool) $this->billFile;
     }
 
     /** Inward only — the guard keys in the bill number and everything else
@@ -215,11 +231,13 @@ new #[Layout('layouts.app')] class extends Component
         $issues = app(GateValidationService::class)->validate($form);
         $blocking = app(GateValidationService::class)->isBlocking($issues);
         $vendorUser = $form['vendor_name'] ? User::where('role', Role::Vendor)->where('name', $form['vendor_name'])->first() : null;
+        $documentPath = $this->billFile ? $this->billFile->store('gate-bills') : null;
         $gate = GateEntry::create([
             ...$form,
             'created_by' => auth()->id(),
             'gate_no' => 'GATE-'.random_int(1000, 9999),
             'bill_scanned' => $this->entryType === 'visitor' ? false : $this->billScanned,
+            'bill_document_path' => $documentPath,
             'remarks' => trim($this->remarks."\nDocuments: ".$this->documentSummary()."\nLine: ".$this->material.' x '.$qty) ?: null,
             'status' => $blocking ? 'pending_validation' : 'validated',
             'sla_deadline' => now()->addHours(SlaDirectives::hours($vendorUser?->sla_directive)),
@@ -237,6 +255,7 @@ new #[Layout('layouts.app')] class extends Component
     {
         $currentType = $this->entryType;
         $this->billScanned = false;
+        $this->billFile = null;
         $this->ocrReady = false;
         $this->gps = '';
         $this->saved = null;
@@ -352,12 +371,23 @@ new #[Layout('layouts.app')] class extends Component
                         <button type="button" wire:click="fillSample" class="rounded-xl px-4 py-3 text-sm font-bold text-white" style="background: var(--brand);">{{ $entryType === 'visitor' ? 'Quick Visitor Fill' : 'Quick Scan Autofill' }}</button>
                         @unless ($entryType === 'visitor')
                             <label class="rounded-xl px-4 py-3 text-sm font-semibold border cursor-pointer text-center" style="border-color: var(--border); color: var(--text-primary);">
-                                Camera / Upload
-                                <input type="file" accept="image/*,.pdf" capture="environment" class="hidden" wire:click="$set('billScanned', true)" />
+                                <span wire:loading.remove wire:target="billFile">{{ $billFile ? 'Change File' : 'Camera / Upload' }}</span>
+                                <span wire:loading wire:target="billFile">Uploading...</span>
+                                <input type="file" accept="image/*,.pdf" capture="environment" class="hidden" wire:model="billFile" />
                             </label>
                         @endunless
                     </div>
                 </div>
+
+                @unless ($entryType === 'visitor')
+                    @error('billFile') <p class="text-xs mt-2" style="color: var(--status-critical);">{{ $message }}</p> @enderror
+                    @if ($billFile)
+                        <div class="rounded-xl border p-3 mt-2 text-xs" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--text-primary);">
+                            Attached: {{ $billFile->getClientOriginalName() }}.
+                            {{ $entryType === 'inward' ? ' This app does not read text off the photo — enter the Bill/PO number below and tap Fetch to pull the matching details.' : ' Fill in the details below and save.' }}
+                        </div>
+                    @endif
+                @endunless
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
                     @if ($entryType === 'visitor')
