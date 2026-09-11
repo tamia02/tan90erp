@@ -10,11 +10,9 @@ use App\Models\Tan90\MasterData\MasterChangeRequest;
 use App\Models\Tan90\MasterData\MasterChangeVersion;
 use App\Models\Tan90\MasterData\Role;
 use App\Models\User;
-use App\Services\ZohoInventoryService;
 use DomainException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -35,19 +33,17 @@ use RuntimeException;
  * MasterChangeRequest instead, and approveChangeRequest() is the only path
  * that applies the change and writes an effective-dated MasterChangeVersion.
  *
- * Outbound Zoho sync: approving a Vendor / Item / Customer (the three types
- * Zoho Inventory represents at all) pushes it to Zoho (create-or-update). The
- * push happens here, on final approval — never on submit, so unapproved
- * drafts stay local — and is best-effort: a Zoho outage must not roll back a
- * local approval, which is why both finalize paths call pushToZohoOnApproval()
- * outside any transaction.
+ * Outbound Zoho sync: previously fired only on final approval here, but the
+ * client reversed that call — Vendor/Item/Customer now push to Zoho
+ * immediately on every save, matching how the legacy VendorMaster/SkuMaster
+ * screens already behaved. See MasterDataVendorObserver/MasterDataItemObserver/
+ * MasterDataCustomerObserver instead — this service no longer touches Zoho.
  */
 class ApprovalService
 {
     public function __construct(
         private readonly AuditLogger $auditLogger,
         private readonly NotificationDispatcher $notifications,
-        private readonly ZohoInventoryService $zohoInventory,
     ) {
     }
 
@@ -107,8 +103,6 @@ class ApprovalService
         $record->save();
 
         $this->auditLogger->log('APPROVE', $record, "Approved {$record->auditLabel()} through maker-checker review.");
-
-        $this->pushToZohoOnApproval($entity, $record);
 
         return $record;
     }
@@ -179,57 +173,7 @@ class ApprovalService
 
         $this->auditLogger->log('APPROVE', $record, "Approved {$record->auditLabel()} - final workflow step complete.");
 
-        $this->pushToZohoOnApproval($entity, $record);
-
         return $record;
-    }
-
-    /**
-     * Best-effort outbound push: when a Vendor / Item / Customer is finally
-     * approved, upsert it into Zoho Inventory (create or update by name/sku).
-     * Every other entity type has no Zoho representation and is skipped.
-     *
-     * Deliberately not inside a DB transaction with the approval save: a Zoho
-     * outage must never roll back (or block) a locally-completed approval.
-     * Failures are logged with the service's own lastError detail; if the
-     * integration is inactive the call is a cheap no-op. Note the Zoho side
-     * is keyed on name/sku, matching the import direction (syncMasterData)
-     * so a record goes to the SAME Zoho row the importer will later find.
-     */
-    private function pushToZohoOnApproval(array $entity, Model $record): void
-    {
-        $module = $entity['slug'] ?? null;
-
-        $pusher = match ($module) {
-            'vendors' => fn () => $this->zohoInventory->pushMasterDataVendor($record),
-            'customers' => fn () => $this->zohoInventory->pushMasterDataCustomer($record),
-            'items' => fn () => $this->zohoInventory->pushMasterDataItem($record),
-            default => null,
-        };
-
-        if ($pusher === null) {
-            return;
-        }
-
-        try {
-            $pushed = $pusher();
-        } catch (\Throwable $exception) {
-            Log::error('Zoho Inventory push failed after Master Data approval', [
-                'entity' => $module,
-                'record_id' => $record->getKey(),
-                'error' => $exception->getMessage(),
-            ]);
-
-            return;
-        }
-
-        if (! $pushed) {
-            Log::error('Zoho Inventory push failed after Master Data approval', [
-                'entity' => $module,
-                'record_id' => $record->getKey(),
-                'error' => $this->zohoInventory->lastError() ?: 'no error detail captured',
-            ]);
-        }
     }
 
     private function stepRoleBlocksApprover(User $approver, ?string $stepRoleName): bool
