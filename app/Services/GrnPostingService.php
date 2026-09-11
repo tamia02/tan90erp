@@ -7,6 +7,7 @@ use App\Models\FinanceRecord;
 use App\Models\GateEntry;
 use App\Models\GrnRecord;
 use App\Models\LedgerEntry;
+use App\Models\PurchaseOrder;
 
 // Ports the React prototype's SAVE_GRN reducer case — reads the gate's
 // QcResult (produced separately by QC Check) and is the ONLY thing that
@@ -15,9 +16,31 @@ use App\Models\LedgerEntry;
 // modules" requirement.
 class GrnPostingService
 {
-    private const RATE_PER_UNIT = 42; // matches the React prototype's placeholder rate
-
     public function __construct(private readonly ThreeWayMatchService $threeWayMatch) {}
+
+    /**
+     * Previously a flat ₹42/unit for every vendor regardless of what the PO
+     * or the gate's own invoice actually said — ThreeWayMatchService already
+     * correctly compares gate->rate against the PO's list_price and flags a
+     * mismatch, but GrnPostingService threw that real rate away and posted
+     * the ledger/finance numbers (invoice value, deductions, final payable,
+     * debit notes) at the hardcoded placeholder anyway. Wrong for every
+     * vendor except one priced at exactly ₹42/unit. Now uses the rate the
+     * guard captured (and the 3-way match already validated against the PO),
+     * falling back to the PO's own list price if the gate's rate is unset.
+     */
+    private function resolveRate(GateEntry $gate): float
+    {
+        if ($gate->rate !== null && (float) $gate->rate > 0) {
+            return (float) $gate->rate;
+        }
+
+        $line = $gate->po_number
+            ? PurchaseOrder::where('po_number', $gate->po_number)->with('lines')->first()?->primaryLine()
+            : null;
+
+        return (float) ($line?->list_price ?? 0);
+    }
 
     public function post(GateEntry $gate, string $suggestedBin): ?GrnRecord
     {
@@ -60,7 +83,7 @@ class GrnPostingService
             }
         }
 
-        $rate = self::RATE_PER_UNIT;
+        $rate = $this->resolveRate($gate);
         $financeRecord = FinanceRecord::create([
             'created_by' => auth()->id(),
             'gate_entry_id' => $gate->id,

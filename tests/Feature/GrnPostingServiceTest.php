@@ -27,6 +27,9 @@ class GrnPostingServiceTest extends TestCase
             'vendor_name' => 'Thermocore Materials Pvt Ltd',
             'invoice_number' => 'TEST/INV/001',
             'status' => 'qc_done',
+            // Deliberately not ₹42 (the old hardcoded placeholder) — proves
+            // the payable comes from the gate's own real rate.
+            'rate' => 45,
         ]);
 
         QcResult::create([
@@ -61,7 +64,7 @@ class GrnPostingServiceTest extends TestCase
         $this->assertDatabaseHas('finance_records', [
             'gate_entry_id' => $gate->id,
             'vendor_name' => 'Thermocore Materials Pvt Ltd',
-            'final_payable' => 690 * 42,
+            'final_payable' => 690 * 45,
             'vendor_status' => 'pending',
         ]);
 

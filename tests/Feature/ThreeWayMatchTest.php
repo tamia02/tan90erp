@@ -62,7 +62,10 @@ class ThreeWayMatchTest extends TestCase
 
     public function test_a_deduction_automatically_issues_a_debit_note(): void
     {
-        $gate = GateEntry::factory()->create(['status' => 'qc_done']);
+        // Deliberately not ₹42 (the old hardcoded placeholder) — proves the
+        // debit note amount comes from the gate's own real rate, not a
+        // constant that happened to match this test's numbers before.
+        $gate = GateEntry::factory()->create(['status' => 'qc_done', 'rate' => 20]);
         QcResult::create([
             'gate_entry_id' => $gate->id, 'sku' => 'Widget', 'po_qty' => 100, 'invoice_qty' => 100,
             'physical_received' => 95, 'accepted_qty' => 90, 'qc_hold_qty' => 0,
@@ -73,8 +76,30 @@ class ThreeWayMatchTest extends TestCase
 
         $record = FinanceRecord::where('gate_entry_id', $gate->id)->firstOrFail();
         $this->assertSame(2, $record->debitNotes()->count());
-        $this->assertDatabaseHas('debit_notes', ['finance_record_id' => $record->id, 'reason' => 'Defective goods', 'amount' => 5 * 42]);
-        $this->assertDatabaseHas('debit_notes', ['finance_record_id' => $record->id, 'reason' => 'Missing quantity', 'amount' => 5 * 42]);
+        $this->assertDatabaseHas('debit_notes', ['finance_record_id' => $record->id, 'reason' => 'Defective goods', 'amount' => 5 * 20]);
+        $this->assertDatabaseHas('debit_notes', ['finance_record_id' => $record->id, 'reason' => 'Missing quantity', 'amount' => 5 * 20]);
+    }
+
+    public function test_the_real_po_rate_is_used_when_the_gate_has_no_rate_of_its_own(): void
+    {
+        $po = PurchaseOrder::create(['po_number' => 'PO-TEST-003', 'vendor_name' => 'Acme Vendor']);
+        $po->lines()->create(['product' => 'Widget', 'quantity' => 100, 'list_price' => 77]);
+
+        $gate = GateEntry::factory()->create([
+            'po_number' => 'PO-TEST-003', 'vendor_name' => 'Acme Vendor',
+            'rate' => null, 'status' => 'qc_done',
+        ]);
+        QcResult::create([
+            'gate_entry_id' => $gate->id, 'sku' => 'Widget', 'po_qty' => 100, 'invoice_qty' => 100,
+            'physical_received' => 100, 'accepted_qty' => 100, 'qc_hold_qty' => 0,
+            'defective_qty' => 0, 'rejected_qty' => 0, 'missing_qty' => 0,
+        ]);
+
+        app(GrnPostingService::class)->post($gate, 'BIN-A1');
+
+        $record = FinanceRecord::where('gate_entry_id', $gate->id)->firstOrFail();
+        $this->assertEquals(77, (float) $record->rate_per_unit);
+        $this->assertEquals(7700, (float) $record->final_payable);
     }
 
     public function test_an_unmatched_invoice_cannot_be_cleared_for_payment(): void
