@@ -6,6 +6,7 @@ use App\Services\Zoho\ZohoApiGate;
 use App\Services\Zoho\ZohoResult;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Psr7\Response as Psr7Response;
+use App\Models\DebitNote;
 use App\Models\FinanceRecord;
 use App\Models\GrnRecord;
 use App\Models\PurchaseOrder;
@@ -597,6 +598,105 @@ class ZohoInventoryService
         ]];
 
         return $this->upsertBill($record->invoice_number, $payload);
+    }
+
+    /**
+     * Fires when Finance actually clears a payable (finance.review's "Clear"
+     * action) — a genuinely missing sync direction: Bills push automatically
+     * via FinanceRecordObserver, but nothing ever told Zoho a vendor was
+     * actually paid. Requires the bill to already exist in Zoho (created by
+     * that same observer) — looked up by invoice number, same as
+     * pushVendorBill/pushFinanceBill's own bill lookup.
+     */
+    public function pushPaymentMade(FinanceRecord $record): bool
+    {
+        if (! $this->isActive() || ! config('services.zoho.inventory.write_enabled', true) || trim((string) $record->invoice_number) === '') {
+            return false;
+        }
+
+        $vendor = $this->findOrCreateContact($record->vendor_name);
+        if (! $vendor) {
+            return false;
+        }
+
+        $bill = $this->findBillByNumber($record->invoice_number);
+        if ($bill === false) {
+            $this->lastError = "Zoho Inventory bill lookup failed for {$record->invoice_number} — not recording a payment without confirming the bill exists.";
+
+            return false;
+        }
+
+        $payload = array_filter([
+            'vendor_id' => $vendor['contact_id'],
+            'date' => now()->format('Y-m-d'),
+            'amount' => (float) $record->final_payable,
+            'payment_mode' => 'banktransfer',
+            'reference_number' => $record->invoice_number,
+            'description' => "Cleared via Tan90 Finance Review — gate entry #{$record->gate_entry_id}.",
+        ], fn ($value) => $value !== null && $value !== '');
+
+        if ($bill) {
+            $payload['bills'] = [[
+                'bill_id' => $bill['bill_id'],
+                'amount_applied' => (float) $record->final_payable,
+            ]];
+        }
+
+        $response = $this->inventoryRequest()->post($this->invUrl('/vendorpayments'), $payload);
+
+        if ($response->successful() && (int) $response->json('code') === 0) {
+            return true;
+        }
+
+        $this->lastError = "Zoho Inventory vendor payment push failed for {$record->invoice_number}: ".$response->body();
+
+        return false;
+    }
+
+    /**
+     * Fires when GrnPostingService automatically issues a debit note
+     * (defective/rejected/missing deduction) — another genuinely missing
+     * sync direction, the vendor-side equivalent of a Vendor Credit in Zoho.
+     * One line item summarizing the deduction reason/amount; there's no
+     * finer-grained breakdown on the Tan90 side to push.
+     */
+    public function pushVendorCredit(DebitNote $note): bool
+    {
+        if (! $this->isActive() || ! config('services.zoho.inventory.write_enabled', true) || trim((string) $note->vendor_name) === '') {
+            return false;
+        }
+
+        $vendor = $this->findOrCreateContact($note->vendor_name);
+        if (! $vendor) {
+            return false;
+        }
+
+        $item = $this->findOrCreateItem('Tan90 Debit Note Adjustment', (float) $note->amount);
+        if (! $item) {
+            return false;
+        }
+
+        $payload = [
+            'vendor_id' => $vendor['contact_id'],
+            'date' => now()->format('Y-m-d'),
+            'reference_number' => "DN-{$note->id}",
+            'line_items' => [[
+                'item_id' => $item['item_id'],
+                'quantity' => 1,
+                'rate' => (float) $note->amount,
+                'description' => $note->reason,
+            ]],
+        ];
+
+        $response = $this->inventoryRequest()->post($this->invUrl('/vendorcredits'), $payload);
+
+        if ($response->successful() && (int) $response->json('code') === 0) {
+            return true;
+        }
+
+        $this->lastError = "Zoho Inventory vendor credit push failed for debit note #{$note->id}: ".$response->body();
+
+        return false;
     }
 
     /** One Purchase Receive per PO, looked up and updated rather than re-created on every GRN re-save (posting, corrections, etc.). */

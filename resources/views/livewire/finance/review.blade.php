@@ -2,6 +2,8 @@
 
 use App\Models\FinanceRecord;
 use App\Services\AuditLogger;
+use App\Services\ZohoInventoryService;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
@@ -20,9 +22,34 @@ new #[Layout('layouts.app')] class extends Component
             return;
         }
 
+        $wasCleared = $record->vendor_status === 'cleared';
+
         $record->update(['vendor_status' => $status, 'notes' => $this->notes ?: $record->notes]);
 
         AuditLogger::log("Vendor status set to {$status}", (string) $record->gate_entry_id, $record);
+
+        // Previously nothing told Zoho a vendor was actually paid — Bills
+        // push automatically on every FinanceRecord save, but "cleared"
+        // (payment made) was never itself a Zoho event. Only push once, the
+        // moment it first becomes cleared, not on every subsequent save.
+        if ($status === 'cleared' && ! $wasCleared) {
+            $inventory = app(ZohoInventoryService::class);
+            if ($inventory->isActive()) {
+                try {
+                    if (! $inventory->pushPaymentMade($record)) {
+                        Log::warning('Zoho Inventory payment push failed from Finance Review', [
+                            'finance_record_id' => $record->id,
+                            'error' => $inventory->lastError(),
+                        ]);
+                    }
+                } catch (\Throwable $exception) {
+                    Log::warning('Zoho Inventory payment push exception from Finance Review', [
+                        'finance_record_id' => $record->id,
+                        'error' => $exception->getMessage(),
+                    ]);
+                }
+            }
+        }
 
         $this->reset(['editing', 'notes']);
     }
