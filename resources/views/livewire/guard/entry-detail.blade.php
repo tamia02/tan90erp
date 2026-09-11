@@ -18,14 +18,11 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        $this->entry->loadMissing(['qcResult', 'grnRecord', 'financeRecord', 'validationIssues']);
+        $this->entry->loadMissing(['validationIssues']);
 
         return [
             'fields' => $this->describe($this->entry),
             'issues' => $this->entry->validationIssues,
-            'qcFields' => $this->entry->qcResult ? $this->describe($this->entry->qcResult) : [],
-            'grnFields' => $this->entry->grnRecord ? $this->describe($this->entry->grnRecord) : [],
-            'financeFields' => $this->entry->financeRecord ? $this->describe($this->entry->financeRecord) : [],
         ];
     }
 
@@ -100,45 +97,4 @@ new #[Layout('layouts.app')] class extends Component
         </div>
     @endif
 
-    @if ($qcFields)
-        <div class="rounded-lg border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
-            <h2 class="text-sm font-semibold mb-3" style="color: var(--text-primary);">QC result</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                @foreach ($qcFields as $f)
-                    <div class="text-sm">
-                        <div class="text-xs" style="color: var(--text-muted);">{{ $f['label'] }}</div>
-                        <div class="mt-0.5 break-words" style="color: var(--text-primary);">{{ $f['value'] }}</div>
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    @endif
-
-    @if ($grnFields)
-        <div class="rounded-lg border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
-            <h2 class="text-sm font-semibold mb-3" style="color: var(--text-primary);">GRN record</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                @foreach ($grnFields as $f)
-                    <div class="text-sm">
-                        <div class="text-xs" style="color: var(--text-muted);">{{ $f['label'] }}</div>
-                        <div class="mt-0.5 break-words" style="color: var(--text-primary);">{{ $f['value'] }}</div>
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    @endif
-
-    @if ($financeFields)
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
-            <h2 class="text-sm font-semibold mb-3" style="color: var(--text-primary);">Finance record</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                @foreach ($financeFields as $f)
-                    <div class="text-sm">
-                        <div class="text-xs" style="color: var(--text-muted);">{{ $f['label'] }}</div>
-                        <div class="mt-0.5 break-words" style="color: var(--text-primary);">{{ $f['value'] }}</div>
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    @endif
 </div>
