@@ -82,9 +82,13 @@ new #[Layout('layouts.app')] class extends Component
     {
         $vendorName = auth()->user()->name;
 
+        // Previously discovered a vendor's open POs only via their
+        // VendorSubmission rows (a separate, unrelated document-upload
+        // flow) — with just 1 such row existing system-wide, every other
+        // vendor saw an empty dropdown and could never save a stock update
+        // at all. POs already carry vendor_name directly; match on that.
         $submissions = VendorSubmission::where('vendor_name', $vendorName)->get();
-        $poNumbers = $submissions->pluck('po_number')->filter()->unique();
-        $purchaseOrders = PurchaseOrder::whereIn('po_number', $poNumbers)->with('lines')->get();
+        $purchaseOrders = PurchaseOrder::where('vendor_name', $vendorName)->with('lines')->get();
 
         // Only materials on POs that aren't fully invoiced yet — the
         // vendor should only be updating stock against what's still open.
