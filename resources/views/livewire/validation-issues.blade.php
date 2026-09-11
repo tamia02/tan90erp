@@ -152,8 +152,15 @@ new #[Layout('layouts.app')] class extends Component
                         <span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--surface-2); color: var(--brand);">{{ $issueTypes[$issue->type] ?? $issue->type }}</span>
                     @endif
                 </div>
-                <h3 class="font-medium text-sm" style="color: var(--text-primary);">{{ $issue->title }}</h3>
-                <p class="text-sm mt-0.5" style="color: var(--text-secondary);">{{ $issue->description }}</p>
+                @if ($issue->gateEntry)
+                    <a href="{{ route('gate-entries.show', $issue->gateEntry) }}" wire:navigate class="hover:opacity-80">
+                        <h3 class="font-medium text-sm" style="color: var(--text-primary);">{{ $issue->title }}</h3>
+                        <p class="text-sm mt-0.5" style="color: var(--text-secondary);">{{ $issue->description }}</p>
+                    </a>
+                @else
+                    <h3 class="font-medium text-sm" style="color: var(--text-primary);">{{ $issue->title }}</h3>
+                    <p class="text-sm mt-0.5" style="color: var(--text-secondary);">{{ $issue->description }}</p>
+                @endif
                 <p class="text-xs mt-2" style="color: var(--text-muted);">
                     @if ($issue->gateEntry)
                         {{ $issue->gateEntry->po_number ? $issue->gateEntry->po_number.' · ' : '' }}{{ $issue->gateEntry->vendor_name ?? 'Unknown vendor' }} ·
