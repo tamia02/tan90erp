@@ -9,7 +9,6 @@ new #[Layout('layouts.app')] class extends Component
     public bool $emailNotifications = true;
     public bool $smsAlerts = false;
     public string $theme = 'system';
-    public string $slaDirective = '';
     public bool $justSaved = false;
 
     public function mount(): void
@@ -18,7 +17,6 @@ new #[Layout('layouts.app')] class extends Component
         $this->emailNotifications = $prefs['email_notifications'] ?? true;
         $this->smsAlerts = $prefs['sms_alerts'] ?? false;
         $this->theme = $prefs['theme'] ?? 'system';
-        $this->slaDirective = auth()->user()->sla_directive ?? '';
     }
 
     public function save(): void
@@ -29,7 +27,6 @@ new #[Layout('layouts.app')] class extends Component
                 'sms_alerts' => $this->smsAlerts,
                 'theme' => $this->theme,
             ],
-            'sla_directive' => $this->slaDirective ?: null,
         ]);
 
         $this->justSaved = true;
@@ -37,7 +34,12 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        return ['slaOptions' => SlaDirectives::OPTIONS];
+        // SLA directive is deliberately not editable here — it's an
+        // account-level Super Admin control (admin.users), not something
+        // the account owner should be able to set for themselves.
+        return [
+            'slaLabel' => SlaDirectives::label(auth()->user()->sla_directive),
+        ];
     }
 }; ?>
 
@@ -62,15 +64,11 @@ new #[Layout('layouts.app')] class extends Component
                 <option value="dark">Dark</option>
             </select>
         </label>
-        <label class="flex flex-col gap-1.5 text-sm">
+        <div class="flex flex-col gap-1.5 text-sm">
             <span class="font-medium" style="color: var(--text-primary);">SLA directive</span>
-            <select wire:model="slaDirective" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
-                <option value="">Not set</option>
-                @foreach ($slaOptions as $value => $label)
-                    <option value="{{ $value }}">{{ $label }}</option>
-                @endforeach
-            </select>
-        </label>
+            <div class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border); color: var(--text-secondary); background: var(--surface-2);">{{ $slaLabel }}</div>
+            <span class="text-xs" style="color: var(--text-muted);">Set by your Super Admin — not something you can change yourself.</span>
+        </div>
         <div class="flex items-center gap-3">
             <button wire:click="save" class="rounded-lg px-3.5 py-2 text-sm font-medium text-white" style="background: var(--brand);">Save changes</button>
             @if ($justSaved) <span class="text-xs" style="color: var(--status-good);">Saved</span> @endif
