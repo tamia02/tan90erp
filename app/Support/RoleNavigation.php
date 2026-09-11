@@ -54,6 +54,7 @@ class RoleNavigation
             ],
             Role::StoreExec => [
                 ['label' => 'Dashboard', 'route' => 'unloading.dashboard', 'icon' => 'gauge'],
+                ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Loading Desk', 'route' => 'unloading.loading-desk', 'icon' => 'truck'],
                 ['label' => 'Unloading Desk', 'route' => 'unloading.desk', 'icon' => 'warehouse'],
                 ['label' => 'Dock Scheduling', 'route' => 'unloading.dock-scheduling', 'icon' => 'calendar-clock'],
@@ -61,12 +62,14 @@ class RoleNavigation
             ],
             Role::Qc => [
                 ['label' => 'Dashboard', 'route' => 'qc.dashboard', 'icon' => 'gauge'],
+                ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'QC Queue', 'route' => 'qc.queue', 'icon' => 'package-search'],
                 ['label' => 'History', 'route' => 'qc.history', 'icon' => 'history'],
                 ['label' => 'Quality Holds', 'route' => 'qc.holds', 'icon' => 'shield-alert'],
             ],
             Role::StoreManager => [
                 ['label' => 'Dashboard', 'route' => 'grn.dashboard', 'icon' => 'gauge'],
+                ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'GRN Check', 'route' => 'grn.check', 'icon' => 'clipboard-check'],
                 ['label' => 'GRN Register', 'route' => 'grn.register', 'icon' => 'layout-list'],
                 ['label' => 'Stock Balance', 'route' => 'grn.stock-balance', 'icon' => 'package-search'],
@@ -76,6 +79,7 @@ class RoleNavigation
             ],
             Role::Finance => [
                 ['label' => 'Dashboard', 'route' => 'finance.dashboard', 'icon' => 'gauge'],
+                ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Finance Review', 'route' => 'finance.review', 'icon' => 'file-text'],
                 ['label' => 'Vendor Claims', 'route' => 'finance.claims', 'icon' => 'receipt'],
                 ['label' => 'Reports', 'route' => 'finance.reports', 'icon' => 'trending-up'],
@@ -83,6 +87,7 @@ class RoleNavigation
             Role::Admin => [
                 ['label' => 'Command Center', 'route' => 'command-center', 'icon' => 'layout-grid'],
                 ['label' => 'Overview', 'route' => 'admin.dashboard', 'icon' => 'gauge'],
+                ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Users', 'route' => 'admin.users', 'icon' => 'users'],
                 ['label' => 'SKU Master', 'route' => 'admin.sku', 'icon' => 'package'],
                 ['label' => 'Vendor Master', 'route' => 'admin.vendors', 'icon' => 'truck'],
