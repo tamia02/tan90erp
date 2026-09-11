@@ -41,6 +41,17 @@ class ZohoInventoryService
     }
 
     /**
+     * Reason the last push failed (set by the upsert/lookup helpers). Read by
+     * callers outside the cron loop — e.g. ApprovalService logs it when a
+     * post-approval push to Zoho fails — since the live call path doesn't
+     * write its own log entry (only the batch commands do).
+     */
+    public function lastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    /**
      * Superseded by App\Services\Zoho\ZohoApiGate, which is now the sole authority on
      * blocking — it gates every HTTP call directly (see inventoryRequest()) rather than
      * this class independently deciding to pause based on string-matching a response
@@ -355,6 +366,83 @@ class ZohoInventoryService
         }
 
         return $this->upsertContact($vendor->vendor_name, $payload);
+    }
+
+    /**
+     * The Master Data module's Vendor/Item/Customer (governance layer, with
+     * its own approval workflow) never pushed outbound to Zoho at all —
+     * only the legacy VendorMaster/SkuMaster screens above did. Confirmed:
+     * no observer registered anywhere for these three models. Called from
+     * ApprovalService once a record is actually approved, not on every
+     * save, so unapproved drafts never reach Zoho.
+     */
+    public function pushMasterDataVendor(\App\Models\Tan90\MasterData\Vendor $vendor): bool
+    {
+        if (! $this->isActive() || trim((string) $vendor->name) === '') {
+            return false;
+        }
+
+        $email = trim((string) $vendor->email);
+        $phone = trim((string) $vendor->phone);
+        $gstNumber = strtoupper(trim((string) $vendor->gstin));
+        $validGst = (bool) preg_match('/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}Z[A-Z\d]{1}$/', $gstNumber);
+
+        $payload = array_filter([
+            'contact_name' => $vendor->name,
+            'company_name' => $vendor->name,
+            'contact_type' => 'vendor',
+            'gst_no' => $validGst ? $gstNumber : null,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        if ($email !== '' || $phone !== '') {
+            $payload['contact_persons'] = [array_filter([
+                'first_name' => $vendor->contact ?: $vendor->name,
+                'email' => $email ?: null,
+                'phone' => $phone ?: null,
+                'is_primary_contact' => true,
+            ], fn ($value) => $value !== null && $value !== '')];
+        }
+
+        return $this->upsertContact($vendor->name, $payload);
+    }
+
+    public function pushMasterDataCustomer(\App\Models\Tan90\MasterData\Customer $customer): bool
+    {
+        if (! $this->isActive() || trim((string) $customer->name) === '') {
+            return false;
+        }
+
+        $gstNumber = strtoupper(trim((string) $customer->gstin));
+        $validGst = (bool) preg_match('/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}Z[A-Z\d]{1}$/', $gstNumber);
+
+        $payload = array_filter([
+            'contact_name' => $customer->name,
+            'company_name' => $customer->name,
+            'contact_type' => 'customer',
+            'gst_no' => $validGst ? $gstNumber : null,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        return $this->upsertContact($customer->name, $payload);
+    }
+
+    public function pushMasterDataItem(\App\Models\Tan90\MasterData\Item $item): bool
+    {
+        if (! $this->isActive() || trim((string) $item->sku) === '') {
+            return false;
+        }
+
+        $payload = array_filter([
+            'name' => $item->name ?: $item->sku,
+            'sku' => $item->sku,
+            'item_type' => 'inventory',
+            'product_type' => 'goods',
+            'unit' => $item->uom?->code ?: 'pcs',
+            'rate' => $item->standard_cost !== null ? (float) $item->standard_cost : 0,
+            'purchase_rate' => $item->standard_cost !== null ? (float) $item->standard_cost : 0,
+            'description' => $item->category?->name,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        return $this->upsertItem($item->sku, $payload);
     }
 
     public function pushItem(SkuMaster $sku): bool
