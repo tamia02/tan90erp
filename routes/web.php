@@ -132,6 +132,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('notifications', 'shared.notifications')->name('notifications');
     Volt::route('activity', 'shared.activity-log')->name('activity');
     Volt::route('activity/{entry}', 'shared.activity-detail')->name('activity.detail');
+    Volt::route('gate-entries/{entry}', 'shared.gate-entry-detail')->name('gate-entries.show');
     Volt::route('settings', 'shared.settings')->name('settings');
     Volt::route('help', 'shared.help-support')->name('help');
 

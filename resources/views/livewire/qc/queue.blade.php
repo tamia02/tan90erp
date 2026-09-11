@@ -73,10 +73,10 @@ new #[Layout('layouts.app')] class extends Component
         @forelse ($queue as $g)
             <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
-                    <div>
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->material }} · Invoice qty {{ $g->invoice_qty }}</div>
-                    </div>
+                    </a>
                     @if ($checking !== $g->id)
                         <button wire:click="openCheck({{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white" style="background: var(--brand);">QC Check</button>
                     @endif

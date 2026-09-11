@@ -43,10 +43,10 @@ new #[Layout('layouts.app')] class extends Component
         @forelse ($records as $r)
             <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
+                    <a href="{{ $r->gateEntry ? route('gate-entries.show', $r->gateEntry) : '#' }}" wire:navigate class="hover:opacity-80">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }} · {{ $r->vendor_name }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">Invoice {{ $r->invoice_number ?? '—' }} · Rate ₹{{ $r->rate_per_unit }}/unit</div>
-                    </div>
+                    </a>
                     <div class="flex gap-2">
                         <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->match_status === 'matched' ? 'var(--status-good)' : ($r->match_status === 'exception' ? 'var(--status-critical)' : 'var(--text-muted)') }};">match: {{ $r->match_status }}</span>
                         <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->vendor_status === 'cleared' ? 'var(--status-good)' : ($r->vendor_status === 'hold' ? 'var(--status-critical)' : 'var(--status-warning)') }};">{{ $r->vendor_status }}</span>

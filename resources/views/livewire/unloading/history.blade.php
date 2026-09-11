@@ -84,13 +84,13 @@ new #[Layout('layouts.app')] class extends Component
     @if ($tab === 'loading')
         <div class="flex flex-col gap-2">
             @forelse ($loadingHistory as $g)
-                <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+                <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
                     <div class="flex items-center justify-between gap-3">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }} · {{ $g->loading_dock }}</div>
                         <span class="text-xs" style="color: var(--text-muted);">{{ $g->dock_assigned_at?->format('d M, H:i') }}</span>
                     </div>
                     <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }}</div>
-                </div>
+                </a>
             @empty
                 <div class="text-center text-sm py-10" style="color: var(--text-muted);">{{ $search !== '' ? 'No matching loading history.' : 'No loading history yet.' }}</div>
             @endforelse
@@ -98,14 +98,14 @@ new #[Layout('layouts.app')] class extends Component
     @else
         <div class="flex flex-col gap-2">
             @forelse ($unloadingHistory as $r)
-                <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+                <a href="{{ $r->gateEntry ? route('gate-entries.show', $r->gateEntry) : '#' }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
                     <div class="flex items-center justify-between gap-3">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }}</div>
                         <span class="text-xs" style="color: var(--text-muted);">{{ $r->completed_at ? 'Completed' : 'In progress' }}</span>
                     </div>
                     <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $r->gateEntry?->vendor_name }} · {{ $r->box_count }} boxes · {{ $r->staging_area }}</div>
                     <div class="text-xs mt-1" style="color: var(--text-muted);">Allotted {{ $r->allotted_at?->format('d M, H:i') }}{{ $r->started_at ? ' · Started '.$r->started_at->format('d M, H:i') : '' }}{{ $r->completed_at ? ' · Completed '.$r->completed_at->format('d M, H:i') : '' }}</div>
-                </div>
+                </a>
             @empty
                 <div class="text-center text-sm py-10" style="color: var(--text-muted);">{{ $search !== '' ? 'No matching unloading history.' : 'No unloading history yet.' }}</div>
             @endforelse

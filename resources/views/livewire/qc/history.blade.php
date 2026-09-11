@@ -22,7 +22,7 @@ new #[Layout('layouts.app')] class extends Component
 
     <div class="flex flex-col gap-2 mb-6">
         @forelse ($results as $r)
-            <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <a href="{{ $r->gateEntry ? route('gate-entries.show', $r->gateEntry) : '#' }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
                     <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }}</div>
                     <span class="text-xs" style="color: var(--text-muted);">{{ $r->created_at->format('d M, H:i') }}</span>
@@ -31,7 +31,7 @@ new #[Layout('layouts.app')] class extends Component
                 @if ($r->qc_reasons)
                     <div class="text-xs mt-1" style="color: var(--text-muted);">{{ $r->qc_reasons }}</div>
                 @endif
-            </div>
+            </a>
         @empty
             <div class="text-center text-sm py-10" style="color: var(--text-muted);">No QC checks recorded yet.</div>
         @endforelse

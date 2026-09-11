@@ -53,13 +53,13 @@ new #[Layout('layouts.app')] class extends Component
         @else
             <div class="flex flex-col divide-y" style="border-color: var(--border);">
                 @foreach ($recentlyClosed as $g)
-                    <div class="py-2.5 flex items-center justify-between gap-3">
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="py-2.5 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                         <div>
                             <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                             <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name }} · bin {{ $g->grnRecord?->suggested_bin }}</div>
                         </div>
-                        <span class="text-xs font-medium" style="color: var(--status-good);">Closed · stock updated</span>
-                    </div>
+                        <span class="text-xs font-medium shrink-0" style="color: var(--status-good);">Closed · stock updated</span>
+                    </a>
                 @endforeach
             </div>
         @endif

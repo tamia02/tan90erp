@@ -33,7 +33,13 @@ new #[Layout('layouts.app')] class extends Component
                 <tbody>
                     @forelse ($records as $r)
                         <tr style="border-top: 1px solid var(--border);">
-                            <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }}</td>
+                            <td class="px-4 py-2.5 font-medium">
+                                @if ($r->gateEntry)
+                                    <a href="{{ route('gate-entries.show', $r->gateEntry) }}" wire:navigate style="color: var(--brand);">{{ $r->gateEntry->gate_no }}</a>
+                                @else
+                                    <span style="color: var(--text-primary);">—</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $r->sku }}</td>
                             <td class="px-4 py-2.5">{{ $r->accepted_qty }}</td>
                             <td class="px-4 py-2.5">{{ $r->defective_qty }}</td>

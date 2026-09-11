@@ -109,10 +109,10 @@ new #[Layout('layouts.app')] class extends Component
     <div class="flex flex-col gap-2 mb-6">
         @forelse ($toAllot as $g)
             <div class="rounded-lg border p-4 flex items-center justify-between gap-3" style="background: var(--surface-3); border-color: var(--border);">
-                <div>
+                <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
                     <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                     <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }} · On {{ $g->loading_dock }}</div>
-                </div>
+                </a>
                 <button wire:click="allot({{ $g->id }})" wire:loading.attr="disabled" wire:target="allot({{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white shrink-0 disabled:opacity-50" style="background: var(--brand);">Allot &amp; auto-locate bay</button>
             </div>
         @empty
@@ -124,10 +124,10 @@ new #[Layout('layouts.app')] class extends Component
     <div class="flex flex-col gap-2 mb-6">
         @forelse ($toStart as $g)
             <div class="rounded-lg border p-4 flex items-center justify-between gap-3" style="background: var(--surface-3); border-color: var(--border);">
-                <div>
+                <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
                     <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                     <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }} · Allotted to {{ $g->unloadingRecord?->staging_area }}</div>
-                </div>
+                </a>
                 <button wire:click="startUnloading({{ $g->id }})" wire:loading.attr="disabled" wire:target="startUnloading({{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50" style="background: var(--brand);">Start unloading</button>
             </div>
         @empty
@@ -140,10 +140,10 @@ new #[Layout('layouts.app')] class extends Component
         @forelse ($inProgress as $g)
             <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3 mb-2">
-                    <div>
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }}</div>
-                    </div>
+                    </a>
                     @if ($completing !== $g->id)
                         <button wire:click="$set('completing', {{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium border" style="border-color: var(--border); color: var(--text-primary);">Complete</button>
                     @endif
@@ -170,14 +170,14 @@ new #[Layout('layouts.app')] class extends Component
     <h2 class="font-semibold text-sm mb-2 mt-6" style="color: var(--text-primary);">History</h2>
     <div class="flex flex-col gap-2">
         @forelse ($history as $r)
-            <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <a href="{{ $r->gateEntry ? route('gate-entries.show', $r->gateEntry) : '#' }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
                     <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }}</div>
                     <span class="text-xs" style="color: var(--text-muted);">{{ $r->completed_at ? 'Completed' : 'In progress' }}</span>
                 </div>
                 <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $r->gateEntry?->vendor_name }} · {{ $r->box_count }} boxes · {{ $r->staging_area }}</div>
                 <div class="text-xs mt-1" style="color: var(--text-muted);">Allotted {{ $r->allotted_at?->format('d M, H:i') }}{{ $r->started_at ? ' · Started '.$r->started_at->format('d M, H:i') : '' }}{{ $r->completed_at ? ' · Completed '.$r->completed_at->format('d M, H:i') : '' }}</div>
-            </div>
+            </a>
         @empty
             <div class="text-center text-sm py-10" style="color: var(--text-muted);">No unloading records yet.</div>
         @endforelse

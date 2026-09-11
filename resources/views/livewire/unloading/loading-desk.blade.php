@@ -83,10 +83,10 @@ new #[Layout('layouts.app')] class extends Component
         @forelse ($toAssign as $g)
             <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
-                    <div>
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }}</div>
-                    </div>
+                    </a>
                     @if ($assigning !== $g->id)
                         <button wire:click="openAssign({{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white" style="background: var(--brand);" @if (empty($availableDocks)) disabled @endif>Assign dock</button>
                     @endif
@@ -112,13 +112,13 @@ new #[Layout('layouts.app')] class extends Component
     <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">Currently on a dock</h2>
     <div class="flex flex-col gap-2">
         @forelse ($assigned as $g)
-            <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
                     <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }} · {{ $g->loading_dock }}</div>
                     <span class="text-xs" style="color: var(--text-muted);">Since {{ $g->dock_assigned_at?->format('d M, H:i') }}</span>
                 </div>
                 <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }} · waiting on Unloading Desk to allot a staging area</div>
-            </div>
+            </a>
         @empty
             <p class="text-sm py-2" style="color: var(--text-muted);">No vehicles on a dock right now.</p>
         @endforelse

@@ -56,7 +56,7 @@ new #[Layout('layouts.app')] class extends Component
             @endphp
             <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
-                    <div>
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }} · {{ $qc?->sku }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">
                             Accepted {{ $qc?->accepted_qty }} · Hold {{ $qc?->qc_hold_qty }} · Defective {{ $qc?->defective_qty }} · Rejected {{ $qc?->rejected_qty }}
@@ -64,7 +64,7 @@ new #[Layout('layouts.app')] class extends Component
                         @if ($qc?->qc_reasons)
                             <div class="text-xs mt-1" style="color: var(--text-secondary);">QC notes: {{ $qc->qc_reasons }}</div>
                         @endif
-                    </div>
+                    </a>
                     @if ($posting !== $g->id)
                         <button wire:click="openPost({{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white shrink-0" style="background: var(--brand);">Post GRN</button>
                     @endif

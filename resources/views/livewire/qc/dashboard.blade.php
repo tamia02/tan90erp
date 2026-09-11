@@ -130,13 +130,13 @@ new #[Layout('layouts.app')] class extends Component
         @else
             <div class="flex flex-col divide-y" style="border-color: var(--border);">
                 @foreach ($queue as $g)
-                    <div class="py-3 flex items-center justify-between gap-3">
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                         <div>
                             <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                             <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->material }} · {{ $g->invoice_qty }} qty</div>
                         </div>
-                        <a href="{{ route('qc.queue') }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">Check →</a>
-                    </div>
+                        <span class="text-xs font-medium shrink-0" style="color: var(--brand);">View →</span>
+                    </a>
                 @endforeach
             </div>
         @endif
