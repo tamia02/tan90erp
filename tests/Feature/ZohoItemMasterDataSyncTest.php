@@ -26,6 +26,7 @@ class ZohoItemMasterDataSyncTest extends TestCase
         parent::setUp();
 
         Cache::flush();
+        config()->set('services.zoho.inventory.sync_enabled', true);
         config()->set('services.zoho.inventory.organization_id', 'local-test-org');
         config()->set('services.zoho.inventory.refresh_token', 'local-test-refresh');
         config()->set('services.zoho.inventory.rate_limit.per_minute', 0);
