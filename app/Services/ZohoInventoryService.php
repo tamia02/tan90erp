@@ -346,6 +346,10 @@ class ZohoInventoryService
         // (the fallback this app itself writes when a vendor's GST is unknown,
         // see syncVendors()) fail that check and permanently block the push.
         // GST is optional in Zoho, so just omit it rather than block the vendor.
+        // Separately: gst_no is only accepted alongside gst_treatment (India
+        // orgs) — without it Zoho rejects the whole request with code 8
+        // ("Invalid Element gst_no"), so a vendor WITH a real, valid GSTIN
+        // was failing to sync while one with no GST at all succeeded.
         $gstNumber = strtoupper(trim((string) $vendor->gst_number));
         $validGst = (bool) preg_match('/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}Z[A-Z\d]{1}$/', $gstNumber);
 
@@ -355,6 +359,7 @@ class ZohoInventoryService
             'contact_type' => 'vendor',
             'website' => $vendor->website,
             'gst_no' => $validGst ? $gstNumber : null,
+            'gst_treatment' => $validGst ? 'business_gst' : null,
         ], fn ($value) => $value !== null && $value !== '');
 
         if ($email !== '' || $phone !== '') {
@@ -371,11 +376,9 @@ class ZohoInventoryService
 
     /**
      * The Master Data module's Vendor/Item/Customer (governance layer, with
-     * its own approval workflow) never pushed outbound to Zoho at all —
-     * only the legacy VendorMaster/SkuMaster screens above did. Confirmed:
-     * no observer registered anywhere for these three models. Called from
-     * ApprovalService once a record is actually approved, not on every
-     * save, so unapproved drafts never reach Zoho.
+     * its own approval workflow) now pushes outbound to Zoho on every save
+     * via MasterDataVendorObserver — reversed from the original design where
+     * this only fired once approved (see the class docblock's Zoho note).
      */
     public function pushMasterDataVendor(\App\Models\Tan90\MasterData\Vendor $vendor): bool
     {
@@ -393,6 +396,7 @@ class ZohoInventoryService
             'company_name' => $vendor->name,
             'contact_type' => 'vendor',
             'gst_no' => $validGst ? $gstNumber : null,
+            'gst_treatment' => $validGst ? 'business_gst' : null,
         ], fn ($value) => $value !== null && $value !== '');
 
         if ($email !== '' || $phone !== '') {
@@ -421,6 +425,7 @@ class ZohoInventoryService
             'company_name' => $customer->name,
             'contact_type' => 'customer',
             'gst_no' => $validGst ? $gstNumber : null,
+            'gst_treatment' => $validGst ? 'business_gst' : null,
         ], fn ($value) => $value !== null && $value !== '');
 
         return $this->upsertContact($customer->name, $payload);
@@ -619,9 +624,19 @@ class ZohoInventoryService
             return false;
         }
 
+        // findBillByNumber() returns three distinct things: false (the lookup
+        // call itself failed), null (the call succeeded but no such bill
+        // exists), or the bill array. This must refuse BOTH failure cases —
+        // recording a payment with no matching bill leaves it sitting in
+        // Zoho as an unapplied amount against the vendor, corrupting their
+        // real Unused Credits balance. The previous `=== false` check only
+        // caught the lookup-failed case and silently posted an unmatched
+        // payment whenever the bill genuinely didn't exist yet in Zoho.
         $bill = $this->findBillByNumber($record->invoice_number);
-        if ($bill === false) {
-            $this->lastError = "Zoho Inventory bill lookup failed for {$record->invoice_number} — not recording a payment without confirming the bill exists.";
+        if (! $bill) {
+            $this->lastError = $bill === false
+                ? "Zoho Inventory bill lookup failed for {$record->invoice_number} — not recording a payment without confirming the bill exists."
+                : "No Zoho bill found for invoice {$record->invoice_number} — not recording an unmatched payment.";
 
             return false;
         }
@@ -633,14 +648,11 @@ class ZohoInventoryService
             'payment_mode' => 'banktransfer',
             'reference_number' => $record->invoice_number,
             'description' => "Cleared via Tan90 Finance Review — gate entry #{$record->gate_entry_id}.",
-        ], fn ($value) => $value !== null && $value !== '');
-
-        if ($bill) {
-            $payload['bills'] = [[
+            'bills' => [[
                 'bill_id' => $bill['bill_id'],
                 'amount_applied' => (float) $record->final_payable,
-            ]];
-        }
+            ]],
+        ], fn ($value) => $value !== null && $value !== '');
 
         $response = $this->inventoryRequest()->post($this->invUrl('/vendorpayments'), $payload);
 

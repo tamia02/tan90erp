@@ -4,6 +4,7 @@ use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use App\Models\AuditLogEntry;
 use App\Models\FinanceRecord;
+use App\Models\GateEntry;
 use App\Models\PurchaseOrder;
 use App\Models\QcResult;
 use App\Models\Rfq;
@@ -122,6 +123,12 @@ new #[Layout('layouts.app')] class extends Component
         );
 
         return [
+            // Gate entries the Guard logged against this vendor's name, shown
+            // regardless of whether the vendor pre-filed a matching
+            // submission — previously a gate entry was invisible here unless
+            // the vendor had already submitted first, so a Guard-only entry
+            // never reached the vendor at all.
+            'gateActivity' => GateEntry::where('vendor_name', $vendorName)->orderByDesc('created_at')->take(10)->get(),
             'submissions' => $allSubmissions->sortByDesc('created_at')->take(5)->values(),
             'fulfillment' => $fulfillment,
             'openPos' => $fulfillment->where('remaining', '>', 0)->values(),
@@ -177,6 +184,37 @@ new #[Layout('layouts.app')] class extends Component
             @endforeach
         </div>
     @endif
+
+    <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold" style="color: var(--text-primary);">Recent Gate Activity</h2>
+    </div>
+    <p class="text-xs mb-3 -mt-2" style="color: var(--text-secondary);">Every gate entry logged against your name, including ones the Guard recorded before you submitted anything.</p>
+    <div class="rounded-lg border overflow-hidden mb-6" style="background: var(--surface-3); border-color: var(--border);">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+                    <th class="px-4 py-2.5 font-medium">Gate No</th>
+                    <th class="px-4 py-2.5 font-medium">PO Number</th>
+                    <th class="px-4 py-2.5 font-medium">Status</th>
+                    <th class="px-4 py-2.5 font-medium">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse ($gateActivity as $g)
+                    <tr style="border-top: 1px solid var(--border);">
+                        <td class="px-4 py-2.5 font-medium">
+                            <a href="{{ route('gate-entries.show', $g) }}" wire:navigate style="color: var(--brand);">{{ $g->gate_no }}</a>
+                        </td>
+                        <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $g->po_number ?: '—' }}</td>
+                        <td class="px-4 py-2.5" style="color: {{ $g->status === 'closed' ? 'var(--status-good)' : ($g->status === 'pending_validation' ? 'var(--status-critical)' : 'var(--status-warning)') }};">{{ ucfirst(str_replace('_', ' ', $g->status)) }}</td>
+                        <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $g->created_at->format('d M, Y') }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="4" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No gate entries recorded against your name yet.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
 
     <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold" style="color: var(--text-primary);">Recent Submissions</h2>

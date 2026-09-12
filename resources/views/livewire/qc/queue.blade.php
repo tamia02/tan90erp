@@ -83,22 +83,31 @@ new #[Layout('layouts.app')] class extends Component
                 </div>
 
                 @if ($checking === $g->id)
+                    @if ($errors->any())
+                        <div class="mt-4 rounded-lg border p-3 text-xs" style="border-color: var(--status-critical); background: var(--status-critical-bg); color: var(--status-critical);">
+                            Fix the highlighted field(s) below before submitting.
+                        </div>
+                    @endif
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">Accepted</span>
                             <input wire:model="accepted" type="number" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                            @error('accepted') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">QC Hold</span>
                             <input wire:model.live="qcHold" type="number" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                            @error('qcHold') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">Defective</span>
                             <input wire:model="defective" type="number" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                            @error('defective') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">Rejected</span>
                             <input wire:model="rejected" type="number" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                            @error('rejected') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="flex flex-col gap-1.5 text-sm sm:col-span-4">
                             <span class="font-medium" style="color: var(--text-primary);">QC reasons (if any hold/defective/rejected)</span>

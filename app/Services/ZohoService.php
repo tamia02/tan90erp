@@ -15,6 +15,7 @@ use App\Models\Tan90\BomRecipeCosting\CostSheet;
 use App\Models\Tan90\BomRecipeCosting\Recipe;
 use App\Models\VendorSubmission;
 use App\Models\VendorMaster;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -40,12 +41,23 @@ class ZohoService
     {
         return Cache::remember('zoho_access_token', 3300, function () {
             $accountsBase = config('services.zoho.accounts_base_url');
-            $response = Http::asForm()->post("{$accountsBase}/oauth/v2/token", [
-                'refresh_token' => config('services.zoho.refresh_token'),
-                'client_id' => config('services.zoho.client_id'),
-                'client_secret' => config('services.zoho.client_secret'),
-                'grant_type' => 'refresh_token',
-            ]);
+
+            // Zoho being briefly unreachable (timeout, DNS blip, TLS issue)
+            // must not turn into a 500 for whoever triggered this — a Guard
+            // fetching a bill, an admin syncing a PO, etc. Every caller of
+            // accessToken() treats a null return as "couldn't reach Zoho,
+            // fall back gracefully", so a network-level failure here needs
+            // to resolve to that same null, not an uncaught exception.
+            try {
+                $response = Http::asForm()->timeout(10)->post("{$accountsBase}/oauth/v2/token", [
+                    'refresh_token' => config('services.zoho.refresh_token'),
+                    'client_id' => config('services.zoho.client_id'),
+                    'client_secret' => config('services.zoho.client_secret'),
+                    'grant_type' => 'refresh_token',
+                ]);
+            } catch (ConnectionException) {
+                return null;
+            }
 
             if (! $response->successful() || $response->json('error')) {
                 return null;

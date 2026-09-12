@@ -153,6 +153,7 @@ new #[Layout('layouts.app')] class extends Component
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">Box count</span>
                             <input wire:model="boxCount" type="number" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                            @error('boxCount') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">POD / LR ref</span>

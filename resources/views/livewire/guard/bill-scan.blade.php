@@ -2,6 +2,7 @@
 
 use App\Enums\Role;
 use App\Models\GateEntry;
+use App\Models\PurchaseOrder;
 use App\Models\User;
 use App\Models\ValidationIssue;
 use App\Models\VendorSubmission;
@@ -112,12 +113,34 @@ new #[Layout('layouts.app')] class extends Component
             return;
         }
 
+        // The guard often has the PO number itself in hand (printed on the
+        // vendor's own paperwork), not just an invoice number — check our
+        // own PO Master before ever reaching out to Zoho. Previously this
+        // was skipped entirely, so a PO that was already sitting in Admin ->
+        // PO Master (synced or manually entered) was invisible here the
+        // moment Zoho itself was slow, down, or the token needed refreshing.
+        $localPo = PurchaseOrder::with('lines')->where('po_number', $this->invoiceNumber)->first();
+
+        if ($localPo) {
+            $line = $localPo->primaryLine();
+            $this->poNumber = $localPo->po_number;
+            $this->vendorName = $localPo->vendor_name;
+            $this->invoiceQty = (string) ($line?->quantity ?? 1);
+            $this->rate = (string) ($line?->list_price ?? 0);
+            $this->material = $line?->product ?? 'Purchase Order Item';
+            $this->billScanned = true;
+            $this->fetchedSource = 'PO Master';
+            $this->fetched = true;
+
+            return;
+        }
+
         $po = app(ZohoService::class)->syncPurchaseOrder($this->invoiceNumber);
 
         if (! $po) {
             $this->fetched = false;
             $this->fetchedSource = '';
-            $this->addError('invoiceNumber', 'No vendor submission or Zoho PO found for this number.');
+            $this->addError('invoiceNumber', 'No vendor submission, PO Master record, or Zoho PO found for this number.');
 
             return;
         }
@@ -443,7 +466,9 @@ new #[Layout('layouts.app')] class extends Component
 
                         @if ($fetched)
                             <div class="md:col-span-2 rounded-xl border p-3 text-xs" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--text-primary);">
-                                <div>Source: {{ $fetchedSource ?: 'source' }}</div>
+                                @if ($fetchedSource)
+                                    <div>Source: {{ $fetchedSource }}</div>
+                                @endif
                                 Fetched from vendor submission — PO {{ $poNumber }} · {{ $vendorName }} · Qty {{ $invoiceQty }} · {{ $material }}
                             </div>
                         @endif

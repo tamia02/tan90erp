@@ -86,7 +86,8 @@ new #[Layout('layouts.app')] class extends Component
                     <div class="mt-4">
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">Suggested bin</span>
-                            <input wire:model="suggestedBin" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="BHW-PCM-A1" />
+                            <input wire:model="suggestedBin" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="e.g. BHW-PCM-A1" />
+                            @error('suggestedBin') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <button wire:click="post" class="mt-4 rounded-lg px-4 py-2 text-sm font-medium text-white" style="background: var(--brand);">Post GRN &amp; update stock</button>
                     </div>

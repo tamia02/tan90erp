@@ -6,6 +6,7 @@ use App\Models\Forge\Batch;
 use App\Models\Forge\Freezer;
 use App\Models\Forge\FreezerLog;
 use App\Models\Forge\WorkOrder;
+use App\Models\Tan90\BomRecipeCosting\FinishedGood;
 use App\Models\User;
 use App\Models\Workspace\WorkspaceException;
 use App\Services\Forge\FreezerMonitoringService;
@@ -21,6 +22,27 @@ use Tests\TestCase;
  */
 class ForgeFreezerTest extends TestCase
 {
+    /**
+     * A throwaway work order dedicated to this test file's own batches.
+     * Previously these tests reused WorkOrder::first(), which happens to be
+     * the same seeded WO-2026-0001 that ForgeGoldenPathTest drives through
+     * its full lifecycle — since Batch is an unordered hasOne, attaching a
+     * stray 'in_process' batch to that shared work order made
+     * ForgeGoldenPathTest's own freshly-released batch invisible behind it.
+     */
+    private function dedicatedWorkOrder(string $suffix): WorkOrder
+    {
+        $finishedGood = FinishedGood::where('code', 'FG-PCM500-BLUE')->firstOrFail();
+
+        return WorkOrder::create([
+            'wo_number' => 'WO-TEST-FREEZER-'.$suffix.'-'.uniqid(),
+            'finished_good_id' => $finishedGood->id,
+            'target_qty' => 100,
+            'uom' => 'NOS',
+            'status' => 'in_progress',
+        ]);
+    }
+
     public function test_freezer_dashboard_loads_for_manufacturing_head(): void
     {
         $head = User::where('email', 'head.manufacturing@tan90.demo')->firstOrFail();
@@ -31,7 +53,7 @@ class ForgeFreezerTest extends TestCase
     public function test_assigning_and_releasing_a_batch_tracks_occupancy(): void
     {
         $freezer = Freezer::where('code', 'BF-PCM-01')->firstOrFail();
-        $wo = WorkOrder::first();
+        $wo = $this->dedicatedWorkOrder('A');
         $batch = Batch::firstOrCreate(['batch_number' => 'B-TEST-FREEZER-001'], [
             'work_order_id' => $wo->id, 'qty' => 100, 'uom' => 'NOS', 'status' => 'in_process',
         ]);
@@ -51,7 +73,7 @@ class ForgeFreezerTest extends TestCase
     public function test_cannot_assign_a_batch_to_a_freezer_already_occupied(): void
     {
         $freezer = Freezer::where('code', 'BF-PCM-02')->firstOrFail();
-        $wo = WorkOrder::first();
+        $wo = $this->dedicatedWorkOrder('B');
         $batchOne = Batch::firstOrCreate(['batch_number' => 'B-TEST-FREEZER-002'], [
             'work_order_id' => $wo->id, 'qty' => 100, 'uom' => 'NOS', 'status' => 'in_process',
         ]);

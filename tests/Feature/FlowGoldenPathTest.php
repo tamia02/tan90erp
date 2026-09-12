@@ -69,7 +69,7 @@ class FlowGoldenPathTest extends TestCase
             'requested_date' => now()->addDays(2)->toDateString(),
         ])->assertRedirect();
 
-        $order = \App\Models\Flow\CustomerOrder::latest()->firstOrFail();
+        $order = \App\Models\Flow\CustomerOrder::latest('id')->firstOrFail();
         $this->actingAs($customerManager)->post(route('flow.orders.lines.store', $order), [
             'finished_good_id' => $finishedGood->id, 'qty_ordered' => 150, 'uom' => 'EA',
         ])->assertRedirect();
@@ -90,7 +90,7 @@ class FlowGoldenPathTest extends TestCase
             'order_line_ids' => [$line->id], 'warehouse' => 'Bhiwandi FG Warehouse',
         ])->assertRedirect();
 
-        $wave = \App\Models\Flow\PickingWave::latest()->firstOrFail();
+        $wave = \App\Models\Flow\PickingWave::latest('id')->firstOrFail();
         $this->actingAs($pickPack)->post(route('flow.waves.publish', $wave))->assertRedirect();
         $this->assertSame('waved', $order->fresh()->status);
 
@@ -115,7 +115,7 @@ class FlowGoldenPathTest extends TestCase
             'transporter' => 'Test Transport Co', 'vehicle_number' => 'MH-04-TEST', 'driver_name' => 'Test Driver',
         ])->assertRedirect();
 
-        $shipment = \App\Models\Flow\Shipment::latest()->firstOrFail();
+        $shipment = \App\Models\Flow\Shipment::latest('id')->firstOrFail();
         $this->actingAs($dispatch)->post(route('flow.dispatch.load', [$shipment, $hu]))->assertRedirect();
         $this->assertSame($shipment->id, $hu->fresh()->shipment_id);
 
@@ -166,7 +166,7 @@ class FlowGoldenPathTest extends TestCase
         $this->actingAs($fgStore)->post(route('flow.inventory.receive', $batch), ['zone' => 'Z1', 'bin' => 'B-02'])->assertRedirect();
 
         $this->actingAs($customerManager)->post(route('flow.orders.store'), ['customer_name' => 'Short Pick Test Co'])->assertRedirect();
-        $order = \App\Models\Flow\CustomerOrder::latest()->firstOrFail();
+        $order = \App\Models\Flow\CustomerOrder::latest('id')->firstOrFail();
         $this->actingAs($customerManager)->post(route('flow.orders.lines.store', $order), [
             'finished_good_id' => $finishedGood->id, 'qty_ordered' => 100, 'uom' => 'EA',
         ])->assertRedirect();
@@ -175,7 +175,7 @@ class FlowGoldenPathTest extends TestCase
 
         $line = $order->lines()->firstOrFail();
         $this->actingAs($pickPack)->post(route('flow.waves.store'), ['order_line_ids' => [$line->id]])->assertRedirect();
-        $wave = \App\Models\Flow\PickingWave::latest()->firstOrFail();
+        $wave = \App\Models\Flow\PickingWave::latest('id')->firstOrFail();
         $this->actingAs($pickPack)->post(route('flow.waves.publish', $wave))->assertRedirect();
 
         // FEFO may split the 100-unit demand across more than one lot if an

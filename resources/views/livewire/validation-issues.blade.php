@@ -14,6 +14,13 @@ new #[Layout('layouts.app')] class extends Component
     public string $title = '';
     public string $description = '';
 
+    // Clearing a hard-fail (duplicate invoice, missing PO, etc.) used to be
+    // exactly as casual as clearing a minor rate typo — one click, no
+    // record of why. Now a hard-fail needs a written reason first.
+    public ?int $confirmingIssueId = null;
+    public string $confirmingStatus = '';
+    public string $resolutionNote = '';
+
     public array $issueTypes = [
         'not_mapped' => 'Not Mapped (shelf/rack/bin not assigned)',
         'not_found_across_vendors' => 'Not Found Across All Vendors',
@@ -46,9 +53,58 @@ new #[Layout('layouts.app')] class extends Component
     public function updateStatus(int $id, string $status): void
     {
         $issue = ValidationIssue::findOrFail($id);
-        $issue->update(['status' => $status]);
 
-        AuditLogger::log("Issue {$status}", $issue->id.($issue->owner ? " · owner {$issue->owner}" : ''), $issue);
+        // A hard-fail is a real blocker (duplicate invoice, missing PO,
+        // unmapped SKU) — clearing it without ever writing down why was
+        // letting the same one-click "resolve" apply to a genuine control
+        // failure as to a trivial mismatch. Approve/resolve on a hard-fail
+        // now opens a confirmation step that requires a reason; escalating
+        // still needs no justification, since it hands the issue onward
+        // instead of clearing it.
+        if ($issue->severity === 'hardFail' && in_array($status, ['approved', 'resolved'], true)) {
+            $this->confirmingIssueId = $id;
+            $this->confirmingStatus = $status;
+            $this->resolutionNote = '';
+
+            return;
+        }
+
+        $this->applyStatus($issue, $status);
+    }
+
+    public function confirmHardFailClearance(): void
+    {
+        $this->validate([
+            'resolutionNote' => ['required', 'string', 'min:10', 'max:1000'],
+        ], [
+            'resolutionNote.required' => 'A hard-fail issue needs a written reason before it can be cleared.',
+            'resolutionNote.min' => 'Give a bit more detail (at least 10 characters).',
+        ]);
+
+        $issue = ValidationIssue::findOrFail($this->confirmingIssueId);
+        $issue->note = $this->resolutionNote;
+        $this->applyStatus($issue, $this->confirmingStatus);
+
+        $this->cancelHardFailClearance();
+    }
+
+    public function cancelHardFailClearance(): void
+    {
+        $this->confirmingIssueId = null;
+        $this->confirmingStatus = '';
+        $this->resolutionNote = '';
+    }
+
+    private function applyStatus(ValidationIssue $issue, string $status): void
+    {
+        $issue->status = $status;
+        $issue->save();
+
+        AuditLogger::log(
+            "Issue {$status}",
+            $issue->id.($issue->owner ? " · owner {$issue->owner}" : '').($issue->note ? " · {$issue->note}" : ''),
+            $issue
+        );
 
         if ($status === 'escalated') {
             AuditLogger::log('Issue escalated to Finance Controller', "{$issue->title} · {$issue->sku}", $issue);
@@ -169,11 +225,23 @@ new #[Layout('layouts.app')] class extends Component
                     @endif
                     Raised {{ $issue->created_at->format('d M Y, H:i') }}
                 </p>
-                @if ($issue->status === 'open')
+                @if ($issue->status === 'open' && $confirmingIssueId !== $issue->id)
                     <div class="flex gap-2 mt-3">
                         <button wire:click="updateStatus({{ $issue->id }}, 'approved')" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--border); color: var(--text-primary);">Approve</button>
                         <button wire:click="updateStatus({{ $issue->id }}, 'resolved')" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-good); color: var(--status-good);">Resolve</button>
                         <button wire:click="updateStatus({{ $issue->id }}, 'escalated')" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-critical); color: var(--status-critical);">Escalate</button>
+                    </div>
+                @endif
+
+                @if ($confirmingIssueId === $issue->id)
+                    <div class="mt-3 rounded-lg border p-3" style="border-color: var(--status-critical); background: var(--status-critical-bg);">
+                        <p class="text-xs font-medium mb-2" style="color: var(--status-critical);">This is a hard-fail — write down why it's safe to {{ $confirmingStatus === 'approved' ? 'approve' : 'resolve' }} before continuing.</p>
+                        <textarea wire:model="resolutionNote" rows="2" class="w-full rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="e.g. Confirmed with vendor this is a genuine re-delivery, not a duplicate billing."></textarea>
+                        @error('resolutionNote') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        <div class="flex gap-2 mt-2">
+                            <button wire:click="confirmHardFailClearance" class="text-xs font-medium rounded-lg px-2.5 py-1.5 text-white" style="background: var(--status-critical);">Confirm {{ $confirmingStatus === 'approved' ? 'approve' : 'resolve' }}</button>
+                            <button wire:click="cancelHardFailClearance" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--border); color: var(--text-primary);">Cancel</button>
+                        </div>
                     </div>
                 @endif
             </div>

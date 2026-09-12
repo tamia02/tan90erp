@@ -93,6 +93,52 @@ class ZohoPaymentAndCreditPushTest extends TestCase
             && (float) ($request['amount'] ?? 0) === 1000.0);
     }
 
+    /**
+     * Reproduces a real defect found against the live Zoho account: clearing
+     * a payable whose bill was never actually pushed (invoice number doesn't
+     * match anything in Zoho) still posted a payment — with no bill_id
+     * attached, leaving it sitting in Zoho as an unapplied amount against
+     * the vendor. findBillByNumber() returns null (not false) when the
+     * lookup succeeds but finds nothing, and the old `=== false` guard let
+     * that case straight through.
+     */
+    public function test_clearing_a_payable_with_no_matching_zoho_bill_does_not_push_an_unmatched_payment(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+            $isGet = $request->method() === 'GET';
+
+            if (str_contains($url, '/contacts')) {
+                return $isGet
+                    ? Http::response(['contacts' => []], 200)
+                    : Http::response(['code' => 0, 'contact' => ['contact_id' => 'zoho-vendor-1']], 200);
+            }
+
+            if (str_contains($url, '/bills')) {
+                // No bill exists in Zoho for this invoice number at all.
+                return Http::response(['bills' => []], 200);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $finance = User::factory()->create(['role' => 'finance']);
+
+        $record = FinanceRecord::create([
+            'gate_entry_id' => GateEntry::factory()->create()->id,
+            'vendor_name' => 'Unmatched Bill Vendor',
+            'invoice_number' => 'INV-NEVER-PUSHED-1',
+            'rate_per_unit' => 42, 'invoice_value' => 25200, 'accepted_value' => 25200,
+            'final_payable' => 25200, 'match_status' => 'matched', 'vendor_status' => 'pending',
+        ]);
+
+        $this->actingAs($finance);
+
+        Volt::test('finance.review')->call('setStatus', $record->id, 'cleared');
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/vendorpayments'));
+    }
+
     public function test_clearing_an_already_cleared_payable_does_not_push_a_duplicate_payment(): void
     {
         $this->fakeZohoUpsert();

@@ -50,7 +50,7 @@ class ForgeGoldenPathTest extends TestCase
             'due_date' => now()->addDays(3)->toDateString(),
         ])->assertRedirect();
 
-        $plan = \App\Models\Forge\ProductionPlan::latest()->firstOrFail();
+        $plan = \App\Models\Forge\ProductionPlan::latest('id')->firstOrFail();
         $this->actingAs($productionManager)->post(route('forge.plans.approve', $plan))->assertRedirect();
         $this->assertSame('frozen', $plan->fresh()->status);
 
