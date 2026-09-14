@@ -384,7 +384,7 @@ new #[Layout('layouts.app')] class extends Component
 
 
         <div class="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-5">
-            <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
+            <section class="rounded-2xl border p-5" x-data="{ scanning: false, scanMessage: '' }" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
                     <div>
                         <h2 class="text-lg font-semibold" style="color: var(--text-primary);">{{ $entryType === 'visitor' ? 'Visitor Pass' : 'Scan / Autofill' }}</h2>
@@ -394,20 +394,46 @@ new #[Layout('layouts.app')] class extends Component
                         <button type="button" wire:click="fillSample" class="rounded-xl px-4 py-3 text-sm font-bold text-white" style="background: var(--brand);">{{ $entryType === 'visitor' ? 'Quick Visitor Fill' : 'Quick Scan Autofill' }}</button>
                         @unless ($entryType === 'visitor')
                             <label class="rounded-xl px-4 py-3 text-sm font-semibold border cursor-pointer text-center" style="border-color: var(--border); color: var(--text-primary);">
-                                <span wire:loading.remove wire:target="billFile">{{ $billFile ? 'Change File' : 'Camera / Upload' }}</span>
+                                <span x-show="!scanning" wire:loading.remove wire:target="billFile">{{ $billFile ? 'Change File' : 'Camera / Upload' }}</span>
                                 <span wire:loading wire:target="billFile">Uploading...</span>
-                                <input type="file" accept="image/*,.pdf" capture="environment" class="hidden" wire:model="billFile" />
+                                <span x-show="scanning" x-cloak>Reading document…</span>
+                                <input
+                                    type="file"
+                                    accept="image/*,.pdf"
+                                    capture="environment"
+                                    class="hidden"
+                                    wire:model="billFile"
+                                    x-on:change="
+                                        const file = $event.target.files[0];
+                                        const isInward = {{ $entryType === 'inward' ? 'true' : 'false' }};
+                                        if (! file || ! isInward) { return; }
+                                        scanning = true;
+                                        scanMessage = '';
+                                        window.tan90ScanBillForPoNumber(file).then((po) => {
+                                            scanning = false;
+                                            if (po) {
+                                                scanMessage = 'Found PO ' + po + ' on the document — fetching matching details…';
+                                                $wire.invoiceNumber = po;
+                                                $wire.fetchBillDetails();
+                                            } else {
+                                                scanMessage = 'Could not automatically read a PO number from this document — enter it below.';
+                                            }
+                                        });
+                                    "
+                                />
                             </label>
                         @endunless
                     </div>
                 </div>
+
+                <div x-show="scanMessage" x-cloak class="text-xs mt-2" style="color: var(--text-secondary);" x-text="scanMessage"></div>
 
                 @unless ($entryType === 'visitor')
                     @error('billFile') <p class="text-xs mt-2" style="color: var(--status-critical);">{{ $message }}</p> @enderror
                     @if ($billFile)
                         <div class="rounded-xl border p-3 mt-2 text-xs" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--text-primary);">
                             Attached: {{ $billFile->getClientOriginalName() }}.
-                            {{ $entryType === 'inward' ? ' This app does not read text off the photo — enter the Bill/PO number below and tap Fetch to pull the matching details.' : ' Fill in the details below and save.' }}
+                            {{ $entryType === 'inward' ? ' Scanned automatically for a PO number where possible — double-check the fetched details below before saving.' : ' Fill in the details below and save.' }}
                         </div>
                     @endif
                 @endunless
