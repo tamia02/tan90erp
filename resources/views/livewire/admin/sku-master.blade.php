@@ -65,15 +65,18 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
-        <div>
-            <h1 class="text-xl sm:text-2xl font-semibold" style="color: var(--text-primary);">SKU Master</h1>
-            <p class="text-sm mt-1" style="color: var(--text-secondary);">Every product, matching the client's Zoho CRM Products module — Guard Bill Scan checks mapped status against this list.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+                <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Admin Module</div>
+                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">SKU Master</h1>
+                <p class="text-sm mt-1" style="color: var(--text-secondary);">Every product, matching the client's Zoho CRM Products module — Guard Bill Scan checks mapped status against this list.</p>
+            </div>
+            <button wire:click="$toggle('adding')" class="inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
+                {{ $adding ? 'Cancel' : 'Add SKU' }}
+            </button>
         </div>
-        <button wire:click="$toggle('adding')" class="inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
-            {{ $adding ? 'Cancel' : 'Add SKU' }}
-        </button>
-    </div>
+    </section>
 
 
     @if ($adding)

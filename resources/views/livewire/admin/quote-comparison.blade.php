@@ -48,8 +48,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Quote Comparison</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Every SKU with an open or quoted RFQ, vendors side by side. {{ $comparableCount }} SKU(s) have more than one quote ready to compare.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Admin Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Quote Comparison</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Every SKU with an open or quoted RFQ, vendors side by side. {{ $comparableCount }} SKU(s) have more than one quote ready to compare.</p>
+    </section>
 
     <div class="flex flex-col gap-4">
         @forelse ($groups as $sku => $rows)

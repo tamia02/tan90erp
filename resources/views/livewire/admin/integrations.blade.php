@@ -12,10 +12,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <div class="mb-5">
-        <h1 class="text-xl sm:text-2xl font-semibold" style="color: var(--text-primary);">Integrations</h1>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Admin Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Integrations</h1>
         <p class="text-sm mt-1" style="color: var(--text-secondary);">Connect the Zoho CRM organization to pull vendor and purchase order details into Tan90.</p>
-    </div>
+    </section>
 
 
     <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">

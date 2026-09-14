@@ -27,10 +27,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <div class="mb-5">
-        <h1 class="text-xl sm:text-2xl font-semibold" style="color: var(--text-primary);">Command Center</h1>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Admin Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Command Center</h1>
         <p class="text-sm mt-1" style="color: var(--text-secondary);">Every gate entry's position across the full Inward → GRN pipeline.</p>
-    </div>
+    </section>
 
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         @foreach ($stages as $s)
