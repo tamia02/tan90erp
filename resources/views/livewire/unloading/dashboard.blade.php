@@ -28,34 +28,42 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div wire:poll.10s>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Store Executive Dashboard</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Vehicles cleared by Guard and waiting to be unloaded.</p>
+<div wire:poll.10s class="space-y-5">
+    <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Store Executive Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Dashboard</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Vehicles cleared by Guard and waiting to be unloaded.</p>
+    </section>
 
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <x-icon name="calendar-clock" class="w-5 h-5 mb-2 text-[var(--text-muted)]" />
             <div class="text-xs" style="color: var(--text-muted);">Awaiting Dock</div>
-            <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $awaiting }}</div>
+            <div class="text-2xl font-bold mt-1" style="color: var(--text-primary);">{{ $awaiting }}</div>
         </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <x-icon name="warehouse" class="w-5 h-5 mb-2 text-[var(--text-muted)]" />
             <div class="text-xs" style="color: var(--text-muted);">On Dock</div>
-            <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $onDock }}</div>
+            <div class="text-2xl font-bold mt-1" style="color: var(--text-primary);">{{ $onDock }}</div>
         </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <x-icon name="check" class="w-5 h-5 mb-2 text-[var(--text-muted)]" />
             <div class="text-xs" style="color: var(--text-muted);">Allotted</div>
-            <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $allotted }}</div>
+            <div class="text-2xl font-bold mt-1" style="color: var(--text-primary);">{{ $allotted }}</div>
         </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <x-icon name="truck" class="w-5 h-5 mb-2 text-[var(--status-warning)]" />
             <div class="text-xs" style="color: var(--text-muted);">In Progress</div>
-            <div class="text-2xl font-semibold mt-1" style="color: var(--status-warning);">{{ $inProgress }}</div>
+            <div class="text-2xl font-bold mt-1" style="color: var(--status-warning);">{{ $inProgress }}</div>
         </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <x-icon name="package-search" class="w-5 h-5 mb-2 text-[var(--status-good)]" />
             <div class="text-xs" style="color: var(--text-muted);">Sent to QC</div>
-            <div class="text-2xl font-semibold mt-1" style="color: var(--status-good);">{{ $readyForQc }}</div>
+            <div class="text-2xl font-bold mt-1" style="color: var(--status-good);">{{ $readyForQc }}</div>
         </div>
     </div>
 
-    <div class="rounded-lg border p-4 mb-6" style="background: var(--surface-3); border-color: var(--border);">
+    <div class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
         <h2 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">Cleared vehicles awaiting a loading dock</h2>
         @if ($queue->isEmpty())
             <p class="text-sm py-4" style="color: var(--text-muted);">Nothing waiting — cleared vehicles will show up here.</p>
@@ -74,7 +82,7 @@ new #[Layout('layouts.app')] class extends Component
         @endif
     </div>
 
-    <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+    <div class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
         <div class="flex items-center justify-between mb-3">
             <h2 class="font-semibold text-sm" style="color: var(--text-primary);">Activity</h2>
             @if ($activityTotal > 5)

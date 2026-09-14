@@ -102,8 +102,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Unloading Desk</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Allot vehicles already on a loading dock, then start and complete unloading. Staging bay is auto-located.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Store Executive Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Unloading Desk</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Allot vehicles already on a loading dock, then start and complete unloading. Staging bay is auto-located.</p>
+    </section>
 
     <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">To allot</h2>
     <div class="flex flex-col gap-2 mb-6">
