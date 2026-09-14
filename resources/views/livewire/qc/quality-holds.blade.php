@@ -18,8 +18,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Quality Holds</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Every delivery with a hold, defective, or rejected quantity.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">QC Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Quality Holds</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Every delivery with a hold, defective, or rejected quantity.</p>
+    </section>
 
     <div class="flex flex-col gap-2">
         @forelse ($holds as $r)

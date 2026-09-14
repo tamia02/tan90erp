@@ -49,21 +49,39 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">QC Dashboard</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Unloaded deliveries waiting for the accept/hold/defective/reject split.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">QC Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Dashboard</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Unloaded deliveries waiting for the accept/hold/defective/reject split.</p>
+    </section>
 
-    <div class="grid grid-cols-3 gap-3 mb-6">
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
-            <div class="text-xs" style="color: var(--text-muted);">In QC Queue</div>
-            <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $inQueue }}</div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div class="rounded-2xl border p-4 flex items-center gap-3.5" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style="background: var(--brand-bg); color: var(--brand);">
+                <x-icon name="package-search" class="w-6 h-6" />
+            </div>
+            <div>
+                <div class="text-2xl font-bold" style="color: var(--text-primary);">{{ $inQueue }}</div>
+                <div class="text-xs" style="color: var(--text-muted);">In QC Queue</div>
+            </div>
         </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
-            <div class="text-xs" style="color: var(--text-muted);">Completed Today</div>
-            <div class="text-2xl font-semibold mt-1" style="color: var(--status-good);">{{ $doneToday }}</div>
+        <div class="rounded-2xl border p-4 flex items-center gap-3.5" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style="background: var(--status-good-bg); color: var(--status-good);">
+                <x-icon name="clipboard-check" class="w-6 h-6" />
+            </div>
+            <div>
+                <div class="text-2xl font-bold" style="color: var(--status-good);">{{ $doneToday }}</div>
+                <div class="text-xs" style="color: var(--text-muted);">Completed Today</div>
+            </div>
         </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
-            <div class="text-xs" style="color: var(--text-muted);">Fully Rejected Today</div>
-            <div class="text-2xl font-semibold mt-1" style="color: var(--status-critical);">{{ $rejectedToday }}</div>
+        <div class="rounded-2xl border p-4 flex items-center gap-3.5" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style="background: var(--status-critical-bg); color: var(--status-critical);">
+                <x-icon name="shield-alert" class="w-6 h-6" />
+            </div>
+            <div>
+                <div class="text-2xl font-bold" style="color: var(--status-critical);">{{ $rejectedToday }}</div>
+                <div class="text-xs" style="color: var(--text-muted);">Fully Rejected Today</div>
+            </div>
         </div>
     </div>
 

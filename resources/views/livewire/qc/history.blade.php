@@ -17,8 +17,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">History</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Every QC Check recorded so far.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">QC Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">History</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Every QC Check recorded so far.</p>
+    </section>
 
     <div class="flex flex-col gap-2 mb-6">
         @forelse ($results as $r)
