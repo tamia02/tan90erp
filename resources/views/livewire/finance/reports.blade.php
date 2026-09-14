@@ -54,8 +54,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Reports</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Final payable totals across every closed gate entry.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Finance Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Reports</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Final payable totals across every closed gate entry.</p>
+    </section>
 
     <div class="grid grid-cols-2 gap-3 mb-6">
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
