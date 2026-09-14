@@ -26,7 +26,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-5xl mx-auto">
+<div>
     <div class="mb-5">
         <h1 class="text-xl sm:text-2xl font-semibold" style="color: var(--text-primary);">Command Center</h1>
         <p class="text-sm mt-1" style="color: var(--text-secondary);">Every gate entry's position across the full Inward → GRN pipeline.</p>

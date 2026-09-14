@@ -53,7 +53,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-3xl mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Reports</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Final payable totals across every closed gate entry.</p>
 

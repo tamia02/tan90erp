@@ -42,7 +42,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-5xl mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">AP Aging Report</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Outstanding payables by vendor, bucketed by days since the GRN was posted.</p>
 

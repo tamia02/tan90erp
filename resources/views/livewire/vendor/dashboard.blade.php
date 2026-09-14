@@ -152,18 +152,31 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-4xl mx-auto">
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Vendor Dashboard</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Overview of your activities.</p>
+<div>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Vendor Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Dashboard</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Overview of your activities.</p>
+    </section>
 
-    <div class="grid grid-cols-2 gap-4 mb-6">
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
-            <div class="text-sm" style="color: var(--text-secondary);">Total Submissions</div>
-            <div class="text-2xl font-semibold" style="color: var(--text-primary);">{{ \App\Models\VendorSubmission::where('vendor_name', auth()->user()->name)->count() }}</div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <div class="rounded-2xl border p-4 flex items-center gap-3.5" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style="background: var(--brand-bg); color: var(--brand);">
+                <x-icon name="file-text" class="w-6 h-6" />
+            </div>
+            <div>
+                <div class="text-2xl font-bold" style="color: var(--text-primary);">{{ \App\Models\VendorSubmission::where('vendor_name', auth()->user()->name)->count() }}</div>
+                <div class="text-xs" style="color: var(--text-muted);">Total Submissions</div>
+            </div>
         </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
-            <div class="text-sm" style="color: var(--text-secondary);">Issues Pending</div>
-            <div class="text-2xl font-semibold" style="color: var(--status-critical);">{{ \App\Models\VendorSubmission::where('vendor_name', auth()->user()->name)->where('status', 'correction_requested')->count() }}</div>
+        <div class="rounded-2xl border p-4 flex items-center gap-3.5" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style="background: var(--status-critical-bg); color: var(--status-critical);">
+                <x-icon name="shield-alert" class="w-6 h-6" />
+            </div>
+            <div>
+                <div class="text-2xl font-bold" style="color: var(--status-critical);">{{ \App\Models\VendorSubmission::where('vendor_name', auth()->user()->name)->where('status', 'correction_requested')->count() }}</div>
+                <div class="text-xs" style="color: var(--text-muted);">Issues Pending</div>
+            </div>
         </div>
     </div>
 
@@ -322,23 +335,23 @@ new #[Layout('layouts.app')] class extends Component
     <h2 class="text-lg font-semibold mb-3" style="color: var(--text-primary);">Request for Quotation (RFQ)</h2>
     <div class="rounded-lg border p-4 mb-3" style="background: var(--surface-3); border-color: var(--border);">
         @if (session('rfqSuccess'))
-            <div class="p-2 rounded text-xs mb-3 text-green-800 bg-green-100">{{ session('rfqSuccess') }}</div>
+            <div class="p-2 rounded-lg text-xs mb-3" style="background: var(--status-good-bg); color: var(--status-good);">{{ session('rfqSuccess') }}</div>
         @endif
         <form wire:submit="submitRfq" class="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <label class="flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">SKU/Material</span>
                 <input wire:model="rfqSku" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
-                @error('rfqSku') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                @error('rfqSku') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             <label class="flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">Quantity</span>
                 <input wire:model="rfqQuantity" type="number" min="1" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
-                @error('rfqQuantity') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                @error('rfqQuantity') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             <label class="flex flex-col gap-1.5 text-sm sm:col-span-2">
                 <span class="font-medium" style="color: var(--text-primary);">Notes (optional)</span>
                 <input wire:model="rfqNotes" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
-                @error('rfqNotes') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                @error('rfqNotes') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             <button type="submit" class="sm:col-span-4 rounded-lg px-3.5 py-2 text-sm font-medium text-white" style="background: var(--brand);">Add RFQ</button>
         </form>

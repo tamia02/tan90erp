@@ -42,7 +42,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-4xl mx-auto space-y-5">
+<div class="space-y-5">
     <div>
         <a href="{{ route('vendor.submissions') }}" wire:navigate class="text-sm" style="color: var(--text-secondary);">&larr; Back to My Submissions</a>
         <h1 class="text-xl font-semibold mt-1" style="color: var(--text-primary);">Activity — {{ $submission->po_number }}</h1>

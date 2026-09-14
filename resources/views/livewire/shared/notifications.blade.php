@@ -12,7 +12,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-2xl mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Notifications</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Alerts relevant to your role, computed from live data.</p>
 

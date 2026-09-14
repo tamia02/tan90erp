@@ -136,7 +136,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-4xl mx-auto">
+<div>
     <div class="flex items-center justify-between gap-3 mb-1">
         <h1 class="text-xl font-semibold" style="color: var(--text-primary);">Validation Issues</h1>
         <button wire:click="$toggle('raising')" class="rounded-lg px-3.5 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">{{ $raising ? 'Cancel' : 'Raise issue' }}</button>

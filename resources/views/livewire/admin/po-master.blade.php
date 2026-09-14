@@ -94,7 +94,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-6xl mx-auto">
+<div>
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
         <div>
             <h1 class="text-xl sm:text-2xl font-semibold" style="color: var(--text-primary);">PO Master</h1>

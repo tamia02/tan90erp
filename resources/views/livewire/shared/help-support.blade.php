@@ -38,7 +38,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-2xl mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Help &amp; Support</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Answers for the {{ auth()->user()->role?->label() ?? 'Access Control' }} module.</p>
 

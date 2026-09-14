@@ -90,7 +90,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-3xl mx-auto">
+<div>
     <a href="{{ url()->previous() }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">&larr; Back</a>
 
     <h1 class="text-xl font-semibold mt-2 mb-1" style="color: var(--text-primary);">{{ $entry->gate_no }}</h1>

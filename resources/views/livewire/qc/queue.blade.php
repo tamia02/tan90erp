@@ -65,7 +65,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-3xl mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">QC Queue</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Split each delivery into accepted / hold / defective / rejected before it can go to GRN Check.</p>
 

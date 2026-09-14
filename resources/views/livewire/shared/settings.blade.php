@@ -43,7 +43,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-lg mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Settings</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Your personal preferences for this account.</p>
 

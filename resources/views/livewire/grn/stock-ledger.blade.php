@@ -12,7 +12,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-4xl mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Stock Ledger</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Every posting made by GRN Check — immutable, append-only.</p>
 

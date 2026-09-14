@@ -101,7 +101,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-3xl mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Unloading Desk</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">Allot vehicles already on a loading dock, then start and complete unloading. Staging bay is auto-located.</p>
 

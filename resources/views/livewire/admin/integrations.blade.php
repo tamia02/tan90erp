@@ -11,7 +11,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-4xl mx-auto">
+<div>
     <div class="mb-5">
         <h1 class="text-xl sm:text-2xl font-semibold" style="color: var(--text-primary);">Integrations</h1>
         <p class="text-sm mt-1" style="color: var(--text-secondary);">Connect the Zoho CRM organization to pull vendor and purchase order details into Tan90.</p>

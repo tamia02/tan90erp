@@ -117,7 +117,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-4xl mx-auto">
+<div>
     <div class="flex items-center justify-between mb-1">
         <h1 class="text-xl font-semibold" style="color: var(--text-primary);">My Submissions</h1>
         <button

@@ -46,7 +46,7 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div class="max-w-5xl mx-auto">
+<div>
     <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Supplier Scorecards</h1>
     <p class="text-sm mb-4" style="color: var(--text-secondary);">On-time delivery, quality acceptance and finance standing per vendor, computed from actual gate/QC/finance records.</p>
 
