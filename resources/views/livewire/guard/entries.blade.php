@@ -46,11 +46,14 @@ new #[Layout('layouts.app')] class extends Component
 
 }; ?>
 
-<div class="max-w-4xl mx-auto">
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Guard Entries</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Every gate entry logged so far.</p>
+<div class="space-y-5">
+    <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Guard Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Guard Entries</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Every gate entry logged so far.</p>
+    </section>
 
-    <div class="flex flex-col sm:flex-row gap-2 mb-4">
+    <div class="flex flex-col sm:flex-row gap-2">
         <div class="relative w-full" x-data="{ open: false }" @click.outside="open = false">
             <input
                 wire:model.live.debounce.300ms="search"
@@ -87,14 +90,22 @@ new #[Layout('layouts.app')] class extends Component
         </select>
     </div>
 
-    <div class="flex flex-col gap-2">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
         @forelse ($entries as $entry)
-            <a href="{{ route('guard.entries.show', $entry) }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
+            @php
+                $statusColor = match ($entry->status) {
+                    'closed' => 'good',
+                    'pending_validation', 'rejected' => 'critical',
+                    default => 'warning',
+                };
+            @endphp
+            <a href="{{ route('guard.entries.show', $entry) }}" wire:navigate class="block rounded-2xl border p-4 transition-colors hover:border-[var(--brand)]" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between flex-wrap gap-2">
-                    <span class="text-sm font-medium" style="color: var(--text-primary);">{{ $entry->gate_no }} <span class="text-xs" style="color: var(--text-muted); font-weight: normal; margin-left: 4px;">&bull; Type: {{ ucfirst($entry->entry_type) }}</span></span>
-                    <span class="text-xs font-medium capitalize" style="color: var(--text-muted);">{{ str_replace('_', ' ', $entry->status) }}</span>
+                    <span class="text-sm font-semibold" style="color: var(--text-primary);">{{ $entry->gate_no }}</span>
+                    <span class="text-xs font-semibold capitalize px-2 py-0.5 rounded-full" style="background: var(--status-{{ $statusColor }}-bg); color: var(--status-{{ $statusColor }});">{{ str_replace('_', ' ', $entry->status) }}</span>
                 </div>
-                <div class="text-xs mt-1" style="color: var(--text-secondary);">
+                <div class="text-xs mt-1.5" style="color: var(--text-muted);">{{ ucfirst($entry->entry_type) }} entry</div>
+                <div class="text-xs mt-2" style="color: var(--text-secondary);">
                     {{ $entry->vendor_name ?? $entry->vehicle_number }} · {{ $entry->material ?? 'No material set' }} · {{ $entry->invoice_qty ?? '—' }} qty
                 </div>
                 <div class="text-xs mt-2" style="color: var(--text-muted);">
@@ -102,7 +113,7 @@ new #[Layout('layouts.app')] class extends Component
                 </div>
             </a>
         @empty
-            <div class="text-center text-sm py-10" style="color: var(--text-muted);">{{ $search !== '' || $status !== '' ? 'No gate entries match your search.' : 'No gate entries yet.' }}</div>
+            <div class="lg:col-span-2 text-center text-sm py-10" style="color: var(--text-muted);">{{ $search !== '' || $status !== '' ? 'No gate entries match your search.' : 'No gate entries yet.' }}</div>
         @endforelse
     </div>
 </div>

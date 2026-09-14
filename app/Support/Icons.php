@@ -14,6 +14,7 @@ class Icons
     private const PATHS = [
             'circle' => '<circle cx="12" cy="12" r="10" />',
             'log-out' => '<path d="m16 17 5-5-5-5" /> <path d="M21 12H9" /> <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />',
+            'chevron-left' => '<path d="m15 18-6-6 6-6" />',
             'bar-chart-2' => '<path d="M5 21v-6" /> <path d="M12 21V3" /> <path d="M19 21V9" />',
             'bell' => '<path d="M10.268 21a2 2 0 0 0 3.464 0" /> <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />',
             'book-open' => '<path d="M12 5v16" /> <path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z" />',
@@ -55,7 +56,7 @@ class Icons
             'warehouse' => '<path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11" /> <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8z" /> <path d="M6 13h12" /> <path d="M6 17h12" />',
     ];
 
-    public static function svg(string $name, string $class = 'w-5 h-5'): string
+    public static function svg(string $name, string $class = 'w-4.5 h-4.5'): string
     {
         $inner = self::PATHS[$name] ?? self::PATHS['circle'] ?? '';
 
