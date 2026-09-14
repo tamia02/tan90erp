@@ -115,15 +115,18 @@ new #[Layout('layouts.app')] class extends Component
     }
 }; ?>
 
-<div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Stock Update</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Update daily available stock for raw materials.</p>
+<div class="space-y-5">
+    <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Vendor Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Stock Update</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Update daily available stock for raw materials.</p>
+    </section>
 
-    <div class="grid grid-cols-3 gap-6">
-        <div class="col-span-1">
-            <form wire:submit="save" class="p-4 rounded-lg border space-y-4" style="background: var(--surface-3); border-color: var(--border);">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="lg:col-span-1">
+            <form wire:submit="save" class="rounded-2xl border p-5 space-y-4" style="background: var(--surface-3); border-color: var(--border);">
                 @if (session()->has('success'))
-                    <div class="p-2 rounded text-xs text-green-800 bg-green-100">{{ session('success') }}</div>
+                    <div class="p-2 rounded-lg text-xs" style="background: var(--status-good-bg); color: var(--status-good);">{{ session('success') }}</div>
                 @endif
                 @if ($editingId)
                     <div class="p-2 rounded text-xs" style="background: var(--brand-bg); color: var(--brand);">Editing existing stock entry</div>
@@ -139,33 +142,33 @@ new #[Layout('layouts.app')] class extends Component
                             <option value="{{ $material }}">{{ $material }}</option>
                         @endif
                     </select>
-                    @error('material') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    @error('material') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">Available Qty</label>
-                    <input type="number" wire:model="quantity" class="w-full rounded border px-3 py-2 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
-                    @error('quantity') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    <input type="number" wire:model="quantity" class="w-full rounded-xl border px-3 py-2.5 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                    @error('quantity') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">Unit</label>
-                    <select wire:model="unit" class="w-full rounded border px-3 py-2 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                    <select wire:model="unit" class="w-full rounded-xl border px-3 py-2.5 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
                         @foreach ($units as $u)
                             <option value="{{ $u }}">{{ $u }}</option>
                         @endforeach
                     </select>
-                    @error('unit') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    @error('unit') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                 </div>
                 <div class="flex gap-2">
-                    <button type="submit" class="flex-1 px-4 py-2 rounded text-sm font-medium text-white" style="background: var(--primary);">{{ $editingId ? 'Save Changes' : 'Update Stock' }}</button>
+                    <button type="submit" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-white" style="background: var(--brand);">{{ $editingId ? 'Save Changes' : 'Update Stock' }}</button>
                     @if ($editingId)
-                        <button type="button" wire:click="cancelEdit" class="px-4 py-2 rounded text-sm font-medium border" style="border-color: var(--border); color: var(--text-primary);">Cancel</button>
+                        <button type="button" wire:click="cancelEdit" class="px-4 py-2.5 rounded-xl text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Cancel</button>
                     @endif
                 </div>
             </form>
         </div>
 
-        <div class="col-span-2">
-            <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="lg:col-span-2">
+            <div class="rounded-2xl border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">

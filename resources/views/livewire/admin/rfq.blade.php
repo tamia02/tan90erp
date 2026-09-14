@@ -151,7 +151,7 @@ new #[Layout('layouts.app')] class extends Component
                         <button wire:click="markQuoted({{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-good); color: var(--status-good);">Save quote</button>
                     @endif
                     @if ($r->status === 'quoted')
-                        <button wire:click="evaluate({{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--primary); color: var(--primary);">Save evaluation</button>
+                        <button wire:click="evaluate({{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--brand); color: var(--brand);">Save evaluation</button>
                     @endif
                     @if (! in_array($r->status, ['closed', 'selected']))
                         <button wire:click="close({{ $r->id }})" wire:confirm="Close this RFQ?" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-critical); color: var(--status-critical);">Close</button>
