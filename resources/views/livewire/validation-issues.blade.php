@@ -137,11 +137,16 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <div class="flex items-center justify-between gap-3 mb-1">
-        <h1 class="text-xl font-semibold" style="color: var(--text-primary);">Validation Issues</h1>
-        <button wire:click="$toggle('raising')" class="rounded-lg px-3.5 py-2 text-sm font-medium border" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">{{ $raising ? 'Cancel' : 'Raise issue' }}</button>
-    </div>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Every issue raised at the gate, across all vendors and POs.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+                <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Store Manager Module</div>
+                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Validation Issues</h1>
+                <p class="text-sm mt-1" style="color: var(--text-secondary);">Every issue raised at the gate, across all vendors and POs.</p>
+            </div>
+            <button wire:click="$toggle('raising')" class="rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">{{ $raising ? 'Cancel' : 'Raise issue' }}</button>
+        </div>
+    </section>
 
     @if ($raising)
         <div class="rounded-lg border p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3" style="background: var(--surface-3); border-color: var(--border);">

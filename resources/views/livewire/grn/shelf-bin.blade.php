@@ -61,8 +61,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Shelf &amp; Bin</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">What's currently sitting in each bin, and putaway moves between bins.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Store Manager Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Shelf &amp; Bin</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">What's currently sitting in each bin, and putaway moves between bins.</p>
+    </section>
 
     <div class="rounded-lg border p-4 mb-6" style="background: var(--surface-3); border-color: var(--border);">
         <h2 class="text-sm font-semibold mb-3" style="color: var(--text-primary);">Move stock between bins</h2>
