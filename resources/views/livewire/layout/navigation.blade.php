@@ -131,29 +131,40 @@ new class extends Component
 
     <nav class="flex-1 overflow-y-auto py-3 px-2.5 space-y-0.5">
         @foreach ($navItems as $item)
+            @php
+                $active = request()->routeIs($item['route']) && request()->route('entity') == ($item['params'][0] ?? request()->route('entity'));
+            @endphp
             <a
                 href="{{ route($item['route'], $item['params'] ?? []) }}"
                 wire:navigate
                 @class([
-                    'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors border',
+                    'border-transparent' => ! $active,
                 ])
-                style="{{ request()->routeIs($item['route']) && request()->route('entity') == ($item['params'][0] ?? request()->route('entity')) ? 'background: var(--brand-bg); color: var(--brand);' : 'color: var(--text-secondary);' }}"
+                style="{{ $active ? 'background: var(--brand-bg); color: var(--brand); border-color: var(--brand-bg);' : 'color: var(--text-secondary);' }}"
             >
-                {{ $item['label'] }}
+                <x-icon :name="$item['icon'] ?? 'circle'" class="w-5 h-5 shrink-0" />
+                <span class="truncate">{{ $item['label'] }}</span>
             </a>
         @endforeach
     </nav>
 
     <div class="px-3 py-4 border-t" style="border-color: var(--border);">
-        <div class="px-2 mb-2">
-            <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ auth()->user()->name }}</div>
-            <div class="text-xs truncate" style="color: var(--text-muted);">{{ auth()->user()->role?->label() ?? auth()->user()->tan90Profile?->role?->name ?? 'No role assigned' }}</div>
+        <div class="flex items-center gap-2.5 px-2 mb-2.5">
+            <div class="w-8 h-8 shrink-0 rounded-full grid place-items-center text-xs font-bold text-white" style="background: var(--brand);">
+                {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
+            </div>
+            <div class="min-w-0">
+                <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ auth()->user()->name }}</div>
+                <div class="text-xs truncate" style="color: var(--text-muted);">{{ auth()->user()->role?->label() ?? auth()->user()->tan90Profile?->role?->name ?? 'No role assigned' }}</div>
+            </div>
         </div>
         <button
             wire:click="logout"
-            class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+            class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-black/5"
             style="color: var(--status-critical);"
         >
+            <x-icon name="log-out" class="w-5 h-5" />
             Log out
         </button>
     </div>
