@@ -44,8 +44,10 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">Settings</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Your personal preferences for this account.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <h1 class="text-2xl font-bold" style="color: var(--text-primary);">Settings</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Your personal preferences for this account.</p>
+    </section>
 
     <div class="rounded-lg border p-4 flex flex-col gap-4" style="background: var(--surface-3); border-color: var(--border);">
         <label class="flex items-center gap-2 text-sm">

@@ -54,8 +54,10 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <h1 class="text-xl font-semibold mb-1" style="color: var(--text-primary);">All Gate Entries</h1>
-    <p class="text-sm mb-4" style="color: var(--text-secondary);">Every gate entry logged, at any stage — not just what's currently queued for your own action.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <h1 class="text-2xl font-bold" style="color: var(--text-primary);">All Gate Entries</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Every gate entry logged, at any stage — not just what's currently queued for your own action.</p>
+    </section>
 
     <div class="flex flex-col sm:flex-row gap-2 mb-4">
         <div class="relative w-full" x-data="{ open: false }" @click.outside="open = false">

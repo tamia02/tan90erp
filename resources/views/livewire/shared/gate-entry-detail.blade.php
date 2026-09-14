@@ -91,10 +91,13 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    <a href="{{ url()->previous() }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">&larr; Back</a>
-
-    <h1 class="text-xl font-semibold mt-2 mb-1" style="color: var(--text-primary);">{{ $entry->gate_no }}</h1>
-    <p class="text-sm mb-5" style="color: var(--text-secondary);">Full gate entry form as submitted, plus every stage it has moved through since.</p>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <a href="{{ url()->previous() }}" wire:navigate class="text-xs font-semibold inline-flex items-center gap-1" style="color: var(--brand);">
+            <x-icon name="chevron-left" class="w-3.5 h-3.5" /> Back
+        </a>
+        <h1 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">{{ $entry->gate_no }}</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Full gate entry form as submitted, plus every stage it has moved through since.</p>
+    </section>
 
     <div class="rounded-lg border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
         <h2 class="text-sm font-semibold mb-3" style="color: var(--text-primary);">Gate entry — submitted details</h2>
