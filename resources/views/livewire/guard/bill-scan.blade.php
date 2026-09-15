@@ -140,7 +140,13 @@ new #[Layout('layouts.app')] class extends Component
             $this->invoiceQty = (string) ($line?->quantity ?? 1);
             $this->rate = (string) ($line?->list_price ?? 0);
             $this->material = $line?->product ?? 'Purchase Order Item';
-            $this->billScanned = true;
+            // Confirmed live (GATE-9863): what was typed here matched on
+            // po_number, not invoice_number -- leaving it in place meant
+            // invoice_number === po_number got saved, which then tripped a
+            // false "Duplicate Invoice" hardFail against any other entry
+            // that legitimately used this PO number as ITS invoice number.
+            // Clear it so the guard enters the real invoice/bill number.
+            $this->invoiceNumber = '';
             $this->fetchedSource = 'PO Master';
             $this->fetched = true;
 
@@ -163,7 +169,9 @@ new #[Layout('layouts.app')] class extends Component
         $this->invoiceQty = (string) ($line?->quantity ?? 1);
         $this->rate = (string) ($line?->list_price ?? 0);
         $this->material = $line?->product ?? 'Zoho Purchase Item';
-        $this->billScanned = true;
+        // Same reasoning as the PO Master branch above: syncPurchaseOrder()
+        // matched this as a PO number, not a real invoice number.
+        $this->invoiceNumber = '';
         $this->fetchedSource = 'Zoho CRM';
         $this->fetched = true;
     }
@@ -233,11 +241,13 @@ new #[Layout('layouts.app')] class extends Component
         };
         $this->validate($rules);
 
-        if ($this->entryType === 'inward' && ! $this->fetched) {
-            $this->addError('invoiceNumber', 'Fetch the bill details for this bill number before saving.');
-
-            return;
-        }
+        // Deliberately NOT a hard block on !fetched: a guard must still be able
+        // to log a truck whose PO genuinely isn't in the system yet (new
+        // vendor, PO not entered/synced yet) -- that's exactly what
+        // GateValidationService's PO_NOT_FOUND hardFail + pending_validation
+        // routing already exists to handle. Blocking here entirely prevented
+        // that fallback from ever being reached, which was a real regression:
+        // the guard had no way to save the entry at all in that case.
 
         if (! $this->gps) {
             $this->useGps();
@@ -470,21 +480,21 @@ new #[Layout('layouts.app')] class extends Component
                     @if ($entryType === 'visitor')
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Visitor Name</span>
-                            <input wire:model="visitorName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Visitor name" />
+                            <input wire:model="visitorName" id="visitorName" name="visitorName" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Visitor name" />
                             @error('visitorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Mobile</span>
-                            <input wire:model="driverPhone" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="+91 ..." />
+                            <input wire:model="driverPhone" id="driverPhone" name="driverPhone" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="+91 ..." />
                             @error('driverPhone') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Company</span>
-                            <input wire:model="vendorName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Company / agency" />
+                            <input wire:model="vendorName" id="vendorName" name="vendorName" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Company / agency" />
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Person To Meet</span>
-                            <input wire:model="personToMeet" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Store Manager" />
+                            <input wire:model="personToMeet" id="personToMeet" name="personToMeet" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Store Manager" />
                             @error('personToMeet') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm md:col-span-2">
@@ -500,24 +510,24 @@ new #[Layout('layouts.app')] class extends Component
                     @elseif ($entryType === 'inward')
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Driver Name</span>
-                            <input wire:model="driverName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Driver name" />
+                            <input wire:model="driverName" id="driverName" name="driverName" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Driver name" />
                             @error('driverName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Driver Phone Number</span>
-                            <input wire:model="driverPhone" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="+91 ..." />
+                            <input wire:model="driverPhone" id="driverPhone" name="driverPhone" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="+91 ..." />
                             @error('driverPhone') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm md:col-span-2">
                             <span class="font-semibold" style="color: var(--text-primary);">Vehicle Number</span>
-                            <input wire:model="vehicleNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="MH 04 GT 5521" />
+                            <input wire:model="vehicleNumber" id="vehicleNumber" name="vehicleNumber" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="MH 04 GT 5521" />
                             @error('vehicleNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
 
                         <label class="space-y-1.5 text-sm md:col-span-2">
                             <span class="font-semibold" style="color: var(--text-primary);">Bill / Zoho PO Number</span>
                             <div class="flex gap-2">
-                                <input wire:model="invoiceNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Bill number or 898897889" />
+                                <input wire:model="invoiceNumber" id="invoiceNumber" name="invoiceNumber" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Bill number or 898897889" />
                                 <button type="button" wire:click="fetchBillDetails" class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold text-white" style="background: var(--brand);">Fetch</button>
                             </div>
                             @error('invoiceNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
@@ -528,44 +538,47 @@ new #[Layout('layouts.app')] class extends Component
                                 @if ($fetchedSource)
                                     <div>Source: {{ $fetchedSource }}</div>
                                 @endif
-                                Fetched from vendor submission — PO {{ $poNumber }} · {{ $vendorName }} · Qty {{ $invoiceQty }} · {{ $material }}
+                                Matched — PO {{ $poNumber }} · {{ $vendorName }} · Qty {{ $invoiceQty }} · {{ $material }}
+                                @if (in_array($fetchedSource, ['PO Master', 'Zoho CRM'], true))
+                                    <div class="mt-1 font-semibold">What you searched with was a PO number, not a bill number — the field above is now cleared. Type the actual invoice/bill number from the paper bill before saving.</div>
+                                @endif
                             </div>
                         @endif
 
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">PO Number</span>
-                            <input wire:model="poNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="PO RM 2627 0020" />
+                            <input wire:model="poNumber" id="poNumber" name="poNumber" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="PO RM 2627 0020" />
                             @error('poNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Vendor</span>
-                            <input wire:model="vendorName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Vendor" />
+                            <input wire:model="vendorName" id="vendorName" name="vendorName" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Vendor" />
                             @error('vendorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Bill Date</span>
-                            <input wire:model="poBillDate" type="date" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" />
+                            <input wire:model="poBillDate" id="poBillDate" name="poBillDate" autocomplete="off" type="date" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" />
                             @error('poBillDate') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Bill Amount</span>
-                            <input wire:model="invoiceAmount" type="number" step="0.01" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="29400" />
+                            <input wire:model="invoiceAmount" id="invoiceAmount" name="invoiceAmount" autocomplete="off" type="number" step="0.01" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="29400" />
                             @error('invoiceAmount') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                     @else
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Package Number</span>
-                            <input wire:model="poNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="OUT RM 2627 0020" />
+                            <input wire:model="poNumber" id="poNumber" name="poNumber" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="OUT RM 2627 0020" />
                             @error('poNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Delivery Address</span>
-                            <input wire:model="vendorName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Delivery address" />
+                            <input wire:model="vendorName" id="vendorName" name="vendorName" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Delivery address" />
                             @error('vendorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm md:col-span-2">
                             <span class="font-semibold" style="color: var(--text-primary);">Invoice / Doc No</span>
-                            <input wire:model="invoiceNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Invoice number" />
+                            <input wire:model="invoiceNumber" id="invoiceNumber" name="invoiceNumber" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Invoice number" />
                             @error('invoiceNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                     @endif
@@ -573,13 +586,13 @@ new #[Layout('layouts.app')] class extends Component
                     @if ($entryType !== 'inward')
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">{{ $entryType === 'visitor' ? 'Vehicle / Walk-in' : 'Vehicle Number' }}</span>
-                            <input wire:model="vehicleNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="{{ $entryType === 'visitor' ? 'WALK-IN' : 'MH 04 GT 5521' }}" />
+                            <input wire:model="vehicleNumber" id="vehicleNumber" name="vehicleNumber" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="{{ $entryType === 'visitor' ? 'WALK-IN' : 'MH 04 GT 5521' }}" />
                             @error('vehicleNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         @unless ($entryType === 'visitor')
                             <label class="space-y-1.5 text-sm">
                                 <span class="font-semibold" style="color: var(--text-primary);">Driver Name</span>
-                                <input wire:model="driverName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Driver name" />
+                                <input wire:model="driverName" id="driverName" name="driverName" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Driver name" />
                                 @error('driverName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                             </label>
                         @endunless
@@ -634,18 +647,19 @@ new #[Layout('layouts.app')] class extends Component
                         </div>
                     </div>
 
-                    {{-- The single most common reason Save silently appeared to do
-                         nothing: an inward entry needs Fetch run first, but the only
-                         error was a small red line up near the invoice number field --
-                         easy to miss once the form's scrolled down here to Save. This
-                         puts the same blocker right next to the button that "isn't working". --}}
+                    {{-- Informational only, deliberately NOT a block on Save: a guard
+                         still needs to be able to log a truck whose PO isn't in the
+                         system yet. Unfetched + saved just means GateValidationService
+                         won't find a matching PO and will correctly park the entry at
+                         Pending Validation for the Store Manager instead of silently
+                         marking it validated. --}}
                     @if ($entryType === 'inward' && ! $fetched)
-                        <div class="rounded-xl p-3 mt-4 text-xs font-medium" style="background: var(--status-critical-bg); color: var(--status-critical);">
-                            Save is blocked until the bill is fetched — enter the Bill/PO number above and tap Fetch (or use Quick Scan Autofill) first.
+                        <div class="rounded-xl p-3 mt-4 text-xs font-medium" style="background: var(--status-warning-bg); color: var(--status-warning);">
+                            Bill not fetched — you can still save, but with an unmatched PO this entry will be held at Pending Validation for the Store Manager to review.
                         </div>
                     @endif
 
-                    <button wire:click="saveEntry" class="mt-4 w-full rounded-xl px-4 py-3 text-sm font-bold text-white disabled:opacity-50" style="background: var(--brand);" @disabled($entryType === 'inward' && ! $fetched)>
+                    <button wire:click="saveEntry" class="mt-4 w-full rounded-xl px-4 py-3 text-sm font-bold text-white" style="background: var(--brand);">
                         {{ $entryType === 'visitor' ? 'Save Visitor Pass' : ($entryType === 'outward' ? 'Save Outward Entry' : 'Save and Send to Unloading') }}
                     </button>
                 </section>
