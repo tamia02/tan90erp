@@ -46,6 +46,18 @@ new #[Layout('layouts.app')] class extends Component
     public string $location = 'bhiwandi';
     public string $remarks = '';
 
+    // Deliberately separate from driverName/poNumber/material rather than
+    // reusing them under a different label: those three are shared across
+    // inward/outward/visitor, which is exactly what made "Visitor Name" and
+    // "Person To Meet" feel linked to the driver/PO fields for anyone
+    // switching between entry types -- they were, literally, the same
+    // underlying property.
+    public string $visitorName = '';
+    public string $personToMeet = '';
+    public string $visitPurpose = '';
+
+    public array $visitPurposeOptions = ['Meeting', 'Service / Maintenance Visit', 'Audit / Inspection'];
+
     public array $documents = ['invoice' => false, 'eway' => false, 'lr' => false, 'pod' => false];
     public array $productLines = [];
 
@@ -163,14 +175,14 @@ new #[Layout('layouts.app')] class extends Component
 
         if ($this->entryType === 'visitor') {
             $this->billScanned = false;
-            $this->poNumber = 'Store Manager';
+            $this->personToMeet = 'Store Manager';
             $this->vendorName = 'Tesmed Service Partner';
             $this->invoiceNumber = 'VIS-'.now()->format('ymdHis');
             $this->invoiceQty = '1';
-            $this->material = 'Preventive maintenance visit';
+            $this->visitPurpose = 'Service / Maintenance Visit';
             $this->transporter = 'Service visit';
             $this->vehicleNumber = 'WALK-IN';
-            $this->driverName = 'Amit Sharma';
+            $this->visitorName = 'Amit Sharma';
             $this->driverPhone = '+91 98111 22334';
             $this->documents = ['invoice' => false, 'eway' => false, 'lr' => false, 'pod' => false];
             $this->productLines = [];
@@ -215,7 +227,7 @@ new #[Layout('layouts.app')] class extends Component
     public function saveEntry(): void
     {
         $rules = match ($this->entryType) {
-            'visitor' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'material' => ['required', 'string']],
+            'visitor' => ['visitorName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'personToMeet' => ['required', 'string'], 'visitPurpose' => ['required', 'string']],
             'inward' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'vehicleNumber' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'invoiceAmount' => ['required', 'numeric'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'material' => ['required', 'string']],
             default => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string']]
         };
@@ -231,21 +243,30 @@ new #[Layout('layouts.app')] class extends Component
             $this->useGps();
         }
 
+        $isVisitor = $this->entryType === 'visitor';
+        // Visitor uses its own dedicated fields (visitorName/personToMeet/
+        // visitPurpose) rather than reusing driverName/poNumber/material --
+        // still maps onto the same gate_entries columns as inward/outward,
+        // since it's one shared table, just sourced from the right property.
+        $driverName = $isVisitor ? $this->visitorName : $this->driverName;
+        $poNumber = $isVisitor ? $this->personToMeet : $this->poNumber;
+        $material = $isVisitor ? $this->visitPurpose : $this->material;
+
         $selected = self::LOCATIONS[$this->location] ?? ['name' => $this->location, 'code' => 'NA'];
         $qty = $this->invoiceQty !== '' ? $this->invoiceQty : '1';
         $form = [
             'entry_type' => $this->entryType,
-            'po_number' => $this->poNumber,
+            'po_number' => $poNumber,
             'po_bill_date' => $this->poBillDate ?: null,
-            'vendor_name' => $this->vendorName ?: ($this->entryType === 'visitor' ? ucfirst($this->entryType) : null),
+            'vendor_name' => $this->vendorName ?: ($isVisitor ? ucfirst($this->entryType) : null),
             'vendor_gst' => $this->vendorGst ?: null,
-            'invoice_number' => $this->invoiceNumber ?: ($this->entryType === 'visitor' ? strtoupper(substr($this->entryType, 0, 3)).'-'.now()->format('ymdHis') : null),
+            'invoice_number' => $this->invoiceNumber ?: ($isVisitor ? strtoupper(substr($this->entryType, 0, 3)).'-'.now()->format('ymdHis') : null),
             'invoice_qty' => $qty,
             'invoice_amount' => $this->invoiceAmount !== '' ? $this->invoiceAmount : null,
             'rate' => $this->rate !== '' ? $this->rate : null,
-            'material' => $this->material ?: 'N/A',
+            'material' => $material ?: 'N/A',
             'vehicle_number' => $this->vehicleNumber ?: 'WALK-IN',
-            'driver_name' => $this->driverName,
+            'driver_name' => $driverName,
             'transporter' => $this->transporter ?: null,
             'location' => $selected['name'],
             'gps' => $this->gps ?: null,
@@ -259,9 +280,9 @@ new #[Layout('layouts.app')] class extends Component
             ...$form,
             'created_by' => auth()->id(),
             'gate_no' => 'GATE-'.random_int(1000, 9999),
-            'bill_scanned' => $this->entryType === 'visitor' ? false : $this->billScanned,
+            'bill_scanned' => $isVisitor ? false : $this->billScanned,
             'bill_document_path' => $documentPath,
-            'remarks' => trim($this->remarks."\nDocuments: ".$this->documentSummary()."\nLine: ".$this->material.' x '.$qty) ?: null,
+            'remarks' => trim($this->remarks."\nDocuments: ".$this->documentSummary()."\nLine: ".$material.' x '.$qty) ?: null,
             'status' => $blocking ? 'pending_validation' : 'validated',
             'sla_deadline' => now()->addHours(SlaDirectives::hours($vendorUser?->sla_directive)),
         ]);
@@ -297,6 +318,9 @@ new #[Layout('layouts.app')] class extends Component
         $this->vehicleNumber = '';
         $this->driverName = '';
         $this->driverPhone = '';
+        $this->visitorName = '';
+        $this->personToMeet = '';
+        $this->visitPurpose = '';
         $this->remarks = '';
         $this->location = 'bhiwandi';
         $this->documents = ['invoice' => false, 'eway' => false, 'lr' => false, 'pod' => false];
@@ -446,8 +470,8 @@ new #[Layout('layouts.app')] class extends Component
                     @if ($entryType === 'visitor')
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Visitor Name</span>
-                            <input wire:model="driverName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Visitor name" />
-                            @error('driverName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            <input wire:model="visitorName" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Visitor name" />
+                            @error('visitorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Mobile</span>
@@ -460,13 +484,18 @@ new #[Layout('layouts.app')] class extends Component
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Person To Meet</span>
-                            <input wire:model="poNumber" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Store Manager" />
-                            @error('poNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            <input wire:model="personToMeet" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Store Manager" />
+                            @error('personToMeet') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm md:col-span-2">
                             <span class="font-semibold" style="color: var(--text-primary);">Purpose</span>
-                            <input wire:model="material" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Meeting / service / audit" />
-                            @error('material') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            <select wire:model="visitPurpose" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border); background: var(--surface-1); color: var(--text-primary);">
+                                <option value="">Select a reason…</option>
+                                @foreach ($visitPurposeOptions as $option)
+                                    <option value="{{ $option }}">{{ $option }}</option>
+                                @endforeach
+                            </select>
+                            @error('visitPurpose') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                     @elseif ($entryType === 'inward')
                         <label class="space-y-1.5 text-sm">
@@ -569,10 +598,12 @@ new #[Layout('layouts.app')] class extends Component
                     </div>
                 @endif
 
-                <label class="block mt-5 space-y-1.5 text-sm">
-                    <span class="font-semibold" style="color: var(--text-primary);">Remarks</span>
-                    <textarea wire:model="remarks" rows="2" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Optional note"></textarea>
-                </label>
+                @unless ($entryType === 'visitor')
+                    <label class="block mt-5 space-y-1.5 text-sm">
+                        <span class="font-semibold" style="color: var(--text-primary);">Remarks</span>
+                        <textarea wire:model="remarks" rows="2" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Optional note"></textarea>
+                    </label>
+                @endunless
             </section>
 
             <aside class="space-y-5">
