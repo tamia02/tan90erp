@@ -14,7 +14,11 @@ new #[Layout('layouts.app')] class extends Component
 
     public bool $adding = false;
 
-    #[Validate('required|string|max:255')]
+    // Confirmed live: a vendor could type any string here and it was
+    // accepted outright, no check against real PO data -- and since Guard's
+    // Fetch checks VendorSubmission before PO Master/Zoho, a fabricated PO
+    // number here would get trusted at the gate as if it were real.
+    #[Validate('required|string|max:255|exists:purchase_orders,po_number')]
     public string $po_number = '';
 
     #[Validate('nullable|string|max:255')]
@@ -44,9 +48,38 @@ new #[Layout('layouts.app')] class extends Component
     #[Validate('accepted')]
     public bool $zoho_terms = false;
 
+    /** Laravel's default error text otherwise reads "the po number field",
+     * "the zoho terms field must be accepted" -- confirmed live as a real
+     * point of confusion for a vendor filling this form. */
+    protected function validationAttributes(): array
+    {
+        return [
+            'po_number' => 'PO Number',
+            'invoice_number' => 'Invoice Number',
+            'invoice_qty' => 'Invoice Quantity',
+            'material' => 'Material',
+            'expected_arrival_at' => 'Expected Arrival',
+            'vehicle_number' => 'Vehicle Number',
+            'invoice_file' => 'Invoice File',
+            'eway_bill_file' => 'E-way Bill',
+            'lr_pod_file' => 'LR / POD',
+            'zoho_terms' => 'Terms agreement',
+        ];
+    }
+
     public function submit(): void
     {
         $this->validate();
+
+        // Confirmed live: the success banner claimed "Documents validated"
+        // unconditionally, even with zero files attached (all three uploads
+        // are individually nullable, so nothing stopped a fully document-free
+        // submission from going through as if verified).
+        if (! $this->invoice_file && ! $this->eway_bill_file && ! $this->lr_pod_file) {
+            $this->addError('invoice_file', 'Attach at least one document (Invoice, E-way Bill, or LR/POD) before submitting.');
+
+            return;
+        }
 
         $submission = VendorSubmission::create([
             'po_number' => $this->po_number,
@@ -62,15 +95,16 @@ new #[Layout('layouts.app')] class extends Component
             'status' => 'submitted',
         ]);
 
-        if ($this->invoice_file) $this->invoice_file->store('documents');
-        if ($this->eway_bill_file) $this->eway_bill_file->store('documents');
-        if ($this->lr_pod_file) $this->lr_pod_file->store('documents');
+        $docCount = 0;
+        if ($this->invoice_file) { $this->invoice_file->store('documents'); $docCount++; }
+        if ($this->eway_bill_file) { $this->eway_bill_file->store('documents'); $docCount++; }
+        if ($this->lr_pod_file) { $this->lr_pod_file->store('documents'); $docCount++; }
 
         AuditLogger::log('Vendor submission created', "{$submission->po_number} · {$submission->invoice_number}", $submission);
 
         $this->reset(['po_number', 'invoice_number', 'invoice_qty', 'material', 'expected_arrival_at', 'vehicle_number', 'invoice_file', 'eway_bill_file', 'lr_pod_file', 'zoho_terms', 'adding']);
 
-        session()->flash('success', 'Submission completed successfully! Documents validated.');
+        session()->flash('success', "Submission recorded with {$docCount} document(s) attached.");
     }
 
     public function acknowledgeIssue(int $id): void

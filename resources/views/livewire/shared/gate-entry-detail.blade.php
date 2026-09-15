@@ -11,16 +11,26 @@ use Livewire\Volt\Component;
 // Finance) could act on a gate entry via its list cards, but had no way to
 // open the full record - only Guard's own guard.entries.show did that, and
 // that route is guard-only. This is the shared equivalent every other role
-// links to, with QC/GRN/Finance sections gated by role: Guard sees only its
-// own submitted fields + validation issues (the same restriction applied to
-// guard.entry-detail after the client asked for it removed from Guard's
-// login); every other internal-staff role sees the full downstream chain,
-// matching this app's existing "internal staff are cross-role trusted"
-// pattern (see shared.activity-detail's own comment); Vendor is blocked
-// from opening another vendor's entry, same ownership check as there.
+// links to, with QC/GRN/Finance sections gated by role: Guard and Vendor see
+// only submitted fields + validation issues; every INTERNAL-staff role sees
+// the full downstream chain, matching this app's existing "internal staff
+// are cross-role trusted" pattern (see shared.activity-detail's own
+// comment). Vendor is additionally blocked from opening another vendor's
+// entry entirely.
+//
+// Confirmed live: this previously gated only on `role !== Guard`, which
+// left Vendor (an external party, not internal staff) with the same full
+// downstream visibility as Finance -- rate per unit, final payable, QC/GRN
+// internal notes, all exposed to whichever vendor's name matched the entry.
 new #[Layout('layouts.app')] class extends Component
 {
     private const HIDDEN_FIELDS = ['id', 'created_at', 'updated_at', 'gate_entry_id'];
+
+    // Internal-only, even within the base gate entry fields Vendor can see:
+    // the negotiated rate and internal SLA/ops metadata aren't the vendor's
+    // to see, same reasoning as blocking the downstream QC/GRN/Finance
+    // sections entirely for them.
+    private const VENDOR_HIDDEN_FIELDS = ['rate', 'sla_deadline', 'remarks', 'bill_document_path', 'created_by'];
 
     public GateEntry $entry;
 
@@ -46,7 +56,8 @@ new #[Layout('layouts.app')] class extends Component
     private function pdfData(): array
     {
         $user = auth()->user();
-        $showDownstream = $user->role !== Role::Guard;
+        $isVendor = $user->role === Role::Vendor;
+        $showDownstream = ! in_array($user->role, [Role::Guard, Role::Vendor], true);
 
         $this->entry->loadMissing(array_filter([
             'validationIssues',
@@ -55,9 +66,17 @@ new #[Layout('layouts.app')] class extends Component
             $showDownstream ? 'financeRecord' : null,
         ]));
 
+        $fields = $this->describe($this->entry);
+        if ($isVendor) {
+            $fields = array_values(array_filter(
+                $fields,
+                fn ($f) => ! in_array(str($f['label'])->snake()->toString(), self::VENDOR_HIDDEN_FIELDS, true)
+            ));
+        }
+
         return [
             'entry' => $this->entry,
-            'fields' => $this->describe($this->entry),
+            'fields' => $fields,
             'issues' => $this->entry->validationIssues,
             'qcFields' => $showDownstream && $this->entry->qcResult ? $this->describe($this->entry->qcResult) : [],
             'grnFields' => $showDownstream && $this->entry->grnRecord ? $this->describe($this->entry->grnRecord) : [],

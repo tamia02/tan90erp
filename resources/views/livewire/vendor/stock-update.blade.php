@@ -108,7 +108,7 @@ new #[Layout('layouts.app')] class extends Component
             'units' => self::UNITS,
             'skuOptions' => $skuOptions,
             'updates' => VendorStockUpdate::where('vendor_name', $vendorName)
-                                ->orderBy('created_at', 'desc')
+                                ->orderBy('updated_at', 'desc')
                                 ->take(10)
                                 ->get(),
         ];
@@ -183,7 +183,7 @@ new #[Layout('layouts.app')] class extends Component
                             <tr style="border-top: 1px solid var(--border);">
                                 <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $upd->material }}</td>
                                 <td class="px-4 py-2.5" style="color: var(--text-primary);">{{ $upd->quantity }} {{ $upd->unit }}</td>
-                                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $upd->created_at->format('d M, Y H:i') }}</td>
+                                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $upd->updated_at->format('d M, Y H:i') }}</td>
                                 <td class="px-4 py-2.5 text-right">
                                     <button wire:click="edit({{ $upd->id }})" class="text-xs font-medium" style="color: var(--brand);">Update</button>
                                 </td>

@@ -30,6 +30,11 @@ new #[Layout('layouts.app')] class extends Component
     #[Validate('nullable|string|max:1000')]
     public string $rfqNotes = '';
 
+    protected function validationAttributes(): array
+    {
+        return ['rfqSku' => 'SKU/Material', 'rfqQuantity' => 'Quantity', 'rfqNotes' => 'Notes'];
+    }
+
     public function submitRfq(): void
     {
         $this->validate();
@@ -68,6 +73,17 @@ new #[Layout('layouts.app')] class extends Component
     public function with(): array
     {
         $vendorName = auth()->user()->name;
+
+        // Confirmed live: this tile previously counted VendorSubmission rows
+        // marked correction_requested -- an unrelated, rarely-used status --
+        // while the actual open issues shown lower on this same page
+        // (Duplicate Invoice, etc.) are ValidationIssue rows against this
+        // vendor's gate entries. Showed "Issues Pending: 0" with 2 real open
+        // issues on screen below it.
+        $openIssuesCount = \App\Models\ValidationIssue::whereHas(
+            'gateEntry',
+            fn ($q) => $q->where('vendor_name', $vendorName)
+        )->where('status', 'open')->count();
 
         $activity = CombinedActivityFeed::forUser(
             auth()->user(),
@@ -129,6 +145,7 @@ new #[Layout('layouts.app')] class extends Component
             // the vendor had already submitted first, so a Guard-only entry
             // never reached the vendor at all.
             'gateActivity' => GateEntry::where('vendor_name', $vendorName)->orderByDesc('created_at')->take(10)->get(),
+            'openIssuesCount' => $openIssuesCount,
             'submissions' => $allSubmissions->sortByDesc('created_at')->take(5)->values(),
             'fulfillment' => $fulfillment,
             'openPos' => $fulfillment->where('remaining', '>', 0)->values(),
@@ -174,7 +191,7 @@ new #[Layout('layouts.app')] class extends Component
                 <x-icon name="shield-alert" class="w-6 h-6" />
             </div>
             <div>
-                <div class="text-2xl font-bold" style="color: var(--status-critical);">{{ \App\Models\VendorSubmission::where('vendor_name', auth()->user()->name)->where('status', 'correction_requested')->count() }}</div>
+                <div class="text-2xl font-bold" style="color: var(--status-critical);">{{ $openIssuesCount }}</div>
                 <div class="text-xs" style="color: var(--text-muted);">Issues Pending</div>
             </div>
         </div>
