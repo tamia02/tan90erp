@@ -85,6 +85,22 @@ new #[Layout('layouts.app')] class extends Component
         $po->delete();
     }
 
+    /** Publishes a draft PO to the vendor's portal -- POs created here start
+     * invisible to the vendor until this explicit step, distinct from a PO
+     * synced from Zoho (already released, since the vendor already knows
+     * about those through Zoho/other channels). */
+    public function releasePo(int $id): void
+    {
+        $po = PurchaseOrder::findOrFail($id);
+
+        if ($po->isReleased()) {
+            return;
+        }
+
+        $po->update(['released_at' => now()]);
+        AuditLogger::log('Purchase Order released to vendor', "{$po->po_number} · {$po->vendor_name}", $po);
+    }
+
     public function with(): array
     {
         return [
@@ -202,12 +218,22 @@ new #[Layout('layouts.app')] class extends Component
                             <td class="px-2 py-2.5">
                                 <button wire:click="$set('expanded', {{ $expanded === $po->id ? 'null' : $po->id }})" style="color: var(--text-muted);">{{ $expanded === $po->id ? '▾' : '▸' }}</button>
                             </td>
-                            <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $po->po_number }}</td>
+                            <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">
+                                {{ $po->po_number }}
+                                @unless ($po->isReleased())
+                                    <span class="ml-1.5 text-xs font-semibold px-1.5 py-0.5 rounded-full" style="background: var(--status-warning-bg); color: var(--status-warning);">Draft</span>
+                                @endunless
+                            </td>
                             <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $po->vendor_name }}</td>
                             <td class="px-4 py-2.5 text-xs font-medium" style="color: var(--text-secondary);">{{ $po->status }}</td>
                             <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">₹{{ number_format($po->grandTotal(), 2) }}</td>
                             <td class="px-4 py-2.5 text-right">
-                                <button wire:click="deletePo({{ $po->id }})" wire:confirm="Remove PO {{ $po->po_number }}?" style="color: var(--status-critical);">Remove</button>
+                                <div class="flex items-center justify-end gap-3">
+                                    @unless ($po->isReleased())
+                                        <button wire:click="releasePo({{ $po->id }})" wire:confirm="Release {{ $po->po_number }} to {{ $po->vendor_name }}? They'll be able to see and acknowledge it in their portal." class="font-medium" style="color: var(--brand);">Release to vendor</button>
+                                    @endunless
+                                    <button wire:click="deletePo({{ $po->id }})" wire:confirm="Remove PO {{ $po->po_number }}?" style="color: var(--status-critical);">Remove</button>
+                                </div>
                             </td>
                         </tr>
                         @if ($expanded === $po->id)

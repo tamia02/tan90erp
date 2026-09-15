@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'po_number', 'po_owner', 'subject', 'requisition_number', 'vendor_name', 'contact_name',
-    'po_date', 'due_date', 'status', 'carrier', 'tracking_number', 'excise_duty', 'sales_commission',
+    'po_date', 'due_date', 'status', 'released_at', 'carrier', 'tracking_number', 'excise_duty', 'sales_commission',
     'billing_country', 'billing_building', 'billing_street', 'billing_city', 'billing_state', 'billing_zip',
     'shipping_country', 'shipping_building', 'shipping_street', 'shipping_city', 'shipping_state', 'shipping_zip',
     'discount', 'tax', 'adjustment', 'terms_and_conditions', 'description',
@@ -23,12 +23,18 @@ class PurchaseOrder extends Model
         return [
             'po_date' => 'date',
             'due_date' => 'date',
+            'released_at' => 'datetime',
             'excise_duty' => 'decimal:2',
             'sales_commission' => 'decimal:2',
             'discount' => 'decimal:2',
             'tax' => 'decimal:2',
             'adjustment' => 'decimal:2',
         ];
+    }
+
+    public function isReleased(): bool
+    {
+        return $this->released_at !== null;
     }
 
     /** @return HasMany<PurchaseOrderLine, $this> */

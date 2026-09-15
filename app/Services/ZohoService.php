@@ -837,6 +837,10 @@ class ZohoService
                 'subject' => $zohoPo['subject'] ?: null,
                 'vendor_name' => $zohoPo['vendorName'] ?: 'Zoho Vendor',
                 'status' => 'Approved',
+                // Represents a PO the vendor already knows about via Zoho, unlike
+                // one created fresh in PO Master -- so it's released immediately
+                // rather than sitting behind the manual PO-release gate.
+                'released_at' => now(),
                 'description' => 'Synced from Zoho CRM Purchase Orders.',
             ],
         ));

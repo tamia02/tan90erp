@@ -50,7 +50,11 @@ new #[Livewire\Attributes\Layout('layouts.app')] class extends Component
     {
         $vendorName = auth()->user()->name;
 
+        // Draft POs (created in PO Master, not yet explicitly released) stay
+        // invisible here -- a vendor should only see a PO once someone has
+        // actually decided to hand it to them, not the moment it's typed in.
         $orders = PurchaseOrder::where('vendor_name', $vendorName)
+            ->whereNotNull('released_at')
             ->with('lines')
             ->latest('po_date')
             ->paginate(15);
