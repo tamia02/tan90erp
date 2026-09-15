@@ -16,6 +16,9 @@ new #[Layout('layouts.app')] class extends Component
     #[Url]
     public bool $breached = false;
 
+    #[Url]
+    public bool $today = false;
+
     private function searchQuery()
     {
         return GateEntry::query()
@@ -31,7 +34,8 @@ new #[Layout('layouts.app')] class extends Component
                 });
             })
             ->when($this->status !== '', fn ($query) => $query->where('status', $this->status))
-            ->when($this->breached, fn ($query) => $query->where('status', '!=', 'closed')->where('sla_deadline', '<', now()));
+            ->when($this->breached, fn ($query) => $query->where('status', '!=', 'closed')->where('sla_deadline', '<', now()))
+            ->when($this->today, fn ($query) => $query->whereDate('created_at', today()));
     }
 
     public function with(): array
@@ -89,6 +93,15 @@ new #[Layout('layouts.app')] class extends Component
             <option value="closed">Closed</option>
         </select>
     </div>
+
+    @if ($today || $breached)
+        <div class="flex items-center gap-2 text-xs" style="color: var(--text-secondary);">
+            <span class="px-2 py-1 rounded-full font-medium" style="background: var(--brand-bg); color: var(--brand);">
+                {{ $today ? "Today's entries only" : '' }}{{ $today && $breached ? ' · ' : '' }}{{ $breached ? 'SLA breached only' : '' }}
+            </span>
+            <a href="{{ route('guard.entries') }}" wire:navigate class="font-medium" style="color: var(--brand);">Clear</a>
+        </div>
+    @endif
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
         @forelse ($entries as $entry)

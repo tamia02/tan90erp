@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'created_by', 'gate_entry_id', 'vendor_name', 'invoice_number', 'rate_per_unit',
     'invoice_value', 'accepted_value', 'deduction_defective', 'deduction_rejected',
-    'deduction_missing', 'final_payable', 'match_status', 'match_notes', 'vendor_status', 'notes',
+    'deduction_missing', 'deduction_hold', 'final_payable', 'match_status', 'match_notes', 'vendor_status', 'notes',
 ])]
 class FinanceRecord extends Model
 {
@@ -22,6 +22,7 @@ class FinanceRecord extends Model
             'deduction_defective' => 'decimal:2',
             'deduction_rejected' => 'decimal:2',
             'deduction_missing' => 'decimal:2',
+            'deduction_hold' => 'decimal:2',
             'final_payable' => 'decimal:2',
         ];
     }
@@ -37,8 +38,17 @@ class FinanceRecord extends Model
         return $this->hasMany(DebitNote::class);
     }
 
+    /** Confirmed, final losses only -- goods that will never be paid for. Held
+     * quantity is deliberately excluded: it's withheld pending resolution,
+     * not yet a permanent write-off, so it's tracked separately via
+     * deduction_hold/heldValue() rather than lumped in here. */
     public function totalDeductions(): float
     {
         return (float) $this->deduction_defective + (float) $this->deduction_rejected + (float) $this->deduction_missing;
+    }
+
+    public function heldValue(): float
+    {
+        return (float) $this->deduction_hold;
     }
 }

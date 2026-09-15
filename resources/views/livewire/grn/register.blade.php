@@ -27,6 +27,7 @@ new #[Layout('layouts.app')] class extends Component
                         <th class="px-4 py-2.5 font-medium">Gate No</th>
                         <th class="px-4 py-2.5 font-medium">SKU</th>
                         <th class="px-4 py-2.5 font-medium">Accepted</th>
+                        <th class="px-4 py-2.5 font-medium">Hold</th>
                         <th class="px-4 py-2.5 font-medium">Defective</th>
                         <th class="px-4 py-2.5 font-medium">Rejected</th>
                         <th class="px-4 py-2.5 font-medium">Bin</th>
@@ -45,13 +46,14 @@ new #[Layout('layouts.app')] class extends Component
                             </td>
                             <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $r->sku }}</td>
                             <td class="px-4 py-2.5">{{ $r->accepted_qty }}</td>
+                            <td class="px-4 py-2.5" style="{{ $r->qc_hold_qty > 0 ? 'color: var(--status-warning); font-weight: 600;' : '' }}">{{ $r->qc_hold_qty }}</td>
                             <td class="px-4 py-2.5">{{ $r->defective_qty }}</td>
                             <td class="px-4 py-2.5">{{ $r->rejected_qty }}</td>
                             <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ $r->suggested_bin }}</td>
                             <td class="px-4 py-2.5 text-xs font-medium" style="color: {{ $r->posted ? 'var(--status-good)' : 'var(--status-warning)' }};">{{ $r->posted ? 'Put-away complete · stock reflected' : 'Pending' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No GRNs posted yet.</td></tr>
+                        <tr><td colspan="8" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No GRNs posted yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -362,7 +362,11 @@ new #[Layout('layouts.app')] class extends Component
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
                 <button wire:click="resetForm" class="rounded-xl px-4 py-3 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">New {{ strtolower($modeLabel) }}</button>
-                <a href="{{ $saved['gate']->entry_type === 'inward' ? route('unloading.dashboard') : route('guard.entries') }}" class="rounded-xl px-4 py-3 text-sm font-semibold text-white text-center" style="background: var(--brand);">{{ $saved['gate']->entry_type === 'inward' ? 'Send to Unloading' : 'View Entries' }}</a>
+                {{-- Was linking straight to /unloading (Store Exec-only route) even for the
+                     Guard, who has no access to it -- a hard 403 dead-end with no way back.
+                     The entry is already validated and waiting for Store Exec the moment
+                     it's saved; nothing more for the guard to do here but view it. --}}
+                <a href="{{ route('guard.entries.show', $saved['gate']) }}" wire:navigate class="rounded-xl px-4 py-3 text-sm font-semibold text-white text-center" style="background: var(--brand);">View Entry</a>
                 <a href="{{ route('guard.entries') }}" wire:navigate class="rounded-xl px-4 py-3 text-sm font-semibold border text-center" style="border-color: var(--border); color: var(--text-primary);">Guard Entries</a>
             </div>
         </section>

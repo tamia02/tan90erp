@@ -19,6 +19,7 @@ use Database\Seeders\Access\AccessControlSeeder;
 use Database\Seeders\Flow\FlowAccessSeeder;
 use Database\Seeders\Forge\ForgeAccessSeeder;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 // Ports the React prototype's src/lib/seed.ts — a closed-loop demo (Thermocore
 // Materials Pvt Ltd, PO RM 2627 0020) walked fully through Guard -> Validation
@@ -69,7 +70,12 @@ class DatabaseSeeder extends Seeder
         foreach ($users as $user) {
             $email = $user['email'];
             unset($user['email']);
-            User::firstOrCreate(['email' => $email], [...$user, 'password' => 'password']);
+            // Confirmed live: manual login for these accounts failed with
+            // demo123 (the password the login page advertises for every
+            // demo account, and what every other seeder in this app
+            // actually uses via Hash::make('demo123')) -- these 7 were the
+            // only ones seeded with the literal string 'password' instead.
+            User::firstOrCreate(['email' => $email], [...$user, 'password' => Hash::make('demo123')]);
         }
     }
 

@@ -41,7 +41,7 @@ new #[Layout('layouts.app')] class extends Component
     </section>
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <a href="{{ route('guard.entries') }}" wire:navigate class="rounded-2xl border p-4 flex items-center gap-3.5 transition-colors hover:border-[var(--brand)]" style="background: var(--surface-3); border-color: var(--border);">
+        <a href="{{ route('guard.entries', ['today' => 1]) }}" wire:navigate class="rounded-2xl border p-4 flex items-center gap-3.5 transition-colors hover:border-[var(--brand)]" style="background: var(--surface-3); border-color: var(--border);">
             <div class="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style="background: var(--brand-bg); color: var(--brand);">
                 <x-icon name="clipboard-list" class="w-6 h-6" />
             </div>

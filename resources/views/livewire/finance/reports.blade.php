@@ -46,7 +46,8 @@ new #[Layout('layouts.app')] class extends Component
         return [
             'totalInvoiceValue' => $records->sum('invoice_value'),
             'totalAcceptedValue' => $records->sum('accepted_value'),
-            'totalDeductions' => $records->sum(fn ($r) => $r->deduction_defective + $r->deduction_rejected + $r->deduction_missing),
+            'totalDeductions' => $records->sum(fn ($r) => $r->totalDeductions()),
+            'totalHeld' => $records->sum('deduction_hold'),
             'totalFinalPayable' => $records->sum('final_payable'),
             'byMonth' => $records->groupBy(fn ($r) => $r->created_at->format('M Y'))->map->count(),
         ];
@@ -60,7 +61,7 @@ new #[Layout('layouts.app')] class extends Component
         <p class="text-sm mt-1" style="color: var(--text-secondary);">Final payable totals across every closed gate entry.</p>
     </section>
 
-    <div class="grid grid-cols-2 gap-3 mb-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Total Invoice Value</div>
             <div class="text-xl font-semibold mt-1" style="color: var(--text-primary);">₹{{ number_format($totalInvoiceValue, 2) }}</div>
@@ -72,6 +73,10 @@ new #[Layout('layouts.app')] class extends Component
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Total Deductions</div>
             <div class="text-xl font-semibold mt-1" style="color: var(--status-critical);">₹{{ number_format($totalDeductions, 2) }}</div>
+        </div>
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="text-xs" style="color: var(--text-muted);">Total Held (pending QC)</div>
+            <div class="text-xl font-semibold mt-1" style="color: var(--status-warning);">₹{{ number_format($totalHeld, 2) }}</div>
         </div>
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Final Payable</div>

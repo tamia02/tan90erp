@@ -95,6 +95,7 @@ class GrnPostingService
             'deduction_defective' => $qc->defective_qty * $rate,
             'deduction_rejected' => $qc->rejected_qty * $rate,
             'deduction_missing' => $qc->missing_qty * $rate,
+            'deduction_hold' => $qc->qc_hold_qty * $rate,
             'final_payable' => $qc->accepted_qty * $rate,
             'vendor_status' => 'pending',
         ]);

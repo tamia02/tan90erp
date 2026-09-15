@@ -90,12 +90,18 @@ new #[Layout('layouts.app')] class extends Component
                         Debit notes: {{ $r->debitNotes->map(fn ($d) => "{$d->reason} (₹".number_format($d->amount, 2).")")->implode(', ') }}
                     </div>
                 @endif
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-xs">
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3 text-xs">
                     <div><div style="color: var(--text-muted);">Invoice Value</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->invoice_value, 2) }}</div></div>
                     <div><div style="color: var(--text-muted);">Accepted Value</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->accepted_value, 2) }}</div></div>
-                    <div><div style="color: var(--text-muted);">Deductions</div><div class="font-medium" style="color: var(--status-critical);">₹{{ number_format($r->deduction_defective + $r->deduction_rejected + $r->deduction_missing, 2) }}</div></div>
+                    <div><div style="color: var(--text-muted);">Deductions</div><div class="font-medium" style="color: var(--status-critical);">₹{{ number_format($r->totalDeductions(), 2) }}</div></div>
+                    @if ($r->deduction_hold > 0)
+                        <div><div style="color: var(--text-muted);">Held (pending QC resolution)</div><div class="font-medium" style="color: var(--status-warning);">₹{{ number_format($r->deduction_hold, 2) }}</div></div>
+                    @endif
                     <div><div style="color: var(--text-muted);">Final Payable</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->final_payable, 2) }}</div></div>
                 </div>
+                @if ($r->deduction_hold > 0)
+                    <p class="text-xs mt-2" style="color: var(--text-muted);">Invoice value − deductions − held = final payable. The held amount is withheld pending QC's hold being resolved, not a confirmed loss — it isn't part of Deductions above.</p>
+                @endif
                 @if ($r->notes)
                     <div class="text-xs mt-2" style="color: var(--text-secondary);">{{ $r->notes }}</div>
                 @endif

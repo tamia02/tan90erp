@@ -49,7 +49,7 @@ class QcService
 
             AuditLogger::log(
                 'QC Check recorded',
-                "{$gate->gate_no} · accepted {$split['accepted']}, defective {$split['defective']}, rejected {$split['rejected']}"
+                "{$gate->gate_no} · accepted {$split['accepted']}, hold {$split['qcHold']}, defective {$split['defective']}, rejected {$split['rejected']}"
                     .($fullyRejected ? ' · fully rejected, GRN Check skipped' : ' · sent to GRN Check'),
                 $result,
             );
