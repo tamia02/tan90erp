@@ -9,7 +9,7 @@ new #[Layout('layouts.app')] class extends Component
     private const FAQS = [
         'guard' => [
             ['q' => 'What happens if I save a gate entry with an issue?', 'a' => 'It still saves — the entry is flagged pending_validation and sent to Store Manager\'s Validation Issues queue.'],
-            ['q' => 'What starts the 12-hour SLA timer?', 'a' => 'Saving the gate entry — you\'ll be notified automatically if it breaches.'],
+            ['q' => 'What starts the SLA timer?', 'a' => 'Saving the gate entry — you\'ll be notified automatically if it breaches. The deadline length depends on your account\'s SLA directive (Standard 24h / Priority 12h / Critical 4h) — check Settings for yours.'],
         ],
         'vendor' => [
             ['q' => 'Why can\'t I submit without a PO number?', 'a' => 'The gate can\'t match your delivery without one — Continue stays disabled until it\'s filled in.'],
