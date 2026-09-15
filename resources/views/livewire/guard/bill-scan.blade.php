@@ -593,8 +593,8 @@ new #[Layout('layouts.app')] class extends Component
 
                 <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
                     <div class="grid grid-cols-2 gap-3 text-center">
-                        <div class="rounded-xl border p-3" style="border-color: var(--border); background: var(--surface-2);">
-                            <div class="text-xl font-bold" style="color: var(--text-primary);">{{ $entryType === 'visitor' ? 'Pass' : ($entryType === 'inward' ? ($fetched ? 'Yes' : 'No') : $documentCount.'/4') }}</div>
+                        <div class="rounded-xl border p-3" style="{{ $entryType === 'inward' && ! $fetched ? 'border-color: var(--status-critical);' : 'border-color: var(--border);' }} background: var(--surface-2);">
+                            <div class="text-xl font-bold" style="color: {{ $entryType === 'inward' && ! $fetched ? 'var(--status-critical)' : 'var(--text-primary)' }};">{{ $entryType === 'visitor' ? 'Pass' : ($entryType === 'inward' ? ($fetched ? 'Yes' : 'No') : $documentCount.'/4') }}</div>
                             <div class="text-xs" style="color: var(--text-muted);">{{ $entryType === 'visitor' ? 'Type' : ($entryType === 'inward' ? 'Bill Fetched' : 'Docs') }}</div>
                         </div>
                         <div class="rounded-xl border p-3" style="border-color: var(--border); background: var(--surface-2);">
@@ -602,7 +602,19 @@ new #[Layout('layouts.app')] class extends Component
                             <div class="text-xs" style="color: var(--text-muted);">GPS</div>
                         </div>
                     </div>
-                    <button wire:click="saveEntry" class="mt-4 w-full rounded-xl px-4 py-3 text-sm font-bold text-white" style="background: var(--brand);">
+
+                    {{-- The single most common reason Save silently appeared to do
+                         nothing: an inward entry needs Fetch run first, but the only
+                         error was a small red line up near the invoice number field --
+                         easy to miss once the form's scrolled down here to Save. This
+                         puts the same blocker right next to the button that "isn't working". --}}
+                    @if ($entryType === 'inward' && ! $fetched)
+                        <div class="rounded-xl p-3 mt-4 text-xs font-medium" style="background: var(--status-critical-bg); color: var(--status-critical);">
+                            Save is blocked until the bill is fetched — enter the Bill/PO number above and tap Fetch (or use Quick Scan Autofill) first.
+                        </div>
+                    @endif
+
+                    <button wire:click="saveEntry" class="mt-4 w-full rounded-xl px-4 py-3 text-sm font-bold text-white disabled:opacity-50" style="background: var(--brand);" @disabled($entryType === 'inward' && ! $fetched)>
                         {{ $entryType === 'visitor' ? 'Save Visitor Pass' : ($entryType === 'outward' ? 'Save Outward Entry' : 'Save and Send to Unloading') }}
                     </button>
                 </section>
