@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'vehicle_number', 'driver_name', 'transporter', 'location', 'gps',
     'bill_scanned', 'bill_document_path', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
     'loading_window_start', 'loading_window_end', 'expected_delivery_date', 'dispatch_documents_shared', 'loaded_at', 'exited_at',
+    'putaway_by', 'putaway_completed_at',
 ])]
 class GateEntry extends Model
 {
@@ -35,6 +36,7 @@ class GateEntry extends Model
             'dispatch_documents_shared' => 'boolean',
             'loaded_at' => 'datetime',
             'exited_at' => 'datetime',
+            'putaway_completed_at' => 'datetime',
         ];
     }
 
@@ -42,6 +44,12 @@ class GateEntry extends Model
     public function approvedBy(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
+    public function putawayBy(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'putaway_by');
     }
 
     /** @return HasMany<ValidationIssue, $this> */

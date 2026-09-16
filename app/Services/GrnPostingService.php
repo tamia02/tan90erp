@@ -103,9 +103,13 @@ class GrnPostingService
         $this->threeWayMatch->check($financeRecord);
         $this->issueDebitNoteIfNeeded($financeRecord);
 
-        $gate->update(['status' => 'closed']);
+        // GRN posting used to close the gate entry outright -- stock was on
+        // the ledger, but nobody had actually put it away to the bin yet.
+        // Putaway (Store Exec) is now its own step; the entry only reaches
+        // "closed" once that's confirmed.
+        $gate->update(['status' => 'grn_posted']);
 
-        AuditLogger::log('GRN Check posted, stock updated', "{$gate->gate_no} · bin {$suggestedBin}", $grn);
+        AuditLogger::log('GRN Check posted, stock updated, awaiting putaway', "{$gate->gate_no} · suggested bin {$suggestedBin}", $grn);
 
         return $grn;
     }

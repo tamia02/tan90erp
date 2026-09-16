@@ -158,6 +158,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('loading-desk', 'unloading.loading-desk')->name('loading-desk');
         Volt::route('desk', 'unloading.desk')->name('desk');
         Volt::route('outward', 'unloading.outward')->name('outward');
+        Volt::route('putaway', 'unloading.putaway')->name('putaway');
         Volt::route('history', 'unloading.history')->name('history');
         Volt::route('dock-scheduling', 'unloading.dock-scheduling')->name('dock-scheduling');
     });

@@ -72,6 +72,16 @@ class NotificationCenter
             ];
         }
 
+        $awaitingPutaway = GateEntry::where('status', 'grn_posted')->count();
+        if ($awaitingPutaway > 0) {
+            $notices[] = [
+                'title' => 'Putaway pending',
+                'detail' => "{$awaitingPutaway} GRN-posted entr".($awaitingPutaway === 1 ? 'y is' : 'ies are')." waiting for goods to be put away to a bin.",
+                'tone' => 'warning',
+                'url' => route('unloading.putaway'),
+            ];
+        }
+
         return $notices;
     }
 

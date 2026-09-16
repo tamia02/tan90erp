@@ -21,6 +21,7 @@ class GateStatusLabels
         'unloading' => 'Unloading',
         'grn' => 'Ready for QC',
         'qc_done' => 'QC Done',
+        'grn_posted' => 'GRN Posted, Awaiting Putaway',
         'closed' => 'Closed',
         'rejected' => 'Rejected',
         'loaded' => 'Loaded, Ready to Exit',
