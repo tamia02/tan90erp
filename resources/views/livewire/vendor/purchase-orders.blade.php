@@ -105,7 +105,12 @@ new #[Livewire\Attributes\Layout('layouts.app')] class extends Component
                     <div class="text-xs mt-2 italic" style="color: var(--text-muted);">"{{ $ack->remarks }}"</div>
                 @endif
 
-                @if (! $ack)
+                {{-- Confirmed live: PO 0020 (status Delivered, years into
+                     fulfillment) still showed Accept/Decline since it
+                     predates this feature and was never acknowledged --
+                     accepting/declining a PO that's already been delivered
+                     or cancelled is meaningless. --}}
+                @if (! $ack && ! in_array($po->status, ['Delivered', 'Cancelled'], true))
                     @if ($decidingPo === $po->po_number)
                         <div class="mt-3 space-y-2">
                             <textarea wire:model="remarks" placeholder="Remarks (optional)" class="w-full rounded-xl border px-3 py-2.5 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);"></textarea>

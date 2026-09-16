@@ -24,7 +24,15 @@ use Livewire\Volt\Component;
 // internal notes, all exposed to whichever vendor's name matched the entry.
 new #[Layout('layouts.app')] class extends Component
 {
-    private const HIDDEN_FIELDS = ['id', 'created_at', 'updated_at', 'gate_entry_id'];
+    // Confirmed live: describe($this->entry) reads $entry->toArray(), which
+    // Eloquent auto-includes every EAGER-LOADED RELATION on -- qcResult,
+    // grnRecord, financeRecord and unloadingRecord are all loaded in
+    // pdfData() below for the dedicated sections further down the page, but
+    // toArray() also dumps each one as a raw JSON blob under a "QC Result" /
+    // "GRN Record" / "Finance Record" / "Unloading Record" field in the TOP
+    // "submitted details" grid -- literal, un-formatted json_encode() output,
+    // appearing before any of the properly formatted sections.
+    private const HIDDEN_FIELDS = ['id', 'created_at', 'updated_at', 'gate_entry_id', 'qc_result', 'grn_record', 'finance_record', 'unloading_record', 'validation_issues'];
 
     // Internal-only, even within the base gate entry fields Vendor can see:
     // the negotiated rate and internal SLA/ops metadata aren't the vendor's
@@ -43,6 +51,44 @@ new #[Layout('layouts.app')] class extends Component
         }
 
         $this->entry = $entry;
+    }
+
+    // Confirmed live: Confirm Exit / Allow Entry only ever existed on
+    // Guard's own guard.entries.show page -- "View Entry" links elsewhere
+    // (Guard Entries list, notifications) can land Guard on this shared
+    // page instead, which had neither action at all. Mirrors
+    // guard/entry-detail.blade.php's identical methods.
+    public function confirmExit(): void
+    {
+        if (auth()->user()->role !== Role::Guard || $this->entry->entry_type !== 'outward' || $this->entry->status !== 'loaded') {
+            return;
+        }
+
+        $this->entry->update(['status' => 'dispatched', 'exited_at' => now()]);
+
+        \App\Services\AuditLogger::log('Outward vehicle exited premises', $this->entry->gate_no, $this->entry);
+    }
+
+    public function allowEntry(): void
+    {
+        if (auth()->user()->role !== Role::Guard || $this->entry->entry_type !== 'visitor' || $this->entry->status !== 'validated') {
+            return;
+        }
+
+        $this->entry->update(['status' => 'checked_in', 'visitor_checked_in_at' => now()]);
+
+        \App\Services\AuditLogger::log('Visitor allowed entry', $this->entry->gate_no.' · '.$this->entry->driver_name, $this->entry);
+    }
+
+    public function checkOutVisitor(): void
+    {
+        if (auth()->user()->role !== Role::Guard || $this->entry->entry_type !== 'visitor' || $this->entry->status !== 'checked_in') {
+            return;
+        }
+
+        $this->entry->update(['status' => 'closed', 'visitor_checked_out_at' => now()]);
+
+        \App\Services\AuditLogger::log('Visitor checked out', $this->entry->gate_no.' · '.$this->entry->driver_name, $this->entry);
     }
 
     public function with(): array
@@ -139,6 +185,19 @@ new #[Layout('layouts.app')] class extends Component
                     $label = preg_replace('/\b'.$wrong.'\b/', $right, $label);
                 }
 
+                // Confirmed live: an outward dispatch reuses the same
+                // po_number/vendor_name columns for its own Package Number/
+                // Delivery Address fields (same shared table as inward) --
+                // the generic describe() had no idea, so those values showed
+                // under "PO Number"/"Vendor Name" on an outward entry.
+                if ($subject instanceof GateEntry && $subject->entry_type === 'outward') {
+                    $label = match ($key) {
+                        'po_number' => 'Package Number',
+                        'vendor_name' => 'Delivery Address',
+                        default => $label,
+                    };
+                }
+
                 // created_by is a raw user id everywhere it appears -- confirmed
                 // live as literally "1" on screen, meaningless to whoever's
                 // reading it. approved_by/visitor_host_id/putaway_by are the
@@ -197,9 +256,28 @@ new #[Layout('layouts.app')] class extends Component
                 <h1 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">{{ $entry->gate_no }}</h1>
                 <p class="text-sm mt-1" style="color: var(--text-secondary);">Full gate entry form as submitted{{ $timeline->isNotEmpty() ? ', plus every stage it has moved through since' : '' }}.</p>
             </div>
-            <button wire:click="downloadPdf" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
-                <x-icon name="file-text" class="w-4 h-4" /> Download PDF
-            </button>
+            <div class="flex gap-2 shrink-0">
+                @if (auth()->user()->role === \App\Enums\Role::Guard)
+                    @if ($entry->entry_type === 'outward' && $entry->status === 'loaded')
+                        <button wire:click="confirmExit" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
+                            <x-icon name="check-circle" class="w-4 h-4" /> Confirm exit
+                        </button>
+                    @endif
+                    @if ($entry->entry_type === 'visitor' && $entry->status === 'validated')
+                        <button wire:click="allowEntry" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
+                            <x-icon name="check-circle" class="w-4 h-4" /> Allow entry
+                        </button>
+                    @endif
+                    @if ($entry->entry_type === 'visitor' && $entry->status === 'checked_in')
+                        <button wire:click="checkOutVisitor" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
+                            <x-icon name="check-circle" class="w-4 h-4" /> Check out visitor
+                        </button>
+                    @endif
+                @endif
+                <button wire:click="downloadPdf" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
+                    <x-icon name="file-text" class="w-4 h-4" /> Download PDF
+                </button>
+            </div>
         </div>
     </section>
 

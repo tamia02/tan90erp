@@ -8,7 +8,10 @@ use Livewire\Volt\Component;
 
 new #[Layout('layouts.app')] class extends Component
 {
-    private const HIDDEN_FIELDS = ['id', 'created_at', 'updated_at', 'gate_entry_id'];
+    // Same latent bug as shared/gate-entry-detail.blade.php: toArray() dumps
+    // any eager-loaded relation (validationIssues here) as raw JSON unless
+    // explicitly excluded.
+    private const HIDDEN_FIELDS = ['id', 'created_at', 'updated_at', 'gate_entry_id', 'validation_issues'];
 
     public GateEntry $entry;
 
@@ -31,18 +34,31 @@ new #[Layout('layouts.app')] class extends Component
         \App\Services\AuditLogger::log('Outward vehicle exited premises', $this->entry->gate_no, $this->entry);
     }
 
-    // Mirrors confirmExit() for the visitor journey's final step: the host
-    // has approved (status=validated on Visitor Approvals), Guard is the
-    // one who physically lets them through the gate.
+    // Mirrors confirmExit() for the visitor journey: the host has approved
+    // (status=validated on Visitor Approvals), Guard lets them through the
+    // gate. Confirmed live: this used to jump straight to "closed" with no
+    // record of when the visitor actually arrived or left -- now a real
+    // check-in/check-out pair, closed only once they leave.
     public function allowEntry(): void
     {
         if ($this->entry->entry_type !== 'visitor' || $this->entry->status !== 'validated') {
             return;
         }
 
-        $this->entry->update(['status' => 'closed']);
+        $this->entry->update(['status' => 'checked_in', 'visitor_checked_in_at' => now()]);
 
-        \App\Services\AuditLogger::log('Visitor allowed entry', $this->entry->gate_no.' · '.$this->entry->driver_name, $this->entry);
+        \App\Services\AuditLogger::log('Visitor checked in', $this->entry->gate_no.' · '.$this->entry->driver_name, $this->entry);
+    }
+
+    public function checkOutVisitor(): void
+    {
+        if ($this->entry->entry_type !== 'visitor' || $this->entry->status !== 'checked_in') {
+            return;
+        }
+
+        $this->entry->update(['status' => 'closed', 'visitor_checked_out_at' => now()]);
+
+        \App\Services\AuditLogger::log('Visitor checked out', $this->entry->gate_no.' · '.$this->entry->driver_name, $this->entry);
     }
 
     public function with(): array
@@ -80,10 +96,20 @@ new #[Layout('layouts.app')] class extends Component
     {
         return collect($subject->toArray())
             ->except(self::HIDDEN_FIELDS)
-            ->map(fn ($value, $key) => [
-                'label' => str($key)->replace('_', ' ')->headline()->toString(),
-                'value' => $this->formatValue($value),
-            ])
+            ->map(function ($value, $key) use ($subject) {
+                $label = str($key)->replace('_', ' ')->headline()->toString();
+
+                // See shared/gate-entry-detail.blade.php's identical fix.
+                if ($subject instanceof GateEntry && $subject->entry_type === 'outward') {
+                    $label = match ($key) {
+                        'po_number' => 'Package Number',
+                        'vendor_name' => 'Delivery Address',
+                        default => $label,
+                    };
+                }
+
+                return ['label' => $label, 'value' => $this->formatValue($value)];
+            })
             ->values()
             ->all();
     }
@@ -132,6 +158,11 @@ new #[Layout('layouts.app')] class extends Component
                 @if ($entry->entry_type === 'visitor' && $entry->status === 'validated')
                     <button wire:click="allowEntry" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
                         <x-icon name="check-circle" class="w-4 h-4" /> Allow entry
+                    </button>
+                @endif
+                @if ($entry->entry_type === 'visitor' && $entry->status === 'checked_in')
+                    <button wire:click="checkOutVisitor" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
+                        <x-icon name="check-circle" class="w-4 h-4" /> Check out visitor
                     </button>
                 @endif
                 <button wire:click="downloadPdf" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">

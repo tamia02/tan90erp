@@ -26,6 +26,7 @@ class GateStatusLabels
         'rejected' => 'Rejected',
         'loaded' => 'Loaded, Ready to Exit',
         'dispatched' => 'Dispatched',
+        'checked_in' => 'Visitor Checked In',
     ];
 
     public static function label(?string $status): string

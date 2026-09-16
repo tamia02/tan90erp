@@ -58,6 +58,7 @@ new #[Layout('layouts.app')] class extends Component
             'status' => 'closed',
             'putaway_by' => auth()->id(),
             'putaway_completed_at' => now(),
+            'final_bin' => $this->finalBin,
         ]);
 
         AuditLogger::log('Putaway complete, entry closed', "{$gate->gate_no} · bin {$this->finalBin}".($this->finalBin !== $suggestedBin ? " (relocated from {$suggestedBin})" : ''), $gate);
@@ -121,7 +122,7 @@ new #[Layout('layouts.app')] class extends Component
                     <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $gate->gate_no }} · {{ $gate->grnRecord?->sku }}</div>
                     <span class="text-xs" style="color: var(--text-muted);">{{ $gate->putaway_completed_at?->format('d M, H:i') }}</span>
                 </div>
-                <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $gate->vendor_name }} · bin {{ $gate->grnRecord?->suggested_bin }} · by {{ $gate->putawayBy?->name ?? '—' }}</div>
+                <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $gate->vendor_name }} · bin {{ $gate->final_bin ?? $gate->grnRecord?->suggested_bin }} · by {{ $gate->putawayBy?->name ?? '—' }}</div>
             </a>
         @empty
             <div class="text-center text-sm py-10" style="color: var(--text-muted);">No putaway records yet.</div>

@@ -15,6 +15,7 @@ new #[Layout('layouts.app')] class extends Component
     public ?int $completing = null;
     public bool $qcPassed = true;
     public bool $documentsShared = false;
+    public bool $earlyLoadingAck = false;
     public string $loadingRemarks = '';
 
     public function startCompleting(int $gateId): void
@@ -22,21 +23,28 @@ new #[Layout('layouts.app')] class extends Component
         $this->completing = $gateId;
         $this->qcPassed = true;
         $this->documentsShared = false;
+        $this->earlyLoadingAck = false;
         $this->loadingRemarks = '';
     }
 
     public function completeLoading(int $gateId): void
     {
-        $this->validate([
-            'documentsShared' => ['accepted'],
-        ], [
-            'documentsShared.accepted' => 'Confirm the required documents (invoice, e-way bill, etc.) were handed to the driver before completing.',
-        ]);
-
         $gate = GateEntry::findOrFail($gateId);
 
+        // Confirmed live: GATE loaded at 22:05 against a 22:15-22:xx window
+        // with no warning at all -- the window was captured at approval time
+        // but nothing downstream ever looked at it again.
+        $rules = ['documentsShared' => ['accepted']];
+        $messages = ['documentsShared.accepted' => 'Confirm the required documents (invoice, e-way bill, etc.) were handed to the driver before completing.'];
+        $isEarly = $gate->loading_window_start && now()->lt($gate->loading_window_start);
+        if ($isEarly) {
+            $rules['earlyLoadingAck'] = ['accepted'];
+            $messages['earlyLoadingAck.accepted'] = 'This is before the scheduled loading window — confirm you want to load early.';
+        }
+        $this->validate($rules, $messages);
+
         if ($gate->status !== 'dock_assigned' || $gate->entry_type !== 'outward') {
-            $this->reset(['completing', 'qcPassed', 'documentsShared', 'loadingRemarks']);
+            $this->reset(['completing', 'qcPassed', 'documentsShared', 'earlyLoadingAck', 'loadingRemarks']);
 
             return;
         }
@@ -45,12 +53,12 @@ new #[Layout('layouts.app')] class extends Component
             'status' => 'loaded',
             'loaded_at' => now(),
             'dispatch_documents_shared' => true,
-            'remarks' => trim($gate->remarks."\nLoading: ".($this->qcPassed ? 'post-load QC passed' : 'post-load QC issue noted').($this->loadingRemarks ? ' — '.$this->loadingRemarks : '')),
+            'remarks' => trim($gate->remarks."\nLoading: ".($this->qcPassed ? 'post-load QC passed' : 'post-load QC issue noted').($isEarly ? ' — loaded before scheduled window' : '').($this->loadingRemarks ? ' — '.$this->loadingRemarks : '')),
         ]);
 
-        AuditLogger::log('Outward loading complete, documents shared with driver', $gate->gate_no.($this->qcPassed ? '' : ' · QC issue noted'), $gate);
+        AuditLogger::log('Outward loading complete, documents shared with driver', $gate->gate_no.($this->qcPassed ? '' : ' · QC issue noted').($isEarly ? ' · loaded before window' : ''), $gate);
 
-        $this->reset(['completing', 'qcPassed', 'documentsShared', 'loadingRemarks']);
+        $this->reset(['completing', 'qcPassed', 'documentsShared', 'earlyLoadingAck', 'loadingRemarks']);
     }
 
     public function with(): array
@@ -86,6 +94,16 @@ new #[Layout('layouts.app')] class extends Component
 
                 @if ($completing === $g->id)
                     <div class="mt-4 flex flex-col gap-3">
+                        @if ($g->loading_window_start && now()->lt($g->loading_window_start))
+                            <div class="rounded-lg border p-3 text-xs" style="border-color: var(--status-warning); background: var(--status-warning-bg); color: var(--status-warning);">
+                                This is before the scheduled loading window ({{ $g->loading_window_start->format('d M, H:i') }}).
+                            </div>
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" wire:model="earlyLoadingAck" class="rounded" />
+                                <span style="color: var(--text-primary);">Load anyway, before the scheduled window</span>
+                            </label>
+                            @error('earlyLoadingAck') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        @endif
                         <label class="flex items-center gap-2 text-sm">
                             <input type="checkbox" wire:model="qcPassed" class="rounded" />
                             <span style="color: var(--text-primary);">Post-load QC passed</span>

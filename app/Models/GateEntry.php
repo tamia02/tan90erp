@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'vehicle_number', 'driver_name', 'transporter', 'location', 'gps',
     'bill_scanned', 'bill_document_path', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
     'loading_window_start', 'loading_window_end', 'expected_delivery_date', 'dispatch_documents_shared', 'loaded_at', 'exited_at',
-    'putaway_by', 'putaway_completed_at',
+    'putaway_by', 'putaway_completed_at', 'final_bin', 'visitor_checked_in_at', 'visitor_checked_out_at',
 ])]
 class GateEntry extends Model
 {
@@ -37,6 +37,8 @@ class GateEntry extends Model
             'loaded_at' => 'datetime',
             'exited_at' => 'datetime',
             'putaway_completed_at' => 'datetime',
+            'visitor_checked_in_at' => 'datetime',
+            'visitor_checked_out_at' => 'datetime',
         ];
     }
 

@@ -77,6 +77,25 @@ class NotificationCenter
             ];
         }
 
+        // Confirmed live: a delivery closing with real quality problems
+        // (defective/rejected units) only ever produced the same generic
+        // "closed" notice above -- nothing told Procurement the closure
+        // wasn't clean.
+        $qcProblems = QcResult::whereHas('gateEntry', fn ($q) => $q->where('updated_at', '>=', now()->subDay()))
+            ->where(fn ($q) => $q->where('defective_qty', '>', 0)->orWhere('rejected_qty', '>', 0))
+            ->with('gateEntry:id,gate_no,vendor_name')
+            ->get();
+        if ($qcProblems->isNotEmpty()) {
+            $totalDefective = $qcProblems->sum('defective_qty');
+            $totalRejected = $qcProblems->sum('rejected_qty');
+            $notices[] = [
+                'title' => 'Quality problems on recent deliveries',
+                'detail' => $qcProblems->count()." deliver".($qcProblems->count() === 1 ? 'y' : 'ies')." in the last 24 hours had defective/rejected units ({$totalDefective} defective, {$totalRejected} rejected total) — ".$qcProblems->map(fn ($qc) => $qc->gateEntry?->gate_no)->filter()->implode(', '),
+                'tone' => 'critical',
+                'url' => route('procurement.overview'),
+            ];
+        }
+
         return $notices;
     }
 
@@ -207,6 +226,16 @@ class NotificationCenter
                 'detail' => "{$visitorsApproved} visitor".($visitorsApproved === 1 ? '' : 's')." approved by their host — allow entry on the gate entry.",
                 'tone' => 'good',
                 'url' => route('guard.entries', ['status' => 'validated']),
+            ];
+        }
+
+        $visitorsOnSite = GateEntry::where('entry_type', 'visitor')->where('status', 'checked_in')->count();
+        if ($visitorsOnSite > 0) {
+            $notices[] = [
+                'title' => 'Visitors on site',
+                'detail' => "{$visitorsOnSite} visitor".($visitorsOnSite === 1 ? '' : 's')." checked in and still on the premises — check out on the gate entry once they leave.",
+                'tone' => 'warning',
+                'url' => route('guard.entries', ['status' => 'checked_in']),
             ];
         }
 

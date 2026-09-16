@@ -240,7 +240,7 @@ new #[Layout('layouts.app')] class extends Component
         $rules = match ($this->entryType) {
             'visitor' => ['visitorName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'visitorHostId' => ['required', 'integer', 'exists:users,id'], 'visitPurpose' => ['required', 'string']],
             'inward' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'vehicleNumber' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'invoiceAmount' => ['required', 'numeric'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'material' => ['required', 'string']],
-            default => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string']]
+            default => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'material' => ['required', 'string'], 'invoiceQty' => ['required', 'integer', 'min:1']]
         };
         $this->validate($rules);
 
@@ -573,7 +573,7 @@ new #[Layout('layouts.app')] class extends Component
                                 @if ($fetchedSource)
                                     <div>Source: {{ $fetchedSource }}</div>
                                 @endif
-                                Matched — PO {{ $poNumber }} · {{ $vendorName }} · Qty {{ $invoiceQty }} · {{ $material }}
+                                Matched — {{ $poNumber }} · {{ $vendorName }} · Qty {{ $invoiceQty }} · {{ $material }}
                                 @if (in_array($fetchedSource, ['PO Master', 'Zoho CRM'], true))
                                     <div class="mt-1 font-semibold">What you searched with was a PO number, not a bill number — the field above is now cleared. Type the actual invoice/bill number from the paper bill before saving.</div>
                                 @endif
@@ -611,10 +611,23 @@ new #[Layout('layouts.app')] class extends Component
                             <input wire:model="vendorName" id="vendorName" name="vendorName" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Delivery address" />
                             @error('vendorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
-                        <label class="space-y-1.5 text-sm md:col-span-2">
+                        <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Invoice / Doc No</span>
                             <input wire:model="invoiceNumber" id="invoiceNumber" name="invoiceNumber" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Invoice number" />
                             @error('invoiceNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        {{-- Confirmed live: outward had no material/quantity fields at
+                             all -- every dispatch saved with material "N/A" and qty 1
+                             regardless of what actually left the premises. --}}
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">Material</span>
+                            <input wire:model="material" id="material" name="material" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="PCM Raw Compound (TN-1 Grade)" />
+                            @error('material') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="space-y-1.5 text-sm">
+                            <span class="font-semibold" style="color: var(--text-primary);">Quantity</span>
+                            <input wire:model="invoiceQty" id="invoiceQty" name="invoiceQty" autocomplete="off" type="number" min="1" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="700" />
+                            @error('invoiceQty') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                     @endif
 
@@ -695,7 +708,7 @@ new #[Layout('layouts.app')] class extends Component
                     @endif
 
                     <button wire:click="saveEntry" class="mt-4 w-full rounded-xl px-4 py-3 text-sm font-bold text-white" style="background: var(--brand);">
-                        {{ $entryType === 'visitor' ? 'Save Visitor Pass' : ($entryType === 'outward' ? 'Save Outward Entry' : 'Save and Send to Unloading') }}
+                        {{ $entryType === 'visitor' ? 'Save Visitor Pass' : ($entryType === 'outward' ? 'Save Outward Entry' : 'Save Inward Entry') }}
                     </button>
                 </section>
             </aside>

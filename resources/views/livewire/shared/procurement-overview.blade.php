@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\GateEntry;
+use App\Models\QcResult;
 use App\Models\ValidationIssue;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -26,6 +27,11 @@ new #[Layout('layouts.app')] class extends Component
     {
         return [
             'openIssues' => ValidationIssue::with('gateEntry')->where('status', 'open')->orderByDesc('created_at')->get(),
+            'qcProblems' => QcResult::with('gateEntry')
+                ->where(fn ($q) => $q->where('defective_qty', '>', 0)->orWhere('rejected_qty', '>', 0))
+                ->orderByDesc('created_at')
+                ->limit(15)
+                ->get(),
             'recentlyClosed' => GateEntry::with('grnRecord')->where('status', 'closed')->orderByDesc('updated_at')->limit(15)->get(),
         ];
     }
@@ -54,6 +60,21 @@ new #[Layout('layouts.app')] class extends Component
         @endforelse
     </div>
 
+    <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">Quality problems (defective/rejected)</h2>
+    <div class="flex flex-col gap-2 mb-6">
+        @forelse ($qcProblems as $qc)
+            <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $qc->gateEntry?->gate_no }} · {{ $qc->sku }}</div>
+                    <span class="text-xs" style="color: var(--text-muted);">{{ $qc->created_at->format('d M, H:i') }}</span>
+                </div>
+                <div class="text-xs mt-0.5" style="color: var(--status-critical);">{{ $qc->gateEntry?->vendor_name }} · {{ $qc->defective_qty }} defective, {{ $qc->rejected_qty }} rejected</div>
+            </div>
+        @empty
+            <div class="text-center text-sm py-6" style="color: var(--text-muted);">No quality problems recorded.</div>
+        @endforelse
+    </div>
+
     <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">Recently closed</h2>
     <div class="flex flex-col gap-2">
         @forelse ($recentlyClosed as $gate)
@@ -62,7 +83,7 @@ new #[Layout('layouts.app')] class extends Component
                     <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $gate->gate_no }} · {{ $gate->po_number }}</div>
                     <span class="text-xs" style="color: var(--text-muted);">{{ $gate->updated_at->format('d M, H:i') }}</span>
                 </div>
-                <div class="text-xs mt-0.5" style="color: var(--text-secondary);">{{ $gate->vendor_name }} · bin {{ $gate->grnRecord?->suggested_bin ?? '—' }}</div>
+                <div class="text-xs mt-0.5" style="color: var(--text-secondary);">{{ $gate->vendor_name }} · bin {{ $gate->final_bin ?? $gate->grnRecord?->suggested_bin ?? '—' }}</div>
             </div>
         @empty
             <div class="text-center text-sm py-6" style="color: var(--text-muted);">Nothing closed yet.</div>

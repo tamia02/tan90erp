@@ -123,6 +123,13 @@ new #[Layout('layouts.app')] class extends Component
         $vendorName = auth()->user()->name;
         $submissions = VendorSubmission::where('vendor_name', $vendorName)->orderBy('created_at', 'desc')->get();
 
+        // Confirmed live: the vendor had to type the PO number by hand,
+        // free-text, even though every real PO they could legitimately
+        // submit against is already known -- released to them and accepted.
+        $acceptedPoNumbers = \App\Models\PurchaseOrderAcknowledgement::where('vendor_name', $vendorName)
+            ->where('accepted', true)
+            ->pluck('po_number');
+
         $poNumbers = $submissions->pluck('po_number')->filter()->unique();
         $purchaseOrders = PurchaseOrder::whereIn('po_number', $poNumbers)->with('lines')->get()->keyBy('po_number');
 
@@ -144,6 +151,7 @@ new #[Layout('layouts.app')] class extends Component
                 'ordered' => $ordered,
                 'fulfilled' => $fulfilled,
                 'remaining' => max($ordered - $fulfilled, 0),
+                'over' => $fulfilled > $ordered,
                 'invoice_count' => $submissions->where('po_number', $po)->count(),
                 'pct' => $ordered > 0 ? min(100, (int) round($fulfilled / $ordered * 100)) : 0,
             ];
@@ -171,6 +179,7 @@ new #[Layout('layouts.app')] class extends Component
             'fulfillment' => $fulfillment,
             'openIssuesByPo' => $openIssues,
             'gateStatusByPo' => $gateStatusByPo,
+            'acceptedPoNumbers' => $acceptedPoNumbers,
         ];
     }
 }; ?>
@@ -202,7 +211,15 @@ new #[Layout('layouts.app')] class extends Component
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                     <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">PO Number <span style="color: var(--status-critical);">*</span></label>
-                    <input type="text" wire:model="po_number" class="w-full rounded-xl border px-3 py-2.5 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                    <select wire:model="po_number" class="w-full rounded-xl border px-3 py-2.5 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                        <option value="">Select a PO you've accepted…</option>
+                        @foreach ($acceptedPoNumbers as $po)
+                            <option value="{{ $po }}">{{ $po }}</option>
+                        @endforeach
+                    </select>
+                    @if ($acceptedPoNumbers->isEmpty())
+                        <p class="text-xs mt-1" style="color: var(--text-muted);">No accepted POs yet — accept one on <a href="{{ route('vendor.purchase-orders') }}" wire:navigate style="color: var(--brand);">Purchase Orders</a> first.</p>
+                    @endif
                     @error('po_number') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                 </div>
                 <div>
@@ -281,10 +298,10 @@ new #[Layout('layouts.app')] class extends Component
                 <div class="rounded-lg border p-3" style="background: var(--surface-3); border-color: var(--border);">
                     <div class="flex items-center justify-between text-sm mb-1.5">
                         <span class="font-medium" style="color: var(--text-primary);">{{ $f['po_number'] }}</span>
-                        <span style="color: var(--text-secondary);">{{ rtrim(rtrim(number_format($f['fulfilled'], 2), '0'), '.') }} / {{ rtrim(rtrim(number_format($f['ordered'], 2), '0'), '.') }} ({{ $f['invoice_count'] }} invoice(s))</span>
+                        <span style="color: {{ $f['over'] ? 'var(--status-critical)' : 'var(--text-secondary)' }};">{{ rtrim(rtrim(number_format($f['fulfilled'], 2), '0'), '.') }} / {{ rtrim(rtrim(number_format($f['ordered'], 2), '0'), '.') }} ({{ $f['invoice_count'] }} invoice(s)){{ $f['over'] ? ' — over-fulfilled' : '' }}</span>
                     </div>
                     <div class="w-full h-1.5 rounded-full overflow-hidden" style="background: var(--surface-2);">
-                        <div class="h-full rounded-full" style="width: {{ $f['pct'] }}%; background: var(--brand);"></div>
+                        <div class="h-full rounded-full" style="width: {{ $f['pct'] }}%; background: {{ $f['over'] ? 'var(--status-critical)' : 'var(--brand)' }};"></div>
                     </div>
                 </div>
             @endforeach

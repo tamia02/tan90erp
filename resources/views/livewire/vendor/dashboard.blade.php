@@ -121,6 +121,7 @@ new #[Layout('layouts.app')] class extends Component
                 'ordered' => $ordered,
                 'fulfilled' => $fulfilled,
                 'remaining' => max($ordered - $fulfilled, 0),
+                'over' => $fulfilled > $ordered,
                 'invoice_count' => $allSubmissions->where('po_number', $po)->count(),
                 'pct' => $ordered > 0 ? min(100, (int) round($fulfilled / $ordered * 100)) : 0,
             ];
@@ -156,6 +157,16 @@ new #[Layout('layouts.app')] class extends Component
                 && (! $analyticsTo || $fr->created_at->lte($analyticsTo))
         );
 
+        // Confirmed live: Recent Submissions' Status column showed the
+        // submission's own static "submitted" badge forever, with no way
+        // to tell the underlying gate entry had actually closed.
+        $gateStatusByPo = GateEntry::where('vendor_name', $vendorName)
+            ->whereIn('po_number', $poNumbers)
+            ->orderByDesc('created_at')
+            ->get(['po_number', 'status'])
+            ->unique('po_number')
+            ->keyBy('po_number');
+
         return [
             // Gate entries the Guard logged against this vendor's name, shown
             // regardless of whether the vendor pre-filed a matching
@@ -163,6 +174,7 @@ new #[Layout('layouts.app')] class extends Component
             // the vendor had already submitted first, so a Guard-only entry
             // never reached the vendor at all.
             'gateActivity' => GateEntry::where('vendor_name', $vendorName)->orderByDesc('created_at')->take(10)->get(),
+            'gateStatusByPo' => $gateStatusByPo,
             'openIssuesCount' => $openIssuesCount,
             'submissions' => $allSubmissions->sortByDesc('created_at')->take(5)->values(),
             'fulfillment' => $fulfillment,
@@ -283,7 +295,12 @@ new #[Layout('layouts.app')] class extends Component
                         <td class="px-4 py-2.5 font-medium">
                             <a href="{{ route('vendor.submission-activity', $sub->id) }}" wire:navigate style="color: var(--brand);">{{ $sub->po_number }}</a>
                         </td>
-                        <td class="px-4 py-2.5" style="color: {{ $sub->status == 'submitted' ? 'var(--status-good)' : 'var(--status-critical)' }};">{{ ucfirst(str_replace('_', ' ', $sub->status)) }}</td>
+                        <td class="px-4 py-2.5" style="color: {{ $sub->status == 'submitted' ? 'var(--status-good)' : 'var(--status-critical)' }};">
+                            {{ ucfirst(str_replace('_', ' ', $sub->status)) }}
+                            @if ($gateStatusByPo->get($sub->po_number))
+                                <div class="text-xs" style="color: var(--text-muted);">Gate: {{ \App\Support\GateStatusLabels::label($gateStatusByPo->get($sub->po_number)->status) }}</div>
+                            @endif
+                        </td>
                         <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $sub->created_at->format('d M, Y') }}</td>
                     </tr>
                 @empty
@@ -305,10 +322,10 @@ new #[Layout('layouts.app')] class extends Component
                     <span class="text-xs" style="color: var(--text-muted);">{{ $f['invoice_count'] }} invoice(s)</span>
                 </div>
                 <div class="w-full h-2 rounded-full overflow-hidden" style="background: var(--surface-2);">
-                    <div class="h-full rounded-full" style="width: {{ $f['pct'] }}%; background: var(--brand);"></div>
+                    <div class="h-full rounded-full" style="width: {{ $f['pct'] }}%; background: {{ $f['over'] ? 'var(--status-critical)' : 'var(--brand)' }};"></div>
                 </div>
-                <div class="flex items-center justify-between mt-1.5 text-xs" style="color: var(--text-secondary);">
-                    <span>{{ rtrim(rtrim(number_format($f['fulfilled'], 2), '0'), '.') }} / {{ rtrim(rtrim(number_format($f['ordered'], 2), '0'), '.') }} fulfilled</span>
+                <div class="flex items-center justify-between mt-1.5 text-xs" style="color: {{ $f['over'] ? 'var(--status-critical)' : 'var(--text-secondary)' }};">
+                    <span>{{ rtrim(rtrim(number_format($f['fulfilled'], 2), '0'), '.') }} / {{ rtrim(rtrim(number_format($f['ordered'], 2), '0'), '.') }} fulfilled{{ $f['over'] ? ' — over-fulfilled' : '' }}</span>
                     <span>{{ $f['pct'] }}%</span>
                 </div>
             </div>
@@ -326,10 +343,10 @@ new #[Layout('layouts.app')] class extends Component
                     <span class="text-xs" style="color: var(--text-muted);">{{ $f['invoice_count'] }} invoice(s)</span>
                 </div>
                 <div class="w-full h-2 rounded-full overflow-hidden" style="background: var(--surface-2);">
-                    <div class="h-full rounded-full" style="width: {{ $f['pct'] }}%; background: var(--status-good);"></div>
+                    <div class="h-full rounded-full" style="width: {{ $f['pct'] }}%; background: {{ $f['over'] ? 'var(--status-critical)' : 'var(--status-good)' }};"></div>
                 </div>
-                <div class="flex items-center justify-between mt-1.5 text-xs" style="color: var(--text-secondary);">
-                    <span>{{ rtrim(rtrim(number_format($f['fulfilled'], 2), '0'), '.') }} / {{ rtrim(rtrim(number_format($f['ordered'], 2), '0'), '.') }} fulfilled</span>
+                <div class="flex items-center justify-between mt-1.5 text-xs" style="color: {{ $f['over'] ? 'var(--status-critical)' : 'var(--text-secondary)' }};">
+                    <span>{{ rtrim(rtrim(number_format($f['fulfilled'], 2), '0'), '.') }} / {{ rtrim(rtrim(number_format($f['ordered'], 2), '0'), '.') }} fulfilled{{ $f['over'] ? ' — over-fulfilled' : '' }}</span>
                     <span>{{ $f['pct'] }}%</span>
                 </div>
             </div>
