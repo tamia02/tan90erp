@@ -17,7 +17,7 @@ class NotificationCenter
     /** @return array<int, array{title: string, detail: string, tone: string, url?: string}> */
     public static function forRole(Role $role): array
     {
-        return match ($role) {
+        $own = match ($role) {
             Role::Guard => self::guard(),
             Role::StoreExec => self::storeExec(),
             Role::StoreManager => self::storeManager(),
@@ -27,6 +27,34 @@ class NotificationCenter
             Role::Admin => self::admin(),
             default => [],
         };
+
+        return [...self::visitorApprovals(), ...$own];
+    }
+
+    // The visitor's host can be anyone regardless of role, so this check
+    // runs for every role rather than living inside one role's method --
+    // previously nobody was ever notified about a visitor asking for them
+    // since "Person To Meet" wasn't a real, notifiable person at all.
+    private static function visitorApprovals(): array
+    {
+        $notices = [];
+        $userId = auth()->id();
+
+        if (! $userId) {
+            return $notices;
+        }
+
+        $pending = GateEntry::where('entry_type', 'visitor')->where('status', 'pending_validation')->where('visitor_host_id', $userId)->count();
+        if ($pending > 0) {
+            $notices[] = [
+                'title' => 'Visitors waiting for you',
+                'detail' => "{$pending} visitor".($pending === 1 ? '' : 's')." asked to see you and ".($pending === 1 ? 'is' : 'are')." waiting at the gate for your approval.",
+                'tone' => 'warning',
+                'url' => route('visitor-approvals'),
+            ];
+        }
+
+        return $notices;
     }
 
     // Confirmed live: this role had no case at all here (silently fell
@@ -120,6 +148,16 @@ class NotificationCenter
                 'detail' => "{$readyForExit} outward vehicle".($readyForExit === 1 ? '' : 's')." loaded and ready — confirm exit on the gate entry once it leaves.",
                 'tone' => 'good',
                 'url' => route('guard.entries', ['status' => 'loaded']),
+            ];
+        }
+
+        $visitorsApproved = GateEntry::where('entry_type', 'visitor')->where('status', 'validated')->count();
+        if ($visitorsApproved > 0) {
+            $notices[] = [
+                'title' => 'Visitors approved, ready to let in',
+                'detail' => "{$visitorsApproved} visitor".($visitorsApproved === 1 ? '' : 's')." approved by their host — allow entry on the gate entry.",
+                'tone' => 'good',
+                'url' => route('guard.entries', ['status' => 'validated']),
             ];
         }
 

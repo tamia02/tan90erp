@@ -31,6 +31,20 @@ new #[Layout('layouts.app')] class extends Component
         \App\Services\AuditLogger::log('Outward vehicle exited premises', $this->entry->gate_no, $this->entry);
     }
 
+    // Mirrors confirmExit() for the visitor journey's final step: the host
+    // has approved (status=validated on Visitor Approvals), Guard is the
+    // one who physically lets them through the gate.
+    public function allowEntry(): void
+    {
+        if ($this->entry->entry_type !== 'visitor' || $this->entry->status !== 'validated') {
+            return;
+        }
+
+        $this->entry->update(['status' => 'closed']);
+
+        \App\Services\AuditLogger::log('Visitor allowed entry', $this->entry->gate_no.' · '.$this->entry->driver_name, $this->entry);
+    }
+
     public function with(): array
     {
         return $this->pdfData();
@@ -111,6 +125,11 @@ new #[Layout('layouts.app')] class extends Component
                 @if ($entry->entry_type === 'outward' && $entry->status === 'loaded')
                     <button wire:click="confirmExit" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
                         <x-icon name="check-circle" class="w-4 h-4" /> Confirm exit
+                    </button>
+                @endif
+                @if ($entry->entry_type === 'visitor' && $entry->status === 'validated')
+                    <button wire:click="allowEntry" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
+                        <x-icon name="check-circle" class="w-4 h-4" /> Allow entry
                     </button>
                 @endif
                 <button wire:click="downloadPdf" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">

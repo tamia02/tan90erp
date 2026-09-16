@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
-    'created_by', 'approved_by', 'approved_at', 'gate_no', 'entry_type', 'po_number', 'po_bill_date', 'vendor_name', 'vendor_gst',
+    'created_by', 'approved_by', 'approved_at', 'visitor_host_id', 'gate_no', 'entry_type', 'po_number', 'po_bill_date', 'vendor_name', 'vendor_gst',
     'invoice_number', 'invoice_qty', 'invoice_amount', 'rate', 'material',
     'vehicle_number', 'driver_name', 'transporter', 'location', 'gps',
     'bill_scanned', 'bill_document_path', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
@@ -50,6 +50,12 @@ class GateEntry extends Model
     public function putawayBy(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'putaway_by');
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
+    public function visitorHost(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'visitor_host_id');
     }
 
     /** @return HasMany<ValidationIssue, $this> */

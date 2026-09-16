@@ -130,6 +130,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('api/claude/chat', 'App\Http\Controllers\ClaudeOAuthController@chat')->name('claude.chat');
 
     Volt::route('notifications', 'shared.notifications')->name('notifications');
+    Volt::route('visitor-approvals', 'shared.visitor-approvals')->name('visitor-approvals');
     Volt::route('activity', 'shared.activity-log')->name('activity');
     Volt::route('activity/{entry}', 'shared.activity-detail')->name('activity.detail');
     Volt::route('gate-entries', 'shared.gate-entries-index')->name('gate-entries.index');

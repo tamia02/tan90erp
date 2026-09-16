@@ -12,6 +12,7 @@ class RoleNavigation
 {
     private const SHARED_SCREENS = [
         ['label' => 'Notifications', 'route' => 'notifications', 'icon' => 'bell'],
+        ['label' => 'Visitor Approvals', 'route' => 'visitor-approvals', 'icon' => 'check-circle'],
         ['label' => 'Activity Log', 'route' => 'activity', 'icon' => 'history'],
         ['label' => 'Settings', 'route' => 'settings', 'icon' => 'settings'],
         ['label' => 'Help & Support', 'route' => 'help', 'icon' => 'help-circle'],

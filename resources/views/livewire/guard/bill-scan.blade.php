@@ -53,7 +53,7 @@ new #[Layout('layouts.app')] class extends Component
     // switching between entry types -- they were, literally, the same
     // underlying property.
     public string $visitorName = '';
-    public string $personToMeet = '';
+    public string $visitorHostId = '';
     public string $visitPurpose = '';
 
     public array $visitPurposeOptions = ['Meeting', 'Service / Maintenance Visit', 'Audit / Inspection'];
@@ -76,6 +76,9 @@ new #[Layout('layouts.app')] class extends Component
             'locationDetails' => self::LOCATIONS,
             'documentCount' => collect($this->documents)->filter()->count(),
             'documentSummary' => $this->documentSummary(),
+            'hostOptions' => $this->entryType === 'visitor'
+                ? User::whereNotNull('role')->where('role', '!=', Role::Vendor)->orderBy('name')->get(['id', 'name', 'role'])
+                : collect(),
         ];
     }
 
@@ -183,7 +186,7 @@ new #[Layout('layouts.app')] class extends Component
 
         if ($this->entryType === 'visitor') {
             $this->billScanned = false;
-            $this->personToMeet = 'Store Manager';
+            $this->visitorHostId = (string) (User::where('role', Role::StoreManager)->value('id') ?? '');
             $this->vendorName = 'Tesmed Service Partner';
             $this->invoiceNumber = 'VIS-'.now()->format('ymdHis');
             $this->invoiceQty = '1';
@@ -235,7 +238,7 @@ new #[Layout('layouts.app')] class extends Component
     public function saveEntry(): void
     {
         $rules = match ($this->entryType) {
-            'visitor' => ['visitorName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'personToMeet' => ['required', 'string'], 'visitPurpose' => ['required', 'string']],
+            'visitor' => ['visitorName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'visitorHostId' => ['required', 'integer', 'exists:users,id'], 'visitPurpose' => ['required', 'string']],
             'inward' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'vehicleNumber' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'invoiceAmount' => ['required', 'numeric'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'material' => ['required', 'string']],
             default => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string']]
         };
@@ -254,12 +257,17 @@ new #[Layout('layouts.app')] class extends Component
         }
 
         $isVisitor = $this->entryType === 'visitor';
-        // Visitor uses its own dedicated fields (visitorName/personToMeet/
+        // Visitor uses its own dedicated fields (visitorName/visitorHostId/
         // visitPurpose) rather than reusing driverName/poNumber/material --
         // still maps onto the same gate_entries columns as inward/outward,
         // since it's one shared table, just sourced from the right property.
+        // personToMeet used to be free text (anyone could type any name,
+        // with no actual approval routing) -- it's now a real user, picked
+        // from a dropdown, so the visit can be routed to that person for
+        // approval before Guard lets them in.
+        $hostUser = $isVisitor ? User::find($this->visitorHostId) : null;
         $driverName = $isVisitor ? $this->visitorName : $this->driverName;
-        $poNumber = $isVisitor ? $this->personToMeet : $this->poNumber;
+        $poNumber = $isVisitor ? ($hostUser?->name ?? '') : $this->poNumber;
         $material = $isVisitor ? $this->visitPurpose : $this->material;
 
         $selected = self::LOCATIONS[$this->location] ?? ['name' => $this->location, 'code' => 'NA'];
@@ -284,19 +292,20 @@ new #[Layout('layouts.app')] class extends Component
 
         $issues = app(GateValidationService::class)->validate($form);
         $blocking = app(GateValidationService::class)->isBlocking($issues);
-        // Every inward AND outward entry now waits for an explicit Store
-        // Manager approval (Entry Approvals) before it can move on -- for
-        // inward that's dock assignment (still done at Loading Desk),
-        // for outward Store Manager approves and assigns the dock in the
-        // same action. Previously a clean entry (no hardFail/redFlag
-        // issues) skipped straight to "validated" here with no human ever
-        // reviewing it. Visitor entries are unaffected for now.
-        $needsApproval = in_array($this->entryType, ['inward', 'outward'], true);
+        // Every inward, outward AND visitor entry now waits for an explicit
+        // approval before it can move on -- inward/outward go to Store
+        // Manager (Entry Approvals), visitor goes to whichever person the
+        // visitor is here to see (Visitor Approvals). Previously a clean
+        // entry (no hardFail/redFlag issues) skipped straight to
+        // "validated" here with no human ever reviewing it -- for visitor
+        // that meant anyone typing any name got waved straight in.
+        $needsApproval = in_array($this->entryType, ['inward', 'outward', 'visitor'], true);
         $vendorUser = $form['vendor_name'] ? User::where('role', Role::Vendor)->where('name', $form['vendor_name'])->first() : null;
         $documentPath = $this->billFile ? $this->billFile->store('gate-bills') : null;
         $gate = GateEntry::create([
             ...$form,
             'created_by' => auth()->id(),
+            'visitor_host_id' => $hostUser?->id,
             'gate_no' => 'GATE-'.random_int(1000, 9999),
             'bill_scanned' => $isVisitor ? false : $this->billScanned,
             'bill_document_path' => $documentPath,
@@ -337,7 +346,7 @@ new #[Layout('layouts.app')] class extends Component
         $this->driverName = '';
         $this->driverPhone = '';
         $this->visitorName = '';
-        $this->personToMeet = '';
+        $this->visitorHostId = '';
         $this->visitPurpose = '';
         $this->remarks = '';
         $this->location = 'bhiwandi';
@@ -387,7 +396,15 @@ new #[Layout('layouts.app')] class extends Component
                 </div>
                 <div class="rounded-xl border p-4" style="border-color: var(--border); background: var(--surface-2);">
                     <div class="text-xs uppercase" style="color: var(--text-muted);">Next Step</div>
-                    <div class="font-semibold mt-1" style="color: var(--text-primary);">{{ in_array($saved['gate']->entry_type, ['inward', 'outward'], true) ? 'Awaiting Store Manager approval' : 'Gate pass active' }}</div>
+                    <div class="font-semibold mt-1" style="color: var(--text-primary);">
+                        @if (in_array($saved['gate']->entry_type, ['inward', 'outward'], true))
+                            Awaiting Store Manager approval
+                        @elseif ($saved['gate']->entry_type === 'visitor')
+                            Awaiting {{ $saved['gate']->po_number ?: "the host's" }} approval
+                        @else
+                            Gate pass active
+                        @endif
+                    </div>
                     <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ count($saved['issues']) ? count($saved['issues']).' issue(s) to review' : 'No blocking issue' }}</div>
                 </div>
             </div>
@@ -502,8 +519,14 @@ new #[Layout('layouts.app')] class extends Component
                         </label>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Person To Meet</span>
-                            <input wire:model="personToMeet" id="personToMeet" name="personToMeet" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="Store Manager" />
-                            @error('personToMeet') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            <select wire:model="visitorHostId" id="visitorHostId" name="visitorHostId" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border); background: var(--surface-1); color: var(--text-primary);">
+                                <option value="">Select who they're here to see…</option>
+                                @foreach ($hostOptions as $host)
+                                    <option value="{{ $host->id }}">{{ $host->name }} ({{ $host->role?->label() ?? $host->role?->value }})</option>
+                                @endforeach
+                            </select>
+                            <span class="text-xs" style="color: var(--text-muted);">The visit is sent to this person for approval before entry is allowed.</span>
+                            @error('visitorHostId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <label class="space-y-1.5 text-sm md:col-span-2">
                             <span class="font-semibold" style="color: var(--text-primary);">Purpose</span>
