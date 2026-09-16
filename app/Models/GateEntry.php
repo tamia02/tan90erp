@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'invoice_number', 'invoice_qty', 'invoice_amount', 'rate', 'material',
     'vehicle_number', 'driver_name', 'transporter', 'location', 'gps',
     'bill_scanned', 'bill_document_path', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
+    'loading_window_start', 'loading_window_end', 'expected_delivery_date', 'dispatch_documents_shared', 'loaded_at', 'exited_at',
 ])]
 class GateEntry extends Model
 {
@@ -28,6 +29,12 @@ class GateEntry extends Model
             'sla_deadline' => 'datetime',
             'dock_assigned_at' => 'datetime',
             'approved_at' => 'datetime',
+            'loading_window_start' => 'datetime',
+            'loading_window_end' => 'datetime',
+            'expected_delivery_date' => 'date',
+            'dispatch_documents_shared' => 'boolean',
+            'loaded_at' => 'datetime',
+            'exited_at' => 'datetime',
         ];
     }
 

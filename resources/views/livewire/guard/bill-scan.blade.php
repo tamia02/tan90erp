@@ -284,11 +284,14 @@ new #[Layout('layouts.app')] class extends Component
 
         $issues = app(GateValidationService::class)->validate($form);
         $blocking = app(GateValidationService::class)->isBlocking($issues);
-        // Every inward entry now waits for an explicit Store Manager
-        // approval (Entry Approvals) before it can be assigned a dock --
-        // previously a clean entry (no hardFail/redFlag issues) skipped
-        // straight to "validated" here with no human ever reviewing it.
-        $isInward = $this->entryType === 'inward';
+        // Every inward AND outward entry now waits for an explicit Store
+        // Manager approval (Entry Approvals) before it can move on -- for
+        // inward that's dock assignment (still done at Loading Desk),
+        // for outward Store Manager approves and assigns the dock in the
+        // same action. Previously a clean entry (no hardFail/redFlag
+        // issues) skipped straight to "validated" here with no human ever
+        // reviewing it. Visitor entries are unaffected for now.
+        $needsApproval = in_array($this->entryType, ['inward', 'outward'], true);
         $vendorUser = $form['vendor_name'] ? User::where('role', Role::Vendor)->where('name', $form['vendor_name'])->first() : null;
         $documentPath = $this->billFile ? $this->billFile->store('gate-bills') : null;
         $gate = GateEntry::create([
@@ -298,7 +301,7 @@ new #[Layout('layouts.app')] class extends Component
             'bill_scanned' => $isVisitor ? false : $this->billScanned,
             'bill_document_path' => $documentPath,
             'remarks' => trim($this->remarks."\nDocuments: ".$this->documentSummary()."\nLine: ".$material.' x '.$qty) ?: null,
-            'status' => ($isInward || $blocking) ? 'pending_validation' : 'validated',
+            'status' => ($needsApproval || $blocking) ? 'pending_validation' : 'validated',
             'sla_deadline' => now()->addHours(SlaDirectives::hours($vendorUser?->sla_directive)),
         ]);
 
@@ -384,7 +387,7 @@ new #[Layout('layouts.app')] class extends Component
                 </div>
                 <div class="rounded-xl border p-4" style="border-color: var(--border); background: var(--surface-2);">
                     <div class="text-xs uppercase" style="color: var(--text-muted);">Next Step</div>
-                    <div class="font-semibold mt-1" style="color: var(--text-primary);">{{ $saved['gate']->entry_type === 'inward' ? 'Awaiting Store Manager approval' : ($saved['gate']->entry_type === 'outward' ? 'Confirm exit' : 'Gate pass active') }}</div>
+                    <div class="font-semibold mt-1" style="color: var(--text-primary);">{{ in_array($saved['gate']->entry_type, ['inward', 'outward'], true) ? 'Awaiting Store Manager approval' : 'Gate pass active' }}</div>
                     <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ count($saved['issues']) ? count($saved['issues']).' issue(s) to review' : 'No blocking issue' }}</div>
                 </div>
             </div>

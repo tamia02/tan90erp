@@ -17,7 +17,7 @@ new #[Layout('layouts.app')] class extends Component
         $activity = CombinedActivityFeed::forUser(auth()->user(), self::ACTIVITY_KEYWORDS);
 
         return [
-            'awaitingApproval' => GateEntry::where('entry_type', 'inward')->where('status', 'pending_validation')->count(),
+            'awaitingApproval' => GateEntry::whereIn('entry_type', ['inward', 'outward'])->where('status', 'pending_validation')->count(),
             'awaitingGrn' => GateEntry::where('status', 'qc_done')->count(),
             'closedToday' => GateEntry::where('status', 'closed')->whereDate('updated_at', today())->count(),
             'openIssues' => ValidationIssue::where('status', 'open')->count(),

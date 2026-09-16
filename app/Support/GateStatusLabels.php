@@ -23,6 +23,8 @@ class GateStatusLabels
         'qc_done' => 'QC Done',
         'closed' => 'Closed',
         'rejected' => 'Rejected',
+        'loaded' => 'Loaded, Ready to Exit',
+        'dispatched' => 'Dispatched',
     ];
 
     public static function label(?string $status): string

@@ -18,6 +18,8 @@ new #[Layout('layouts.app')] class extends Component
                 ['label' => 'Unloading', 'count' => GateEntry::where('status', 'unloading')->count(), 'tone' => 'warning'],
                 ['label' => 'Ready for QC', 'count' => GateEntry::where('status', 'grn')->count(), 'tone' => 'warning'],
                 ['label' => 'QC Done', 'count' => GateEntry::where('status', 'qc_done')->count(), 'tone' => 'good'],
+                ['label' => 'Loaded (outward)', 'count' => GateEntry::where('status', 'loaded')->count(), 'tone' => 'warning'],
+                ['label' => 'Dispatched (outward)', 'count' => GateEntry::where('status', 'dispatched')->count(), 'tone' => 'good'],
                 ['label' => 'Rejected', 'count' => GateEntry::where('status', 'rejected')->count(), 'tone' => 'warning'],
                 ['label' => 'Closed', 'count' => GateEntry::where('status', 'closed')->count(), 'tone' => 'good'],
             ],

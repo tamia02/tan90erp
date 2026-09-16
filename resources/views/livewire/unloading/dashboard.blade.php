@@ -22,6 +22,8 @@ new #[Layout('layouts.app')] class extends Component
             'inProgress' => GateEntry::where('status', 'unloading')->where('entry_type', 'inward')->count(),
             'readyForQc' => GateEntry::where('status', 'grn')->where('entry_type', 'inward')->count(),
             'queue' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->orderBy('created_at')->limit(5)->get(),
+            'outwardReady' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'outward')->count(),
+            'outwardQueue' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'outward')->orderBy('dock_assigned_at')->limit(5)->get(),
             'activityTotal' => $activity->count(),
             'recentActivity' => $this->showAllActivity ? $activity : $activity->take(5),
         ];
@@ -79,6 +81,30 @@ new #[Layout('layouts.app')] class extends Component
                         <div>
                             <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                             <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }}</div>
+                        </div>
+                        <span class="text-xs font-medium shrink-0" style="color: var(--brand);">View →</span>
+                    </a>
+                @endforeach
+            </div>
+        @endif
+    </div>
+
+    <div class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="font-semibold text-sm" style="color: var(--text-primary);">Outward dispatches ready to load</h2>
+            @if ($outwardReady > $outwardQueue->count())
+                <a href="{{ route('unloading.outward') }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">View all {{ $outwardReady }} →</a>
+            @endif
+        </div>
+        @if ($outwardQueue->isEmpty())
+            <p class="text-sm py-4" style="color: var(--text-muted);">Nothing waiting — approved dispatches will show up here.</p>
+        @else
+            <div class="flex flex-col divide-y" style="border-color: var(--border);">
+                @foreach ($outwardQueue as $g)
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
+                        <div>
+                            <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
+                            <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name }} · {{ $g->material }} · {{ $g->loading_dock }}</div>
                         </div>
                         <span class="text-xs font-medium shrink-0" style="color: var(--brand);">View →</span>
                     </a>

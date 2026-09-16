@@ -17,6 +17,20 @@ new #[Layout('layouts.app')] class extends Component
         $this->entry = $entry;
     }
 
+    // Guard is the one physically at the gate for both directions -- they
+    // log the vehicle in on arrival and, for outward, confirm it out once
+    // Store Exec has finished loading and handed over documents.
+    public function confirmExit(): void
+    {
+        if ($this->entry->entry_type !== 'outward' || $this->entry->status !== 'loaded') {
+            return;
+        }
+
+        $this->entry->update(['status' => 'dispatched', 'exited_at' => now()]);
+
+        \App\Services\AuditLogger::log('Outward vehicle exited premises', $this->entry->gate_no, $this->entry);
+    }
+
     public function with(): array
     {
         return $this->pdfData();
@@ -93,9 +107,16 @@ new #[Layout('layouts.app')] class extends Component
                 <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">{{ $entry->gate_no }}</h1>
                 <p class="text-sm mt-1" style="color: var(--text-secondary);">Full gate entry form as submitted, plus every stage it has moved through since.</p>
             </div>
-            <button wire:click="downloadPdf" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
-                <x-icon name="file-text" class="w-4 h-4" /> Download PDF
-            </button>
+            <div class="flex gap-2 shrink-0">
+                @if ($entry->entry_type === 'outward' && $entry->status === 'loaded')
+                    <button wire:click="confirmExit" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
+                        <x-icon name="check-circle" class="w-4 h-4" /> Confirm exit
+                    </button>
+                @endif
+                <button wire:click="downloadPdf" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
+                    <x-icon name="file-text" class="w-4 h-4" /> Download PDF
+                </button>
+            </div>
         </div>
     </section>
 

@@ -62,6 +62,16 @@ class NotificationCenter
             ];
         }
 
+        $readyToLoad = GateEntry::where('entry_type', 'outward')->where('status', 'dock_assigned')->count();
+        if ($readyToLoad > 0) {
+            $notices[] = [
+                'title' => 'Outward dispatches ready to load',
+                'detail' => "{$readyToLoad} outward dispatch".($readyToLoad === 1 ? '' : 'es')." approved and assigned a bay, waiting to be loaded.",
+                'tone' => 'warning',
+                'url' => route('unloading.outward'),
+            ];
+        }
+
         return $notices;
     }
 
@@ -93,6 +103,16 @@ class NotificationCenter
             ];
         }
 
+        $readyForExit = GateEntry::where('entry_type', 'outward')->where('status', 'loaded')->count();
+        if ($readyForExit > 0) {
+            $notices[] = [
+                'title' => 'Vehicles ready to exit',
+                'detail' => "{$readyForExit} outward vehicle".($readyForExit === 1 ? '' : 's')." loaded and ready — confirm exit on the gate entry once it leaves.",
+                'tone' => 'good',
+                'url' => route('guard.entries', ['status' => 'loaded']),
+            ];
+        }
+
         return $notices;
     }
 
@@ -100,17 +120,27 @@ class NotificationCenter
     {
         $notices = [];
 
-        // The most upstream gap under the new flow: an inward entry cannot
-        // reach a dock until Store Manager explicitly approves it (Entry
-        // Approvals) -- previously a clean entry needed no such action, so
-        // this notice didn't exist at all.
-        $awaitingApproval = GateEntry::where('entry_type', 'inward')->where('status', 'pending_validation')->count();
+        // The most upstream gap under the new flow: neither an inward nor
+        // an outward entry can move forward until Store Manager explicitly
+        // approves it (Entry Approvals) -- previously a clean entry needed
+        // no such action, so this notice didn't exist at all.
+        $awaitingApproval = GateEntry::whereIn('entry_type', ['inward', 'outward'])->where('status', 'pending_validation')->count();
         if ($awaitingApproval > 0) {
             $notices[] = [
                 'title' => 'Entries awaiting approval',
-                'detail' => "{$awaitingApproval} inward entr".($awaitingApproval === 1 ? 'y is' : 'ies are')." waiting for you to approve before a dock can be assigned.",
+                'detail' => "{$awaitingApproval} gate entr".($awaitingApproval === 1 ? 'y is' : 'ies are')." waiting for you to approve.",
                 'tone' => 'warning',
                 'url' => route('store-manager.entry-approvals'),
+            ];
+        }
+
+        $dispatchedToday = GateEntry::where('entry_type', 'outward')->where('status', 'dispatched')->whereDate('exited_at', today())->count();
+        if ($dispatchedToday > 0) {
+            $notices[] = [
+                'title' => 'Dispatched today',
+                'detail' => "{$dispatchedToday} outward vehicle".($dispatchedToday === 1 ? '' : 's')." left the premises today.",
+                'tone' => 'good',
+                'url' => route('gate-entries.index'),
             ];
         }
 

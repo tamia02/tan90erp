@@ -57,6 +57,7 @@ class RoleNavigation
                 ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Loading Desk', 'route' => 'unloading.loading-desk', 'icon' => 'truck'],
                 ['label' => 'Unloading Desk', 'route' => 'unloading.desk', 'icon' => 'warehouse'],
+                ['label' => 'Outward Loading', 'route' => 'unloading.outward', 'icon' => 'truck'],
                 ['label' => 'Dock Scheduling', 'route' => 'unloading.dock-scheduling', 'icon' => 'calendar-clock'],
                 ['label' => 'History', 'route' => 'unloading.history', 'icon' => 'history'],
             ],
