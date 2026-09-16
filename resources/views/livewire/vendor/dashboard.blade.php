@@ -236,7 +236,7 @@ new #[Layout('layouts.app')] class extends Component
                             <a href="{{ route('gate-entries.show', $g) }}" wire:navigate style="color: var(--brand);">{{ $g->gate_no }}</a>
                         </td>
                         <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $g->po_number ?: '—' }}</td>
-                        <td class="px-4 py-2.5" style="color: {{ $g->status === 'closed' ? 'var(--status-good)' : ($g->status === 'pending_validation' ? 'var(--status-critical)' : 'var(--status-warning)') }};">{{ ucfirst(str_replace('_', ' ', $g->status)) }}</td>
+                        <td class="px-4 py-2.5" style="color: {{ $g->status === 'closed' ? 'var(--status-good)' : ($g->status === 'pending_validation' ? 'var(--status-critical)' : 'var(--status-warning)') }};">{{ \App\Support\GateStatusLabels::label($g->status) }}</td>
                         <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $g->created_at->format('d M, Y') }}</td>
                     </tr>
                 @empty

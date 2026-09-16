@@ -73,6 +73,19 @@ class GateValidationService
             $raise('QTY_MISMATCH', 'Quantity Mismatch', "Invoice qty {$form['invoice_qty']} does not match PO qty {$primaryLine->quantity}", 'redFlag');
         }
 
+        // Confirmed live: GATE-5717 was saved with invoice_amount ₹888.66
+        // against 700 units at the PO's own ₹42 rate (₹29,400 expected) --
+        // nothing compared the two. A modest tolerance (₹5 or 1%, whichever
+        // is larger) avoids flagging ordinary rounding/GST rounding noise.
+        if (! empty($form['invoice_amount']) && ! empty($form['invoice_qty']) && ! empty($form['rate'])) {
+            $expectedAmount = (float) $form['invoice_qty'] * (float) $form['rate'];
+            $tolerance = max(5.0, $expectedAmount * 0.01);
+
+            if (abs((float) $form['invoice_amount'] - $expectedAmount) > $tolerance) {
+                $raise('INVOICE_AMOUNT_MISMATCH', 'Invoice Amount Mismatch', "Entered amount ₹{$form['invoice_amount']} does not match qty × rate (₹".number_format($expectedAmount, 2).')', 'redFlag');
+            }
+        }
+
         if ($vendorOnFile && ! empty($form['vendor_gst']) && strtoupper($form['vendor_gst']) !== strtoupper($vendorOnFile->gst_number)) {
             $raise('GST_MISMATCH', 'GST Mismatch', "Entered GST does not match the GST on file for {$vendorOnFile->vendor_name}", 'redFlag');
         }

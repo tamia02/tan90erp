@@ -55,7 +55,7 @@ new #[Layout('layouts.app')] class extends Component
         <h2 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">Gate entries by status</h2>
         @foreach ($gatesByStatus as $status => $count)
             <div class="flex justify-between text-sm py-1.5" style="color: var(--text-secondary);">
-                <span class="capitalize">{{ str_replace('_', ' ', $status) }}</span>
+                <span>{{ \App\Support\GateStatusLabels::label($status) }}</span>
                 <span style="color: var(--text-primary);">{{ $count }}</span>
             </div>
         @endforeach

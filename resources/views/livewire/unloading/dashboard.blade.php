@@ -16,12 +16,12 @@ new #[Layout('layouts.app')] class extends Component
         $activity = CombinedActivityFeed::forUser(auth()->user(), self::ACTIVITY_KEYWORDS);
 
         return [
-            'awaiting' => GateEntry::where('status', 'validated')->count(),
-            'onDock' => GateEntry::where('status', 'dock_assigned')->count(),
-            'allotted' => GateEntry::where('status', 'allotted')->count(),
-            'inProgress' => GateEntry::where('status', 'unloading')->count(),
-            'readyForQc' => GateEntry::where('status', 'grn')->count(),
-            'queue' => GateEntry::where('status', 'validated')->orderBy('created_at')->limit(5)->get(),
+            'awaiting' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->count(),
+            'onDock' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->count(),
+            'allotted' => GateEntry::where('status', 'allotted')->where('entry_type', 'inward')->count(),
+            'inProgress' => GateEntry::where('status', 'unloading')->where('entry_type', 'inward')->count(),
+            'readyForQc' => GateEntry::where('status', 'grn')->where('entry_type', 'inward')->count(),
+            'queue' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->orderBy('created_at')->limit(5)->get(),
             'activityTotal' => $activity->count(),
             'recentActivity' => $this->showAllActivity ? $activity : $activity->take(5),
         ];
@@ -64,7 +64,12 @@ new #[Layout('layouts.app')] class extends Component
     </div>
 
     <div class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
-        <h2 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">Cleared vehicles awaiting a loading dock</h2>
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="font-semibold text-sm" style="color: var(--text-primary);">Cleared vehicles awaiting a loading dock</h2>
+            @if ($awaiting > $queue->count())
+                <a href="{{ route('unloading.loading-desk') }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">View all {{ $awaiting }} →</a>
+            @endif
+        </div>
         @if ($queue->isEmpty())
             <p class="text-sm py-4" style="color: var(--text-muted);">Nothing waiting — cleared vehicles will show up here.</p>
         @else

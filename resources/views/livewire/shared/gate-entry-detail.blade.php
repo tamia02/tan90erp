@@ -64,6 +64,7 @@ new #[Layout('layouts.app')] class extends Component
             $showDownstream ? 'qcResult' : null,
             $showDownstream ? 'grnRecord' : null,
             $showDownstream ? 'financeRecord' : null,
+            $showDownstream ? 'unloadingRecord' : null,
         ]));
 
         $fields = $this->describe($this->entry);
@@ -81,7 +82,35 @@ new #[Layout('layouts.app')] class extends Component
             'qcFields' => $showDownstream && $this->entry->qcResult ? $this->describe($this->entry->qcResult) : [],
             'grnFields' => $showDownstream && $this->entry->grnRecord ? $this->describe($this->entry->grnRecord) : [],
             'financeFields' => $showDownstream && $this->entry->financeRecord ? $this->describe($this->entry->financeRecord) : [],
+            // Confirmed live: the page's own subtitle promised "every stage
+            // it has moved through since" but rendered nothing of the kind.
+            // AuditLogEntry rows exist for every stage, just filed against
+            // whichever model was the direct subject at that step (QcResult,
+            // GrnRecord, etc.), not the gate entry itself -- so this needs
+            // to look across all of them, not just GateEntry's own id.
+            'timeline' => $showDownstream ? $this->timeline() : collect(),
         ];
+    }
+
+    private function timeline(): \Illuminate\Support\Collection
+    {
+        $subjects = collect([$this->entry])
+            ->merge(array_filter([
+                $this->entry->unloadingRecord,
+                $this->entry->qcResult,
+                $this->entry->grnRecord,
+                $this->entry->financeRecord,
+            ]));
+
+        $query = \App\Models\AuditLogEntry::query()->where(function ($q) use ($subjects) {
+            foreach ($subjects as $subject) {
+                $q->orWhere(function ($q2) use ($subject) {
+                    $q2->where('subject_type', $subject->getMorphClass())->where('subject_id', $subject->getKey());
+                });
+            }
+        });
+
+        return $query->orderBy('created_at')->get();
     }
 
     public function downloadPdf(): \Symfony\Component\HttpFoundation\StreamedResponse
@@ -94,15 +123,31 @@ new #[Layout('layouts.app')] class extends Component
         );
     }
 
+    // headline() alone reads oddly for the acronym-shaped column names this
+    // schema actually uses -- confirmed live: "Po Number", "Gps", "Gst
+    // Number" instead of "PO Number", "GPS", "GST Number".
+    private const LABEL_OVERRIDES = ['Po' => 'PO', 'Gps' => 'GPS', 'Gst' => 'GST', 'Sla' => 'SLA', 'Qc' => 'QC', 'Grn' => 'GRN'];
+
     /** @return array<int, array{label: string, value: string}> */
     private function describe(Model $subject): array
     {
         return collect($subject->toArray())
             ->except(self::HIDDEN_FIELDS)
-            ->map(fn ($value, $key) => [
-                'label' => str($key)->replace('_', ' ')->headline()->toString(),
-                'value' => $this->formatValue($value),
-            ])
+            ->map(function ($value, $key) use ($subject) {
+                $label = str($key)->replace('_', ' ')->headline()->toString();
+                foreach (self::LABEL_OVERRIDES as $wrong => $right) {
+                    $label = preg_replace('/\b'.$wrong.'\b/', $right, $label);
+                }
+
+                // created_by is a raw user id everywhere it appears -- confirmed
+                // live as literally "1" on screen, meaningless to whoever's
+                // reading it.
+                $resolvedValue = $key === 'created_by' && $value
+                    ? (\App\Models\User::find($value)?->name ?? "User #{$value}")
+                    : $this->formatValue($value);
+
+                return ['label' => $label, 'value' => $resolvedValue];
+            })
             ->values()
             ->all();
     }
@@ -137,7 +182,7 @@ new #[Layout('layouts.app')] class extends Component
                     <x-icon name="chevron-left" class="w-3.5 h-3.5" /> Back
                 </a>
                 <h1 class="text-2xl font-bold mt-3" style="color: var(--text-primary);">{{ $entry->gate_no }}</h1>
-                <p class="text-sm mt-1" style="color: var(--text-secondary);">Full gate entry form as submitted, plus every stage it has moved through since.</p>
+                <p class="text-sm mt-1" style="color: var(--text-secondary);">Full gate entry form as submitted{{ $timeline->isNotEmpty() ? ', plus every stage it has moved through since' : '' }}.</p>
             </div>
             <button wire:click="downloadPdf" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
                 <x-icon name="file-text" class="w-4 h-4" /> Download PDF
@@ -156,6 +201,26 @@ new #[Layout('layouts.app')] class extends Component
             @endforeach
         </div>
     </div>
+
+    @if ($timeline->isNotEmpty())
+        <div class="rounded-lg border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+            <h2 class="text-sm font-semibold mb-3" style="color: var(--text-primary);">Timeline</h2>
+            <div class="flex flex-col gap-3">
+                @foreach ($timeline as $event)
+                    <div class="flex gap-3 text-sm">
+                        <div class="w-2 h-2 rounded-full mt-1.5 shrink-0" style="background: var(--brand);"></div>
+                        <div>
+                            <div style="color: var(--text-primary);">{{ $event->action }}</div>
+                            @if ($event->detail)
+                                <div class="text-xs mt-0.5" style="color: var(--text-secondary);">{{ $event->detail }}</div>
+                            @endif
+                            <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $event->created_at->format('d M Y, H:i') }}</div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     @if ($issues->isNotEmpty())
         <div class="rounded-lg border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">

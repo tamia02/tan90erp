@@ -104,9 +104,9 @@ new #[Layout('layouts.app')] class extends Component
                 <a href="{{ $r->gateEntry ? route('gate-entries.show', $r->gateEntry) : '#' }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
                     <div class="flex items-center justify-between gap-3">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }}</div>
-                        <span class="text-xs" style="color: var(--text-muted);">{{ $r->completed_at ? 'Completed' : 'In progress' }}</span>
+                        <span class="text-xs" style="color: var(--text-muted);">{{ $r->completed_at ? 'Completed' : ($r->started_at ? 'In progress' : 'Allotted, not started') }}</span>
                     </div>
-                    <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $r->gateEntry?->vendor_name }} · {{ $r->box_count }} boxes · {{ $r->staging_area }}</div>
+                    <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $r->gateEntry?->vendor_name }} · {{ $r->started_at ? $r->box_count.' boxes' : 'Not unloaded yet' }} · {{ $r->staging_area }}</div>
                     <div class="text-xs mt-1" style="color: var(--text-muted);">Allotted {{ $r->allotted_at?->format('d M, H:i') }}{{ $r->started_at ? ' · Started '.$r->started_at->format('d M, H:i') : '' }}{{ $r->completed_at ? ' · Completed '.$r->completed_at->format('d M, H:i') : '' }}</div>
                 </a>
             @empty

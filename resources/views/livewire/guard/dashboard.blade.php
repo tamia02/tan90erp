@@ -80,7 +80,7 @@ new #[Layout('layouts.app')] class extends Component
                             <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $entry->gate_no }}</div>
                             <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $entry->vendor_name ?? $entry->vehicle_number }}</div>
                         </div>
-                        <span class="text-xs capitalize shrink-0" style="color: var(--text-muted);">{{ str_replace('_', ' ', $entry->status) }}</span>
+                        <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ \App\Support\GateStatusLabels::label($entry->status) }}</span>
                     </a>
                 @empty
                     <p class="text-sm py-4" style="color: var(--text-muted);">No gate entries yet.</p>

@@ -15,7 +15,7 @@ new #[Layout('layouts.app')] class extends Component
 
     private function occupiedDocks(): array
     {
-        return GateEntry::where('status', 'dock_assigned')->pluck('loading_dock')->filter()->all();
+        return GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->pluck('loading_dock')->filter()->all();
     }
 
     private function availableDocks(): array
@@ -58,13 +58,18 @@ new #[Layout('layouts.app')] class extends Component
     {
         $occupied = $this->occupiedDocks();
 
+        // Confirmed live: Guard sets status=validated for inward, outward,
+        // AND visitor entries alike -- a visitor here for a meeting or an
+        // outward dispatch has no dock to assign, but without this filter
+        // they piled up in this queue with an "Assign dock" button anyway
+        // (7 of 8 waiting entries in one real test were visitor/outward).
         return [
-            'toAssign' => GateEntry::where('status', 'validated')->orderBy('created_at')->get(),
-            'assigned' => GateEntry::where('status', 'dock_assigned')->orderBy('dock_assigned_at')->get(),
+            'toAssign' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->orderBy('created_at')->get(),
+            'assigned' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->orderBy('dock_assigned_at')->get(),
             'availableDocks' => $this->availableDocks(),
             'totalDocks' => count($this->docks),
             'occupiedCount' => count($occupied),
-            'history' => GateEntry::whereNotNull('dock_assigned_at')->orderByDesc('dock_assigned_at')->limit(10)->get(),
+            'history' => GateEntry::whereNotNull('dock_assigned_at')->where('entry_type', 'inward')->orderByDesc('dock_assigned_at')->limit(10)->get(),
         ];
     }
 }; ?>

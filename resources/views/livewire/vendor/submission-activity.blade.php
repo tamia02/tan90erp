@@ -84,7 +84,7 @@ new #[Layout('layouts.app')] class extends Component
                 <div class="rounded-lg border p-3" style="border-color: var(--border); background: var(--surface-2);">
                     <div class="flex items-center justify-between">
                         <div class="font-medium text-sm" style="color: var(--text-primary);">{{ $gate->gate_no }}</div>
-                        <span class="text-xs capitalize" style="color: var(--text-muted);">{{ str_replace('_', ' ', $gate->status) }}</span>
+                        <span class="text-xs" style="color: var(--text-muted);">{{ \App\Support\GateStatusLabels::label($gate->status) }}</span>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs" style="color: var(--text-secondary);">
                         <div>Gate entry: {{ $gate->created_at->format('d M, H:i') }}</div>

@@ -115,7 +115,7 @@ new #[Layout('layouts.app')] class extends Component
             <a href="{{ route('guard.entries.show', $entry) }}" wire:navigate class="block rounded-2xl border p-4 transition-colors hover:border-[var(--brand)]" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between flex-wrap gap-2">
                     <span class="text-sm font-semibold" style="color: var(--text-primary);">{{ $entry->gate_no }}</span>
-                    <span class="text-xs font-semibold capitalize px-2 py-0.5 rounded-full" style="background: var(--status-{{ $statusColor }}-bg); color: var(--status-{{ $statusColor }});">{{ str_replace('_', ' ', $entry->status) }}</span>
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full" style="background: var(--status-{{ $statusColor }}-bg); color: var(--status-{{ $statusColor }});">{{ \App\Support\GateStatusLabels::label($entry->status) }}</span>
                 </div>
                 <div class="text-xs mt-1.5" style="color: var(--text-muted);">{{ ucfirst($entry->entry_type) }} entry</div>
                 <div class="text-xs mt-2" style="color: var(--text-secondary);">

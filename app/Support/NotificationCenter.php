@@ -19,6 +19,7 @@ class NotificationCenter
     {
         return match ($role) {
             Role::Guard => self::guard(),
+            Role::StoreExec => self::storeExec(),
             Role::StoreManager => self::storeManager(),
             Role::Finance => self::finance(),
             Role::Qc => self::qc(),
@@ -26,6 +27,42 @@ class NotificationCenter
             Role::Admin => self::admin(),
             default => [],
         };
+    }
+
+    // Confirmed live: this role had no case at all here (silently fell
+    // through to the empty default), so Store Exec always saw "Nothing
+    // needs your attention" no matter how overdue a dock/unloading step
+    // was -- e.g. an entry that missed its SLA deadline days ago while
+    // still waiting for a dock.
+    private static function storeExec(): array
+    {
+        $notices = [];
+
+        $breached = GateEntry::where('entry_type', 'inward')
+            ->whereIn('status', ['validated', 'dock_assigned', 'allotted', 'unloading'])
+            ->where('sla_deadline', '<', now())
+            ->count();
+
+        if ($breached > 0) {
+            $notices[] = [
+                'title' => 'SLA breached awaiting loading/unloading',
+                'detail' => "{$breached} inward entr".($breached === 1 ? 'y has' : 'ies have')." passed its SLA deadline still waiting on a dock or unloading step.",
+                'tone' => 'critical',
+                'url' => route('unloading.loading-desk'),
+            ];
+        }
+
+        $awaitingDock = GateEntry::where('entry_type', 'inward')->where('status', 'validated')->count();
+        if ($awaitingDock > 0) {
+            $notices[] = [
+                'title' => 'Vehicles awaiting a dock',
+                'detail' => "{$awaitingDock} cleared vehicle".($awaitingDock === 1 ? '' : 's')." waiting to be assigned a dock.",
+                'tone' => 'warning',
+                'url' => route('unloading.loading-desk'),
+            ];
+        }
+
+        return $notices;
     }
 
     private static function guard(): array

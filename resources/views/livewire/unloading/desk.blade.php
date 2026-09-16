@@ -65,7 +65,9 @@ new #[Layout('layouts.app')] class extends Component
 
     public function completeUnloading(int $gateId): void
     {
-        $this->validate(['boxCount' => ['required', 'integer', 'min:0']]);
+        // min:0 previously let a completed unloading record "0 boxes" --
+        // confirmed live, accepted outright.
+        $this->validate(['boxCount' => ['required', 'integer', 'min:1']]);
 
         $gate = GateEntry::findOrFail($gateId);
 
@@ -93,9 +95,11 @@ new #[Layout('layouts.app')] class extends Component
     public function with(): array
     {
         return [
-            'toAllot' => GateEntry::where('status', 'dock_assigned')->orderBy('dock_assigned_at')->get(),
-            'toStart' => GateEntry::with('unloadingRecord')->where('status', 'allotted')->orderBy('created_at')->get(),
-            'inProgress' => GateEntry::with('unloadingRecord')->where('status', 'unloading')->orderBy('created_at')->get(),
+            // Same entry_type filter as Loading Desk, for the same reason:
+            // visitor/outward entries never have unloading to do.
+            'toAllot' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->orderBy('dock_assigned_at')->get(),
+            'toStart' => GateEntry::with('unloadingRecord')->where('status', 'allotted')->where('entry_type', 'inward')->orderBy('created_at')->get(),
+            'inProgress' => GateEntry::with('unloadingRecord')->where('status', 'unloading')->where('entry_type', 'inward')->orderBy('created_at')->get(),
             'history' => UnloadingRecord::with('gateEntry')->orderByDesc('created_at')->limit(10)->get(),
         ];
     }
@@ -177,9 +181,13 @@ new #[Layout('layouts.app')] class extends Component
             <a href="{{ $r->gateEntry ? route('gate-entries.show', $r->gateEntry) : '#' }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
                     <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }}</div>
-                    <span class="text-xs" style="color: var(--text-muted);">{{ $r->completed_at ? 'Completed' : 'In progress' }}</span>
+                    {{-- Confirmed live: this only ever checked completed_at, so an
+                         entry that had only been allotted (started_at still null)
+                         showed as "In progress" with 0 boxes -- box_count and
+                         started_at both come from startUnloading(), not allot(). --}}
+                    <span class="text-xs" style="color: var(--text-muted);">{{ $r->completed_at ? 'Completed' : ($r->started_at ? 'In progress' : 'Allotted, not started') }}</span>
                 </div>
-                <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $r->gateEntry?->vendor_name }} · {{ $r->box_count }} boxes · {{ $r->staging_area }}</div>
+                <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $r->gateEntry?->vendor_name }} · {{ $r->started_at ? $r->box_count.' boxes' : 'Not unloaded yet' }} · {{ $r->staging_area }}</div>
                 <div class="text-xs mt-1" style="color: var(--text-muted);">Allotted {{ $r->allotted_at?->format('d M, H:i') }}{{ $r->started_at ? ' · Started '.$r->started_at->format('d M, H:i') : '' }}{{ $r->completed_at ? ' · Completed '.$r->completed_at->format('d M, H:i') : '' }}</div>
             </a>
         @empty
