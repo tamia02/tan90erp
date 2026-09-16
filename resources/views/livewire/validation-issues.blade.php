@@ -110,10 +110,11 @@ new #[Layout('layouts.app')] class extends Component
             AuditLogger::log('Issue escalated to Finance Controller', "{$issue->title} · {$issue->sku}", $issue);
         }
 
-        $gate = $issue->gateEntry;
-        if ($gate && $gate->status === 'pending_validation' && ! $gate->hasBlockingOpenIssues()) {
-            $gate->update(['status' => 'validated']);
-        }
+        // Clearing the last blocking issue used to auto-flip the gate entry
+        // straight to "validated" here, with no human ever deciding to let
+        // it through -- that's now Entry Approvals' job (a deliberate
+        // Store Manager action), so a cleared entry just becomes eligible
+        // to approve there instead of skipping that step entirely.
     }
 
     public function with(): array

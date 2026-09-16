@@ -99,13 +99,28 @@ class NotificationCenter
     private static function storeManager(): array
     {
         $notices = [];
+
+        // The most upstream gap under the new flow: an inward entry cannot
+        // reach a dock until Store Manager explicitly approves it (Entry
+        // Approvals) -- previously a clean entry needed no such action, so
+        // this notice didn't exist at all.
+        $awaitingApproval = GateEntry::where('entry_type', 'inward')->where('status', 'pending_validation')->count();
+        if ($awaitingApproval > 0) {
+            $notices[] = [
+                'title' => 'Entries awaiting approval',
+                'detail' => "{$awaitingApproval} inward entr".($awaitingApproval === 1 ? 'y is' : 'ies are')." waiting for you to approve before a dock can be assigned.",
+                'tone' => 'warning',
+                'url' => route('store-manager.entry-approvals'),
+            ];
+        }
+
         $open = ValidationIssue::where('status', 'open')->count();
         if ($open > 0) {
-            $notices[] = ['title' => 'Open validation issues', 'detail' => "{$open} issue".($open === 1 ? '' : 's')." raised at the gate still need review.", 'tone' => 'warning'];
+            $notices[] = ['title' => 'Open validation issues', 'detail' => "{$open} issue".($open === 1 ? '' : 's')." raised at the gate still need review.", 'tone' => 'warning', 'url' => route('validation.issues')];
         }
         $awaitingGrn = GateEntry::where('status', 'qc_done')->count();
         if ($awaitingGrn > 0) {
-            $notices[] = ['title' => 'GRN pending', 'detail' => "{$awaitingGrn} QC-checked entr".($awaitingGrn === 1 ? 'y is' : 'ies are')." waiting to be posted.", 'tone' => 'good'];
+            $notices[] = ['title' => 'GRN pending', 'detail' => "{$awaitingGrn} QC-checked entr".($awaitingGrn === 1 ? 'y is' : 'ies are')." waiting to be posted.", 'tone' => 'good', 'url' => route('grn.check')];
         }
 
         return $notices;

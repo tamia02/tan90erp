@@ -16,11 +16,11 @@ use Symfony\Component\HttpFoundation\Response;
 // cross-role state to guard against here beyond this check.
 class EnsureRole
 {
-    public function handle(Request $request, Closure $next, string $role): Response
+    public function handle(Request $request, Closure $next, string ...$roles): Response
     {
         $user = $request->user();
 
-        if ($user && $user->role && ($user->role === Role::Admin || $user->role->value === $role)) {
+        if ($user && $user->role && ($user->role === Role::Admin || in_array($user->role->value, $roles, true))) {
             return $next($request);
         }
 

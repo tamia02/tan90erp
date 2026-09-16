@@ -30,7 +30,7 @@ new #[Layout('layouts.app')] class extends Component
     // the negotiated rate and internal SLA/ops metadata aren't the vendor's
     // to see, same reasoning as blocking the downstream QC/GRN/Finance
     // sections entirely for them.
-    private const VENDOR_HIDDEN_FIELDS = ['rate', 'sla_deadline', 'remarks', 'bill_document_path', 'created_by'];
+    private const VENDOR_HIDDEN_FIELDS = ['rate', 'sla_deadline', 'remarks', 'bill_document_path', 'created_by', 'approved_by'];
 
     public GateEntry $entry;
 
@@ -141,8 +141,8 @@ new #[Layout('layouts.app')] class extends Component
 
                 // created_by is a raw user id everywhere it appears -- confirmed
                 // live as literally "1" on screen, meaningless to whoever's
-                // reading it.
-                $resolvedValue = $key === 'created_by' && $value
+                // reading it. approved_by is the same column shape.
+                $resolvedValue = in_array($key, ['created_by', 'approved_by'], true) && $value
                     ? (\App\Models\User::find($value)?->name ?? "User #{$value}")
                     : $this->formatValue($value);
 

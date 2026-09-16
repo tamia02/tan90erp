@@ -17,6 +17,7 @@ new #[Layout('layouts.app')] class extends Component
         $activity = CombinedActivityFeed::forUser(auth()->user(), self::ACTIVITY_KEYWORDS);
 
         return [
+            'awaitingApproval' => GateEntry::where('entry_type', 'inward')->where('status', 'pending_validation')->count(),
             'awaitingGrn' => GateEntry::where('status', 'qc_done')->count(),
             'closedToday' => GateEntry::where('status', 'closed')->whereDate('updated_at', today())->count(),
             'openIssues' => ValidationIssue::where('status', 'open')->count(),
@@ -34,7 +35,11 @@ new #[Layout('layouts.app')] class extends Component
         <p class="text-sm mt-1" style="color: var(--text-secondary);">GRN posting, stock ledger and validation oversight.</p>
     </section>
 
-    <div class="grid grid-cols-3 gap-3 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <a href="{{ route('store-manager.entry-approvals') }}" wire:navigate class="rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="text-xs" style="color: var(--text-muted);">Awaiting Approval</div>
+            <div class="text-2xl font-semibold mt-1" style="color: {{ $awaitingApproval > 0 ? 'var(--status-warning)' : 'var(--text-primary)' }};">{{ $awaitingApproval }}</div>
+        </a>
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Awaiting GRN</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $awaitingGrn }}</div>

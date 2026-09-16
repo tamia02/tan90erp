@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
-    'created_by', 'gate_no', 'entry_type', 'po_number', 'po_bill_date', 'vendor_name', 'vendor_gst',
+    'created_by', 'approved_by', 'approved_at', 'gate_no', 'entry_type', 'po_number', 'po_bill_date', 'vendor_name', 'vendor_gst',
     'invoice_number', 'invoice_qty', 'invoice_amount', 'rate', 'material',
     'vehicle_number', 'driver_name', 'transporter', 'location', 'gps',
     'bill_scanned', 'bill_document_path', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
@@ -27,7 +27,14 @@ class GateEntry extends Model
             'bill_scanned' => 'boolean',
             'sla_deadline' => 'datetime',
             'dock_assigned_at' => 'datetime',
+            'approved_at' => 'datetime',
         ];
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
+    public function approvedBy(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
     /** @return HasMany<ValidationIssue, $this> */
