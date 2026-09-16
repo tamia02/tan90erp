@@ -14,8 +14,16 @@ use Illuminate\Support\Facades\Cache;
 // role-adaptive alerts rather than a generic notification feed.
 class NotificationCenter
 {
-    /** @return array<int, array{title: string, detail: string, tone: string, url?: string}> */
-    public static function forRole(Role $role): array
+    /**
+     * Confirmed live: a Tan90-only user (e.g. the Procurement Reviewer demo
+     * login) has a null `role` column -- this was called unconditionally as
+     * `NotificationCenter::forRole(auth()->user()->role)` from a
+     * non-nullable `Role $role` parameter, a hard TypeError/500 for every
+     * such user, not just Procurement.
+     *
+     * @return array<int, array{title: string, detail: string, tone: string, url?: string}>
+     */
+    public static function forRole(?Role $role): array
     {
         $own = match ($role) {
             Role::Guard => self::guard(),
@@ -25,10 +33,51 @@ class NotificationCenter
             Role::Qc => self::qc(),
             Role::Vendor => self::vendor(),
             Role::Admin => self::admin(),
+            null => self::tan90Fallback(),
             default => [],
         };
 
         return [...self::visitorApprovals(), ...$own];
+    }
+
+    // A Tan90-only user has no entry in the 7-role enum at all -- their
+    // access is governed by app/Models/Tan90/MasterData/UserProfile
+    // instead, a deliberately separate system (see User::tan90Profile()'s
+    // own comment). Procurement is the one persona the client's flow
+    // explicitly calls for ("procurement team is notified for
+    // issues/closure") — this reads their Tan90 role code directly rather
+    // than trying to fold them into the enum.
+    private static function tan90Fallback(): array
+    {
+        $profile = auth()->user()?->tan90Profile()->with('role')->first();
+
+        if ($profile?->role?->code !== 'ROLE-PROCUREMENT') {
+            return [];
+        }
+
+        $notices = [];
+
+        $open = ValidationIssue::where('status', 'open')->count();
+        if ($open > 0) {
+            $notices[] = [
+                'title' => 'Open validation issues',
+                'detail' => "{$open} issue".($open === 1 ? '' : 's')." raised at the gate still need review.",
+                'tone' => 'warning',
+                'url' => route('procurement.overview'),
+            ];
+        }
+
+        $closedRecently = GateEntry::where('status', 'closed')->where('updated_at', '>=', now()->subDay())->count();
+        if ($closedRecently > 0) {
+            $notices[] = [
+                'title' => 'Gate entries closed',
+                'detail' => "{$closedRecently} gate entr".($closedRecently === 1 ? 'y' : 'ies')." closed in the last 24 hours (GRN posted, goods put away).",
+                'tone' => 'good',
+                'url' => route('procurement.overview'),
+            ];
+        }
+
+        return $notices;
     }
 
     // The visitor's host can be anyone regardless of role, so this check
@@ -236,15 +285,42 @@ class NotificationCenter
     {
         $notices = [];
         $vendorName = auth()->user()?->name;
-        $pendingReturns = QcResult::whereHas(
+
+        // Confirmed live: a vendor got no signal at all that a new PO had
+        // been released to them -- they had to already know the PO number
+        // and type it in by hand.
+        $newPos = \App\Models\PurchaseOrder::where('vendor_name', $vendorName)
+            ->whereNotNull('released_at')
+            ->where('released_at', '>=', now()->subDays(3))
+            ->count();
+        if ($newPos > 0) {
+            $notices[] = [
+                'title' => 'New purchase order released',
+                'detail' => "{$newPos} PO".($newPos === 1 ? '' : 's')." released to you in the last 3 days — review and acknowledge.",
+                'tone' => 'good',
+                'url' => route('vendor.purchase-orders'),
+            ];
+        }
+
+        // A return is only ever raised for rejected_qty (see QcService) --
+        // confirmed live, this said "rejected quantity on QC hold" (hold
+        // was 0 on the actual delivery that triggered it) and never
+        // mentioned defective quantity, a separate deduction on the same
+        // delivery that the vendor has no visibility into here at all.
+        $pendingReturnResults = QcResult::whereHas(
             'gateEntry',
             fn ($q) => $q->where('vendor_name', $vendorName),
-        )->where('return_status', 'pending')->count();
+        )->where('return_status', 'pending')->get();
 
-        if ($pendingReturns > 0) {
+        if ($pendingReturnResults->isNotEmpty()) {
+            $totalRejected = $pendingReturnResults->sum('rejected_qty');
+            $totalDefective = $pendingReturnResults->sum('defective_qty');
+            $count = $pendingReturnResults->count();
             $notices[] = [
                 'title' => 'Purchase return needed',
-                'detail' => "{$pendingReturns} deliver".($pendingReturns === 1 ? 'y has' : 'ies have')." rejected quantity on QC hold — action the purchase return from your dashboard.",
+                'detail' => "{$count} deliver".($count === 1 ? 'y has' : 'ies have')." {$totalRejected} unit".($totalRejected === 1 ? '' : 's')." rejected on QC"
+                    .($totalDefective > 0 ? " (plus {$totalDefective} defective, deducted separately)" : '')
+                    .' — action the purchase return from your dashboard.',
                 'tone' => 'critical',
             ];
         }

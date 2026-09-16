@@ -103,7 +103,9 @@ new #[Layout('layouts.app')] class extends Component
         }
 
         if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/', $value)) {
-            return \Illuminate\Support\Carbon::parse($value)->format('d M Y, H:i');
+            // See shared/gate-entry-detail.blade.php's identical fix -- toArray()
+            // serializes datetimes as UTC regardless of app.timezone.
+            return \Illuminate\Support\Carbon::parse($value)->setTimezone(config('app.timezone'))->format('d M Y, H:i');
         }
 
         return (string) $value;

@@ -363,7 +363,11 @@ new #[Layout('layouts.app')] class extends Component
 
         $labels = ['invoice' => 'Invoice', 'eway' => 'E-way Bill', 'lr' => 'LR/LRC', 'pod' => 'POD'];
 
-        return collect($this->documents)->filter()->keys()->map(fn ($key) => $labels[$key] ?? $key)->join(', ') ?: 'No documents checked';
+        // Confirmed live: this read as "no documents checked" full stop,
+        // even when the vendor had already uploaded documents digitally via
+        // their portal beforehand -- this is only about what Guard
+        // physically saw handed over at the gate, a separate thing.
+        return collect($this->documents)->filter()->keys()->map(fn ($key) => $labels[$key] ?? $key)->join(', ') ?: 'No physical documents checked at gate';
     }
 
     private function modeLabel(): string

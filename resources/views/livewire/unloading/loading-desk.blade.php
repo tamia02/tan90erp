@@ -23,10 +23,31 @@ new #[Layout('layouts.app')] class extends Component
         return array_values(array_diff($this->docks, $this->occupiedDocks()));
     }
 
+    // Confirmed live: a vendor's pre-arrival dock (set on Dock Scheduling,
+    // free text against their VendorSubmission) never carried over here --
+    // Store Exec had to pick again from scratch once the truck actually
+    // showed up, even though a dock had already been scheduled for it.
+    private function preScheduledDock(?string $poNumber): ?string
+    {
+        if (! $poNumber) {
+            return null;
+        }
+
+        $raw = \App\Models\VendorSubmission::where('po_number', $poNumber)->whereNotNull('dock_number')->value('dock_number');
+        if (! $raw) {
+            return null;
+        }
+
+        $candidate = ctype_digit(trim($raw)) ? 'Dock '.trim($raw) : trim($raw);
+
+        return in_array($candidate, $this->availableDocks(), true) ? $candidate : null;
+    }
+
     public function openAssign(int $gateId): void
     {
+        $gate = GateEntry::find($gateId);
         $this->assigning = $gateId;
-        $this->dock = $this->availableDocks()[0] ?? '';
+        $this->dock = $this->preScheduledDock($gate?->po_number) ?? $this->availableDocks()[0] ?? '';
     }
 
     public function assignDock(int $gateId): void

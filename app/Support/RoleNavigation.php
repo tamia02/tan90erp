@@ -50,6 +50,7 @@ class RoleNavigation
             ],
             Role::Vendor => [
                 ['label' => 'Vendor Dashboard', 'route' => 'vendor.dashboard', 'icon' => 'gauge'],
+                ['label' => 'Purchase Orders', 'route' => 'vendor.purchase-orders', 'icon' => 'file-text'],
                 ['label' => 'My Submissions', 'route' => 'vendor.submissions', 'icon' => 'search'],
                 ['label' => 'Stock Update', 'route' => 'vendor.stock', 'icon' => 'boxes'],
             ],

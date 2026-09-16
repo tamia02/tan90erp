@@ -91,12 +91,30 @@ new #[Layout('layouts.app')] class extends Component
             fn (AuditLogEntry $row) => $row->vendorName() === $vendorName,
         );
         $allSubmissions = VendorSubmission::where('vendor_name', $vendorName)->get();
-        $poNumbers = $allSubmissions->pluck('po_number')->filter()->unique();
+        // Confirmed live: this used to only ever look at PO numbers the
+        // vendor had ALREADY submitted an invoice against -- a freshly
+        // released PO with no submission yet was completely invisible here
+        // ("Open (0)" on the dashboard even with a real PO waiting), so the
+        // vendor had no way to discover it existed short of typing the PO
+        // number by hand somewhere else. Released POs now seed the list too.
+        $releasedPoNumbers = PurchaseOrder::where('vendor_name', $vendorName)->whereNotNull('released_at')->pluck('po_number');
+        $poNumbers = $allSubmissions->pluck('po_number')->filter()->merge($releasedPoNumbers)->unique();
         $purchaseOrders = PurchaseOrder::whereIn('po_number', $poNumbers)->with('lines')->get()->keyBy('po_number');
 
-        $fulfillment = $poNumbers->map(function ($po) use ($allSubmissions, $purchaseOrders) {
+        // Confirmed live: "fulfilled" was purely the invoiced quantity, so a
+        // PO with 100 invoiced but only 95 QC-accepted still read
+        // "100/100 fulfilled" after GRN closed it. Once QC has actually run
+        // for a PO, its accepted quantity is the real fulfilled figure;
+        // before that, the invoiced quantity is still the best estimate.
+        $acceptedByPo = QcResult::whereHas('gateEntry', fn ($q) => $q->where('vendor_name', $vendorName)->whereNotNull('po_number'))
+            ->with('gateEntry:id,po_number')
+            ->get()
+            ->groupBy(fn ($qc) => $qc->gateEntry?->po_number)
+            ->map(fn ($group) => $group->sum('accepted_qty'));
+
+        $fulfillment = $poNumbers->map(function ($po) use ($allSubmissions, $purchaseOrders, $acceptedByPo) {
             $ordered = (float) ($purchaseOrders->get($po)?->primaryLine()?->quantity ?? 0);
-            $fulfilled = (float) $allSubmissions->where('po_number', $po)->sum('invoice_qty');
+            $fulfilled = $acceptedByPo->has($po) ? (float) $acceptedByPo->get($po) : (float) $allSubmissions->where('po_number', $po)->sum('invoice_qty');
 
             return [
                 'po_number' => $po,

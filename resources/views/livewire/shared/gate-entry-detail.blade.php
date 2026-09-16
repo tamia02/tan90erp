@@ -148,6 +148,8 @@ new #[Layout('layouts.app')] class extends Component
                         => \App\Models\User::find($value)?->name ?? "User #{$value}",
                     $key === 'parameters' && is_array($value) && ! empty($value)
                         => collect($value)->map(fn ($p) => ($p['name'] ?? '?').': '.($p['value'] ?? '?').' ('.($p['result'] ?? '?').')')->implode('; '),
+                    $key === 'documents_checked' && is_array($value) && ! empty($value)
+                        => collect($value)->filter()->keys()->map(fn ($k) => ucfirst($k))->implode(', ') ?: 'None checked',
                     default => $this->formatValue($value),
                 };
 
@@ -172,7 +174,13 @@ new #[Layout('layouts.app')] class extends Component
         }
 
         if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/', $value)) {
-            return \Illuminate\Support\Carbon::parse($value)->format('d M Y, H:i');
+            // Confirmed live: toArray() serializes datetime attributes as
+            // UTC ISO8601 (trailing Z) regardless of app.timezone -- parsing
+            // that string without converting back to local time printed the
+            // UTC wall-clock value as if it were already local (Approved At
+            // showed 06:42 while the Timeline's own Carbon-object rendering
+            // of the same instant correctly showed 12:12 IST).
+            return \Illuminate\Support\Carbon::parse($value)->setTimezone(config('app.timezone'))->format('d M Y, H:i');
         }
 
         return (string) $value;

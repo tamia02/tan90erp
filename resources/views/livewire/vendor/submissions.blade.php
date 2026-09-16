@@ -3,10 +3,13 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
+use App\Models\GateEntry;
 use App\Models\PurchaseOrder;
+use App\Models\QcResult;
 use App\Models\ValidationIssue;
 use App\Models\VendorSubmission;
 use App\Services\AuditLogger;
+use App\Support\GateStatusLabels;
 
 new #[Layout('layouts.app')] class extends Component
 {
@@ -123,9 +126,18 @@ new #[Layout('layouts.app')] class extends Component
         $poNumbers = $submissions->pluck('po_number')->filter()->unique();
         $purchaseOrders = PurchaseOrder::whereIn('po_number', $poNumbers)->with('lines')->get()->keyBy('po_number');
 
-        $fulfillment = $poNumbers->map(function ($po) use ($submissions, $purchaseOrders) {
+        // Same fix as vendor/dashboard.blade.php: fulfilled used to be
+        // purely the invoiced quantity, so a PO showed "100/100 fulfilled"
+        // even after QC only accepted 95 of it.
+        $acceptedByPo = QcResult::whereHas('gateEntry', fn ($q) => $q->where('vendor_name', $vendorName)->whereNotNull('po_number'))
+            ->with('gateEntry:id,po_number')
+            ->get()
+            ->groupBy(fn ($qc) => $qc->gateEntry?->po_number)
+            ->map(fn ($group) => $group->sum('accepted_qty'));
+
+        $fulfillment = $poNumbers->map(function ($po) use ($submissions, $purchaseOrders, $acceptedByPo) {
             $ordered = (float) ($purchaseOrders->get($po)?->primaryLine()?->quantity ?? 0);
-            $fulfilled = (float) $submissions->where('po_number', $po)->sum('invoice_qty');
+            $fulfilled = $acceptedByPo->has($po) ? (float) $acceptedByPo->get($po) : (float) $submissions->where('po_number', $po)->sum('invoice_qty');
 
             return [
                 'po_number' => $po,
@@ -143,10 +155,22 @@ new #[Layout('layouts.app')] class extends Component
             ->get()
             ->groupBy(fn ($issue) => $issue->gateEntry->po_number);
 
+        // Confirmed live: this badge is set to "submitted" at upload time
+        // and never changes again -- a submission whose gate entry has long
+        // since closed still just says "Submitted" forever, with no way to
+        // tell it's actually done.
+        $gateStatusByPo = GateEntry::where('vendor_name', $vendorName)
+            ->whereIn('po_number', $poNumbers)
+            ->orderByDesc('created_at')
+            ->get(['po_number', 'status'])
+            ->unique('po_number')
+            ->keyBy('po_number');
+
         return [
             'submissions' => $submissions,
             'fulfillment' => $fulfillment,
             'openIssuesByPo' => $openIssues,
+            'gateStatusByPo' => $gateStatusByPo,
         ];
     }
 }; ?>
@@ -308,6 +332,9 @@ new #[Layout('layouts.app')] class extends Component
                             <div style="color: {{ $sub->status == 'submitted' ? 'var(--status-good)' : 'var(--status-critical)' }};">
                                 {{ ucfirst(str_replace('_', ' ', $sub->status)) }}
                             </div>
+                            @if ($gateStatusByPo->get($sub->po_number))
+                                <div class="text-xs mt-0.5" style="color: var(--text-muted);">Gate entry: {{ GateStatusLabels::label($gateStatusByPo->get($sub->po_number)->status) }}</div>
+                            @endif
                             @if ($sub->status === 'correction_requested')
                                 <div class="text-xs mt-1" style="color: var(--status-critical);">{{ $sub->note ?: 'Please re-upload your invoice or E-way bill.' }}</div>
                             @endif

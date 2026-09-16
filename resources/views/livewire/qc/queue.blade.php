@@ -22,10 +22,14 @@ new #[Layout('layouts.app')] class extends Component
     /** @var array<int, array{name: string, value: string, result: string}> */
     public array $parameters = [];
 
+    /** @var array<string, bool> */
+    public array $documentsChecked = ['invoice' => false, 'eway' => false, 'lr' => false, 'pod' => false];
+
     public function openCheck(int $gateId): void
     {
         $this->checking = $gateId;
         $this->reset(['accepted', 'qcHold', 'defective', 'rejected', 'qcReasons', 'holdReason', 'holdDocument', 'parameters']);
+        $this->documentsChecked = ['invoice' => false, 'eway' => false, 'lr' => false, 'pod' => false];
     }
 
     public function addParameter(): void
@@ -71,9 +75,10 @@ new #[Layout('layouts.app')] class extends Component
             $this->holdReason ?: null,
             $holdDocumentPath,
             array_values(array_filter($this->parameters, fn ($p) => trim($p['name'] ?? '') !== '')),
+            $this->documentsChecked,
         );
 
-        $this->reset(['checking', 'accepted', 'qcHold', 'defective', 'rejected', 'qcReasons', 'holdReason', 'holdDocument', 'parameters']);
+        $this->reset(['checking', 'accepted', 'qcHold', 'defective', 'rejected', 'qcReasons', 'holdReason', 'holdDocument', 'parameters', 'documentsChecked']);
     }
 
     public function with(): array
@@ -129,6 +134,17 @@ new #[Layout('layouts.app')] class extends Component
                             <input wire:model="rejected" type="number" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
                             @error('rejected') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
+                        <div class="sm:col-span-4">
+                            <span class="font-medium text-sm" style="color: var(--text-primary);">Documents checked</span>
+                            <div class="flex flex-wrap gap-3 mt-2">
+                                @foreach (['invoice' => 'Invoice', 'eway' => 'E-way Bill', 'lr' => 'LR/LRC', 'pod' => 'POD'] as $key => $label)
+                                    <label class="flex items-center gap-1.5 text-sm">
+                                        <input type="checkbox" wire:model="documentsChecked.{{ $key }}" class="rounded" />
+                                        <span style="color: var(--text-primary);">{{ $label }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
                         <div class="sm:col-span-4">
                             <div class="flex items-center justify-between mb-2">
                                 <span class="font-medium text-sm" style="color: var(--text-primary);">Product parameters (optional)</span>

@@ -12,13 +12,16 @@ use Illuminate\Support\Facades\DB;
 // thing that posts to the ledger.
 class QcService
 {
-    /** @param array<int, array{name: string, value: string, result: string}>|null $parameters */
-    public function recordResult(GateEntry $gate, string $sku, int $poQty, int $invoiceQty, array $split, ?string $qcReasons = null, ?string $holdReason = null, ?string $holdDocumentPath = null, ?array $parameters = null): QcResult
+    /**
+     * @param array<int, array{name: string, value: string, result: string}>|null $parameters
+     * @param array<string, bool>|null $documentsChecked
+     */
+    public function recordResult(GateEntry $gate, string $sku, int $poQty, int $invoiceQty, array $split, ?string $qcReasons = null, ?string $holdReason = null, ?string $holdDocumentPath = null, ?array $parameters = null, ?array $documentsChecked = null): QcResult
     {
         $physicalReceived = $split['accepted'] + $split['qcHold'] + $split['defective'] + $split['rejected'];
         $missing = max($invoiceQty - $physicalReceived, 0);
 
-        return DB::transaction(function () use ($gate, $sku, $poQty, $invoiceQty, $split, $qcReasons, $holdReason, $holdDocumentPath, $parameters, $physicalReceived, $missing) {
+        return DB::transaction(function () use ($gate, $sku, $poQty, $invoiceQty, $split, $qcReasons, $holdReason, $holdDocumentPath, $parameters, $documentsChecked, $physicalReceived, $missing) {
             $result = QcResult::create([
                 'created_by' => auth()->id(),
                 'gate_entry_id' => $gate->id,
@@ -33,6 +36,7 @@ class QcService
                 'missing_qty' => $missing,
                 'qc_reasons' => $qcReasons,
                 'parameters' => empty($parameters) ? null : array_values($parameters),
+                'documents_checked' => $documentsChecked,
                 'hold_reason' => $split['qcHold'] > 0 ? $holdReason : null,
                 'hold_document_path' => $split['qcHold'] > 0 ? $holdDocumentPath : null,
                 // A rejection automatically opens a purchase return for the

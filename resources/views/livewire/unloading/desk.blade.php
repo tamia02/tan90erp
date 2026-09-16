@@ -8,6 +8,8 @@ use Livewire\Volt\Component;
 
 new #[Layout('layouts.app')] class extends Component
 {
+    public ?int $starting = null;
+    public string $manpowerCount = '';
     public ?int $completing = null;
     public string $boxCount = '';
     public string $podLrRef = '';
@@ -49,18 +51,27 @@ new #[Layout('layouts.app')] class extends Component
         AuditLogger::log('Allotted for unloading', "{$gate->gate_no} · auto-located to {$stagingArea}", $gate);
     }
 
+    // Confirmed missing against spec: "Store Manager aligns manpower and
+    // unloading is done" had no manpower concept anywhere -- Start unloading
+    // now requires a headcount first, matching that step.
     public function startUnloading(int $gateId): void
     {
+        $this->validate(['manpowerCount' => ['required', 'integer', 'min:1']]);
+
         $gate = GateEntry::findOrFail($gateId);
 
         if ($gate->status !== 'allotted' || ! $gate->unloadingRecord) {
+            $this->reset(['starting', 'manpowerCount']);
+
             return;
         }
 
-        $gate->unloadingRecord->update(['started_at' => now()]);
+        $gate->unloadingRecord->update(['started_at' => now(), 'manpower_count' => $this->manpowerCount]);
         $gate->update(['status' => 'unloading']);
 
-        AuditLogger::log('Unloading started', $gate->gate_no, $gate);
+        AuditLogger::log('Unloading started', "{$gate->gate_no} · {$this->manpowerCount} crew assigned", $gate);
+
+        $this->reset(['starting', 'manpowerCount']);
     }
 
     public function completeUnloading(int $gateId): void
@@ -130,12 +141,29 @@ new #[Layout('layouts.app')] class extends Component
     <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">Ready to start</h2>
     <div class="flex flex-col gap-2 mb-6">
         @forelse ($toStart as $g)
-            <div class="rounded-lg border p-4 flex items-center justify-between gap-3" style="background: var(--surface-3); border-color: var(--border);">
-                <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
-                    <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
-                    <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }} · Allotted to {{ $g->unloadingRecord?->staging_area }}</div>
-                </a>
-                <button wire:click="startUnloading({{ $g->id }})" wire:loading.attr="disabled" wire:target="startUnloading({{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50" style="background: var(--brand);">Start unloading</button>
+            <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+                <div class="flex items-center justify-between gap-3">
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
+                        <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
+                        <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }} · Allotted to {{ $g->unloadingRecord?->staging_area }}</div>
+                    </a>
+                    @if ($starting !== $g->id)
+                        <button wire:click="$set('starting', {{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white shrink-0" style="background: var(--brand);">Start unloading</button>
+                    @endif
+                </div>
+                @if ($starting === $g->id)
+                    <div class="flex flex-col sm:flex-row gap-2 items-start mt-3">
+                        <label class="flex flex-col gap-1.5 text-sm flex-1">
+                            <span class="font-medium" style="color: var(--text-primary);">Manpower assigned</span>
+                            <input wire:model="manpowerCount" type="number" min="1" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="No. of workers" />
+                            @error('manpowerCount') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        <div class="flex gap-2 sm:mt-6">
+                            <button wire:click="startUnloading({{ $g->id }})" wire:loading.attr="disabled" wire:target="startUnloading({{ $g->id }})" class="rounded-lg px-3.5 py-2 text-sm font-medium text-white disabled:opacity-50" style="background: var(--brand);">Confirm &amp; start</button>
+                            <button wire:click="$set('starting', null)" class="rounded-lg px-3.5 py-2 text-sm font-medium border" style="border-color: var(--border); color: var(--text-primary);">Cancel</button>
+                        </div>
+                    </div>
+                @endif
             </div>
         @empty
             <p class="text-sm py-2" style="color: var(--text-muted);">Nothing waiting to start.</p>
@@ -149,7 +177,7 @@ new #[Layout('layouts.app')] class extends Component
                 <div class="flex items-center justify-between gap-3 mb-2">
                     <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="hover:opacity-80">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
-                        <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }}</div>
+                        <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }} · {{ $g->unloadingRecord?->manpower_count }} crew</div>
                     </a>
                     @if ($completing !== $g->id)
                         <button wire:click="$set('completing', {{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium border" style="border-color: var(--border); color: var(--text-primary);">Complete</button>

@@ -97,7 +97,14 @@ new #[Layout('layouts.app')] class extends Component
             return;
         }
 
-        $po->update(['released_at' => now()]);
+        // Confirmed live: releasing a PO only ever set released_at -- the
+        // PO's own status column (Created/Approved/Delivered/Cancelled)
+        // never moved off "Created", even though release IS the approval
+        // step from the vendor's point of view.
+        $po->update([
+            'released_at' => now(),
+            'status' => $po->status === 'Created' ? 'Approved' : $po->status,
+        ]);
         AuditLogger::log('Purchase Order released to vendor', "{$po->po_number} · {$po->vendor_name}", $po);
     }
 
