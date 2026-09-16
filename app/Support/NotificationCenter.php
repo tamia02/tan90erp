@@ -249,6 +249,19 @@ class NotificationCenter
             ];
         }
 
+        // Confirmed live: vendor was only ever notified about a return --
+        // a normal, no-issue closure (GRN posted, goods put away) never
+        // reached them at all, even though the flow calls for the vendor
+        // to hear about closure either way.
+        $closedRecently = GateEntry::where('vendor_name', $vendorName)->where('status', 'closed')->where('updated_at', '>=', now()->subDay())->count();
+        if ($closedRecently > 0) {
+            $notices[] = [
+                'title' => 'Delivery closed',
+                'detail' => "{$closedRecently} of your deliver".($closedRecently === 1 ? 'y has' : 'ies have')." been fully closed — GRN posted and goods put away.",
+                'tone' => 'good',
+            ];
+        }
+
         return $notices;
     }
 

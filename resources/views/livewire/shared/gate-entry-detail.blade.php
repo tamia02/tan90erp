@@ -143,9 +143,13 @@ new #[Layout('layouts.app')] class extends Component
                 // live as literally "1" on screen, meaningless to whoever's
                 // reading it. approved_by/visitor_host_id/putaway_by are the
                 // same column shape.
-                $resolvedValue = in_array($key, ['created_by', 'approved_by', 'visitor_host_id', 'putaway_by'], true) && $value
-                    ? (\App\Models\User::find($value)?->name ?? "User #{$value}")
-                    : $this->formatValue($value);
+                $resolvedValue = match (true) {
+                    in_array($key, ['created_by', 'approved_by', 'visitor_host_id', 'putaway_by'], true) && $value
+                        => \App\Models\User::find($value)?->name ?? "User #{$value}",
+                    $key === 'parameters' && is_array($value) && ! empty($value)
+                        => collect($value)->map(fn ($p) => ($p['name'] ?? '?').': '.($p['value'] ?? '?').' ('.($p['result'] ?? '?').')')->implode('; '),
+                    default => $this->formatValue($value),
+                };
 
                 return ['label' => $label, 'value' => $resolvedValue];
             })

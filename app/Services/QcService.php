@@ -12,12 +12,13 @@ use Illuminate\Support\Facades\DB;
 // thing that posts to the ledger.
 class QcService
 {
-    public function recordResult(GateEntry $gate, string $sku, int $poQty, int $invoiceQty, array $split, ?string $qcReasons = null, ?string $holdReason = null, ?string $holdDocumentPath = null): QcResult
+    /** @param array<int, array{name: string, value: string, result: string}>|null $parameters */
+    public function recordResult(GateEntry $gate, string $sku, int $poQty, int $invoiceQty, array $split, ?string $qcReasons = null, ?string $holdReason = null, ?string $holdDocumentPath = null, ?array $parameters = null): QcResult
     {
         $physicalReceived = $split['accepted'] + $split['qcHold'] + $split['defective'] + $split['rejected'];
         $missing = max($invoiceQty - $physicalReceived, 0);
 
-        return DB::transaction(function () use ($gate, $sku, $poQty, $invoiceQty, $split, $qcReasons, $holdReason, $holdDocumentPath, $physicalReceived, $missing) {
+        return DB::transaction(function () use ($gate, $sku, $poQty, $invoiceQty, $split, $qcReasons, $holdReason, $holdDocumentPath, $parameters, $physicalReceived, $missing) {
             $result = QcResult::create([
                 'created_by' => auth()->id(),
                 'gate_entry_id' => $gate->id,
@@ -31,6 +32,7 @@ class QcService
                 'rejected_qty' => $split['rejected'],
                 'missing_qty' => $missing,
                 'qc_reasons' => $qcReasons,
+                'parameters' => empty($parameters) ? null : array_values($parameters),
                 'hold_reason' => $split['qcHold'] > 0 ? $holdReason : null,
                 'hold_document_path' => $split['qcHold'] > 0 ? $holdDocumentPath : null,
                 // A rejection automatically opens a purchase return for the
@@ -47,9 +49,12 @@ class QcService
 
             $gate->update(['status' => $fullyRejected ? 'rejected' : 'qc_done']);
 
+            $failedParams = collect($parameters)->where('result', 'Fail')->count();
+
             AuditLogger::log(
                 'QC Check recorded',
                 "{$gate->gate_no} · accepted {$split['accepted']}, hold {$split['qcHold']}, defective {$split['defective']}, rejected {$split['rejected']}"
+                    .($failedParams > 0 ? " · {$failedParams} parameter(s) failed" : '')
                     .($fullyRejected ? ' · fully rejected, GRN Check skipped' : ' · sent to GRN Check'),
                 $result,
             );

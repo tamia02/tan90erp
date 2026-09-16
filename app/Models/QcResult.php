@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'created_by', 'gate_entry_id', 'sku', 'po_qty', 'invoice_qty', 'physical_received',
-    'accepted_qty', 'qc_hold_qty', 'defective_qty', 'rejected_qty', 'missing_qty', 'qc_reasons',
+    'accepted_qty', 'qc_hold_qty', 'defective_qty', 'rejected_qty', 'missing_qty', 'qc_reasons', 'parameters',
     'hold_reason', 'hold_document_path',
     'return_status', 'return_requested_at', 'return_initiated_at',
 ])]
@@ -19,6 +19,7 @@ class QcResult extends Model
         return [
             'return_requested_at' => 'datetime',
             'return_initiated_at' => 'datetime',
+            'parameters' => 'array',
         ];
     }
 
