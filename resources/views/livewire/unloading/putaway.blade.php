@@ -69,7 +69,7 @@ new #[Layout('layouts.app')] class extends Component
     public function with(): array
     {
         return [
-            'pending' => GateEntry::where('status', 'grn_posted')->with('grnRecord')->orderBy('updated_at')->get(),
+            'pending' => GateEntry::where('status', 'grn_posted')->with('grnRecord')->orderByDesc('updated_at')->get(),
             'history' => GateEntry::whereNotNull('putaway_completed_at')->with(['grnRecord', 'putawayBy'])->orderByDesc('putaway_completed_at')->limit(10)->get(),
         ];
     }

@@ -83,7 +83,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        return ['queue' => GateEntry::where('status', 'grn')->orderBy('created_at')->get()];
+        return ['queue' => GateEntry::where('status', 'grn')->orderByDesc('created_at')->get()];
     }
 }; ?>
 

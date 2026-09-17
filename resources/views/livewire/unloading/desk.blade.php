@@ -108,9 +108,9 @@ new #[Layout('layouts.app')] class extends Component
         return [
             // Same entry_type filter as Loading Desk, for the same reason:
             // visitor/outward entries never have unloading to do.
-            'toAllot' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->orderBy('dock_assigned_at')->get(),
-            'toStart' => GateEntry::with('unloadingRecord')->where('status', 'allotted')->where('entry_type', 'inward')->orderBy('created_at')->get(),
-            'inProgress' => GateEntry::with('unloadingRecord')->where('status', 'unloading')->where('entry_type', 'inward')->orderBy('created_at')->get(),
+            'toAllot' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->orderByDesc('dock_assigned_at')->get(),
+            'toStart' => GateEntry::with('unloadingRecord')->where('status', 'allotted')->where('entry_type', 'inward')->orderByDesc('created_at')->get(),
+            'inProgress' => GateEntry::with('unloadingRecord')->where('status', 'unloading')->where('entry_type', 'inward')->orderByDesc('created_at')->get(),
             'history' => UnloadingRecord::with('gateEntry')->orderByDesc('created_at')->limit(10)->get(),
         ];
     }

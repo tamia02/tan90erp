@@ -115,16 +115,20 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
+        // Confirmed live: this sorted oldest-first with no cap. A handful of
+        // never-resolved test entries from weeks earlier sat permanently at
+        // the top, so a newly-saved entry was buried at the bottom of the
+        // list instead of being the first thing Store Manager saw.
         return [
             'pendingInward' => GateEntry::where('entry_type', 'inward')
                 ->where('status', 'pending_validation')
                 ->with('validationIssues')
-                ->orderBy('created_at')
+                ->orderByDesc('created_at')
                 ->get(),
             'pendingOutward' => GateEntry::where('entry_type', 'outward')
                 ->where('status', 'pending_validation')
                 ->with('validationIssues')
-                ->orderBy('created_at')
+                ->orderByDesc('created_at')
                 ->get(),
             'availableOutwardDocks' => $this->availableOutwardDocks(),
             'recentlyApproved' => GateEntry::whereIn('entry_type', ['inward', 'outward'])

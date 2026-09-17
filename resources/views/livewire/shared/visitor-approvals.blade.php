@@ -71,7 +71,7 @@ new #[Layout('layouts.app')] class extends Component
             'pendingForMe' => GateEntry::where('entry_type', 'visitor')
                 ->where('status', 'pending_validation')
                 ->where('visitor_host_id', auth()->id())
-                ->orderBy('created_at')
+                ->orderByDesc('created_at')
                 ->get(),
             'decidedByMe' => GateEntry::where('entry_type', 'visitor')
                 ->where('visitor_host_id', auth()->id())

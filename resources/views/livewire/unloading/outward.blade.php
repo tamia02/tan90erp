@@ -64,7 +64,7 @@ new #[Layout('layouts.app')] class extends Component
     public function with(): array
     {
         return [
-            'readyToLoad' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'outward')->orderBy('dock_assigned_at')->get(),
+            'readyToLoad' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'outward')->orderByDesc('dock_assigned_at')->get(),
             'history' => GateEntry::where('entry_type', 'outward')->whereNotNull('loaded_at')->orderByDesc('loaded_at')->limit(10)->get(),
         ];
     }

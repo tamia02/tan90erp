@@ -1,6 +1,8 @@
 <?php
 
+use App\Enums\Role;
 use App\Models\PurchaseOrder;
+use App\Models\User;
 use App\Models\VendorMaster;
 use App\Services\AuditLogger;
 use App\Services\ZohoService;
@@ -110,9 +112,18 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
+        // Confirmed live: VendorMaster holds ~190 real vendor companies, but
+        // only a handful have an actual portal login (a User with
+        // role=Vendor and a matching name) -- a PO raised against any other
+        // vendor name is a dead end, since nothing else in the app
+        // provisions that login. Surfaced here rather than silently
+        // discovered when the vendor never sees their PO.
+        $loginVendorNames = User::where('role', Role::Vendor)->pluck('name');
+
         return [
             'orders' => PurchaseOrder::with('lines')->orderByDesc('created_at')->get(),
             'vendors' => VendorMaster::orderBy('vendor_name')->get(),
+            'loginVendorNames' => $loginVendorNames,
         ];
     }
 }; ?>
@@ -162,11 +173,14 @@ new #[Layout('layouts.app')] class extends Component
             </label>
             <label class="flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">Vendor Name</span>
-                <select wire:model="vendorName" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                <select wire:model.live="vendorName" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
                     <option value="">Choose vendor…</option>
                     @foreach ($vendors as $v) <option value="{{ $v->vendor_name }}">{{ $v->vendor_name }}</option> @endforeach
                 </select>
                 @error('vendorName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                @if ($vendorName && ! $loginVendorNames->contains($vendorName))
+                    <p class="text-xs" style="color: var(--status-warning);">This vendor has no portal login yet — they won't be able to see or acknowledge this PO until one is created (Admin → Users).</p>
+                @endif
             </label>
             <label class="flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">PO Date</span>
@@ -231,7 +245,12 @@ new #[Layout('layouts.app')] class extends Component
                                     <span class="ml-1.5 text-xs font-semibold px-1.5 py-0.5 rounded-full" style="background: var(--status-warning-bg); color: var(--status-warning);">Draft</span>
                                 @endunless
                             </td>
-                            <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $po->vendor_name }}</td>
+                            <td class="px-4 py-2.5" style="color: var(--text-secondary);">
+                                {{ $po->vendor_name }}
+                                @unless ($loginVendorNames->contains($po->vendor_name))
+                                    <span class="ml-1 text-xs" style="color: var(--status-critical);" title="No portal login for this vendor name">⚠ no login</span>
+                                @endunless
+                            </td>
                             <td class="px-4 py-2.5 text-xs font-medium" style="color: var(--text-secondary);">{{ $po->status }}</td>
                             <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">₹{{ number_format($po->grandTotal(), 2) }}</td>
                             <td class="px-4 py-2.5 text-right">

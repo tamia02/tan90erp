@@ -85,8 +85,11 @@ new #[Layout('layouts.app')] class extends Component
         // they piled up in this queue with an "Assign dock" button anyway
         // (7 of 8 waiting entries in one real test were visitor/outward).
         return [
-            'toAssign' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->orderBy('created_at')->get(),
-            'assigned' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->orderBy('dock_assigned_at')->get(),
+            // Confirmed live (Entry Approvals had the same bug): oldest-first
+            // buries a just-approved entry under weeks-old, never-actioned
+            // test data instead of surfacing it first.
+            'toAssign' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->orderByDesc('created_at')->get(),
+            'assigned' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->orderByDesc('dock_assigned_at')->get(),
             'availableDocks' => $this->availableDocks(),
             'totalDocks' => count($this->docks),
             'occupiedCount' => count($occupied),
