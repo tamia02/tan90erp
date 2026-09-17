@@ -94,7 +94,13 @@ class GateValidationService
             ? VendorSubmission::where('po_number', $form['po_number'])->where('has_lr_pod', true)->exists()
             : false;
         if ($form['po_number'] && ! $vendorHasLrPod) {
-            $raise('POD_LR_EARLY', 'POD/LR Missing At Gate', 'Vendor has not pre-uploaded LR/POD for this PO — confirm at unloading', 'redFlag');
+            // Downgraded from redFlag to warning: this fired on almost every
+            // delivery (LR/POD often legitimately arrives with the driver or
+            // gets uploaded after the gate entry, not before it) and was
+            // blocking Store Manager's approval on entries that had nothing
+            // actually wrong with them -- confirmed live, repeatedly tripped
+            // up testing. Still visible and flagged, just not a hard stop.
+            $raise('POD_LR_EARLY', 'POD/LR Missing At Gate', 'Vendor has not pre-uploaded LR/POD for this PO — confirm at unloading', 'warning');
         }
 
         if (empty($form['gps'])) {
