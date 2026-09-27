@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\AccessControl;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Access\AccessPermission;
 use App\Models\Access\AccessPosition;
@@ -10,10 +11,13 @@ use App\Models\Access\AccessTeam;
 use App\Models\Access\AccessUserPermissionOverride;
 use App\Models\Access\AccessVertical;
 use App\Models\User;
+use App\Models\UserExtraRole;
 use App\Services\Access\AccessControlService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AccessPeopleController extends Controller
 {
@@ -22,7 +26,7 @@ class AccessPeopleController extends Controller
     public function index(Request $request)
     {
         abort_unless($this->access->can($request->user(), 'access.people.view'), 403);
-        $query = User::with('accessRoles.vertical')->withCount('accessRoles');
+        $query = User::with(['accessRoles.vertical', 'extraRoleRecords'])->withCount('accessRoles');
         if ($search = $request->string('search')->toString()) {
             $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%"));
         }
@@ -46,6 +50,8 @@ class AccessPeopleController extends Controller
         return view('access-control.people-create', [
             'roles' => AccessRole::where('status', 'active')->orderBy('level')->orderBy('name')->get(),
             'people' => User::where('access_mode', 'advanced')->orderBy('name')->get(),
+            'combinableRoles' => Role::combinable(),
+            'canSetJobRoles' => $request->user()->isAdmin(),
         ]);
     }
 
@@ -66,14 +72,23 @@ class AccessPeopleController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
-            'role_id' => ['required', 'exists:access_roles,id'],
+            // An Access Control role is optional when the person gets a GRN
+            // main job role instead (e.g. a Store Manager who also does QC).
+            'role_id' => ['nullable', 'required_without:main_role', 'exists:access_roles,id'],
+            'main_role' => ['nullable', Rule::in(array_map(fn (Role $role) => $role->value, Role::combinable()))],
+            'extra_roles' => ['nullable', 'array'],
+            'extra_roles.*' => [Rule::in(array_map(fn (Role $role) => $role->value, Role::combinable()))],
             'reports_to_user_id' => ['nullable', 'exists:users,id'],
             'report_user_ids' => ['nullable', 'array'],
             'report_user_ids.*' => ['exists:users,id'],
+        ], [
+            'role_id.required_without' => 'Pick an Access Control role or a main job role.',
         ]);
 
-        $role = AccessRole::findOrFail($data['role_id']);
-        abort_unless($this->access->canManageRole($request->user(), $role), 403, 'Hierarchy rule blocks assigning this role.');
+        abort_if(filled($data['main_role'] ?? null) && ! $request->user()->isAdmin(), 403, 'Only a Super Admin can set job roles.');
+
+        $role = filled($data['role_id'] ?? null) ? AccessRole::findOrFail($data['role_id']) : null;
+        abort_unless(! $role || $this->access->canManageRole($request->user(), $role), 403, 'Hierarchy rule blocks assigning this role.');
 
         $person = User::create([
             'name' => $data['name'],
@@ -83,15 +98,21 @@ class AccessPeopleController extends Controller
             'is_active' => true,
         ]);
 
-        DB::table('access_user_roles')->insert([
-            'user_id' => $person->id, 'role_id' => $role->id, 'assigned_by' => $request->user()->id,
-            'starts_at' => now(), 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        if ($role) {
+            DB::table('access_user_roles')->insert([
+                'user_id' => $person->id, 'role_id' => $role->id, 'assigned_by' => $request->user()->id,
+                'starts_at' => now(), 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        if (filled($data['main_role'] ?? null)) {
+            $this->saveJobRoles($request->user(), $person, $data['main_role'], $data['extra_roles'] ?? []);
+        }
 
         AccessPosition::create([
             'user_id' => $person->id,
-            'hierarchy_level' => $role->hierarchy_level ?? $role->level,
-            'vertical_id' => $role->vertical_id,
+            'hierarchy_level' => $role ? ($role->hierarchy_level ?? $role->level) : AccessRole::LEVEL_EXECUTIVE,
+            'vertical_id' => $role?->vertical_id,
             'reports_to_user_id' => $data['reports_to_user_id'] ?? null,
             'is_primary' => true,
             'status' => 'active',
@@ -155,7 +176,11 @@ class AccessPeopleController extends Controller
         abort_unless($this->access->canManageUser($request->user(), $user) || $request->user()->is($user), 403);
 
         return view('access-control.people-show', [
-            'person' => $user->load(['accessRoles', 'accessPositions']),
+            'person' => $user->load(['accessRoles', 'accessPositions', 'extraRoleRecords']),
+            'roles' => AccessRole::where('status', 'active')->orderBy('level')->orderBy('name')->get(),
+            'combinableRoles' => Role::combinable(),
+            'canEditJobRoles' => $request->user()->isAdmin() && ! in_array($user->role, [Role::Admin, Role::Vendor], true),
+            'canManageThisUser' => $this->access->canManageUser($request->user(), $user),
             'permissions' => AccessPermission::orderBy('module')->orderBy('screen')->orderBy('sort_order')->get(),
             'overrides' => AccessUserPermissionOverride::with('permission')->where('user_id', $user->id)->latest()->get(),
         ]);
@@ -178,6 +203,66 @@ class AccessPeopleController extends Controller
         $this->access->audit($request->user(), 'user.role.assigned', $user, null, ['role_id' => $role->id]);
 
         return back()->with('status', 'Role assigned.');
+    }
+
+    /**
+     * Main role + extra roles for the GRN screens (Guard, Store Executive,
+     * QC, Store Manager, Finance) - e.g. one person who is Store Manager and
+     * also does QC. Super Admin only: these cross every vertical, so a Head
+     * must not be able to hand out, say, Finance access.
+     */
+    public function updateJobRoles(Request $request, User $user)
+    {
+        abort_unless($request->user()->isAdmin(), 403, 'Only a Super Admin can change job roles.');
+        abort_if(in_array($user->role, [Role::Admin, Role::Vendor], true), 403, 'Super Admin and Vendor accounts are managed in Admin > Users.');
+
+        $combinable = array_map(fn (Role $role) => $role->value, Role::combinable());
+        $data = $request->validate([
+            'main_role' => ['nullable', Rule::in($combinable)],
+            'extra_roles' => ['nullable', 'array'],
+            'extra_roles.*' => [Rule::in($combinable)],
+        ], [
+            'main_role.in' => 'Pick a valid main role.',
+        ]);
+
+        $this->saveJobRoles($request->user(), $user, $data['main_role'] ?? null, $data['extra_roles'] ?? []);
+
+        return back()->with('status', 'Job roles saved.');
+    }
+
+    public function removeRole(Request $request, User $user, AccessRole $role)
+    {
+        abort_unless($this->access->canManageUser($request->user(), $user) && $this->access->canManageRole($request->user(), $role), 403);
+        abort_if($request->user()->is($user) && $role->code === 'ACCESS-SUPER-ADMIN', 422, 'You cannot remove your own Super Admin role.');
+
+        DB::table('access_user_roles')->where('user_id', $user->id)->where('role_id', $role->id)->delete();
+        DB::table('access_user_role_assignments')->where('user_id', $user->id)->where('role_id', $role->id)->delete();
+
+        $this->access->flushUser($user);
+        $this->access->audit($request->user(), 'user.role.removed', $user, ['role_id' => $role->id], null);
+
+        return back()->with('status', "Role \"{$role->name}\" removed.");
+    }
+
+    private function saveJobRoles(User $actor, User $user, ?string $mainRole, array $extraRoles): void
+    {
+        if (! $mainRole && $extraRoles) {
+            throw ValidationException::withMessages(['main_role' => 'Pick a main role before adding extra roles.']);
+        }
+
+        $before = ['main_role' => $user->role?->value, 'extra_roles' => array_map(fn (Role $role) => $role->value, $user->extraRoles())];
+        $extraRoles = array_values(array_diff(array_unique($extraRoles), [$mainRole]));
+
+        DB::transaction(function () use ($actor, $user, $mainRole, $extraRoles) {
+            $user->update(['role' => $mainRole]);
+            $user->extraRoleRecords()->whereNotIn('role', $extraRoles)->delete();
+            foreach ($extraRoles as $role) {
+                UserExtraRole::firstOrCreate(['user_id' => $user->id, 'role' => $role], ['assigned_by' => $actor->id]);
+            }
+        });
+
+        $user->unsetRelation('extraRoleRecords');
+        $this->access->audit($actor, 'user.job_roles.updated', $user, $before, ['main_role' => $mainRole, 'extra_roles' => $extraRoles]);
     }
 
     public function grantOverride(Request $request, User $user)

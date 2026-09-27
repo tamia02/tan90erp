@@ -433,6 +433,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('people/{user}', [AccessPeopleController::class, 'show'])->name('people.show');
         Route::post('people/{user}/assign-role', [AccessPeopleController::class, 'assign'])->name('people.assign-role');
         Route::post('people/{user}/extra-access', [AccessPeopleController::class, 'grantOverride'])->name('people.extra-access');
+        Route::post('people/{user}/job-roles', [AccessPeopleController::class, 'updateJobRoles'])->name('people.job-roles');
+        Route::delete('people/{user}/roles/{role}', [AccessPeopleController::class, 'removeRole'])->name('people.remove-role');
 
         Route::get('hierarchy', [HierarchyController::class, 'index'])->name('hierarchy.index');
         Route::post('hierarchy/verticals', [HierarchyController::class, 'storeVertical'])->name('hierarchy.verticals.store');

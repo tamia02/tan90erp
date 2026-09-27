@@ -13,9 +13,15 @@ final class RoleCapability
             return true;
         }
 
-        $permissions = config('tan90_role_permissions.'.($user->role?->value ?? '').'.'.$type, []);
+        // Union across the main role and any extra roles.
+        foreach ($user->operationalRoles() as $role) {
+            $permissions = config('tan90_role_permissions.'.$role->value.'.'.$type, []);
+            if (in_array('*', $permissions, true) || in_array($key, $permissions, true)) {
+                return true;
+            }
+        }
 
-        return in_array('*', $permissions, true) || in_array($key, $permissions, true);
+        return false;
     }
 
     public static function requireExport(string $key): void

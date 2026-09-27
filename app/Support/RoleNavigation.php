@@ -39,6 +39,17 @@ class RoleNavigation
     }
 
     /**
+     * A role's own module screens without the shared utility screens - used
+     * to add an extra role's section under a person's main-role menu.
+     *
+     * @return array<int, array{label: string, route: string, icon: string}>
+     */
+    public static function ownScreensFor(Role $role): array
+    {
+        return self::ownScreens($role);
+    }
+
+    /**
      * @return array<int, array{label: string, route: string, icon: string}>
      */
     private static function ownScreens(Role $role): array

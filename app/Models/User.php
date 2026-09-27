@@ -12,11 +12,13 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 // Merges the React prototype's TeamMember concept into the real user
-// account — one role per account, admin-managed, no self-registration.
+// account — one main role per account (plus optional extra roles, see
+// extraRoles()), admin-managed, no self-registration.
 //
 // HasTan90Profile is additive: it gives $user->tan90Profile (role/plant/
 // location scope, MFA status) for the Master Data and BOM/Recipe/Costing
@@ -114,5 +116,34 @@ class User extends Authenticatable
     public function accessPositions()
     {
         return $this->hasMany(AccessPosition::class);
+    }
+
+    public function extraRoleRecords(): HasMany
+    {
+        return $this->hasMany(UserExtraRole::class);
+    }
+
+    // Extra GRN roles on top of the main `role` (see user_extra_roles).
+    /** @return array<int, Role> */
+    public function extraRoles(): array
+    {
+        return $this->extraRoleRecords->pluck('role')
+            ->filter(fn ($role) => $role instanceof Role && $role !== $this->role)
+            ->values()
+            ->all();
+    }
+
+    // Main role first, then extra roles. Use this for "may this person use
+    // that module's screens/actions"; keep display rules (price hiding, PO
+    // masking, vendor scoping) on the main `role` only.
+    /** @return array<int, Role> */
+    public function operationalRoles(): array
+    {
+        return array_values(array_filter([$this->role, ...$this->extraRoles()]));
+    }
+
+    public function holdsRole(Role $role): bool
+    {
+        return in_array($role, $this->operationalRoles(), true);
     }
 }

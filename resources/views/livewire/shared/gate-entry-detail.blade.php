@@ -74,7 +74,7 @@ new #[Layout('layouts.app')] class extends Component
     // guard/entry-detail.blade.php's identical methods.
     public function confirmExit(): void
     {
-        if (auth()->user()->role !== Role::Guard || $this->entry->entry_type !== 'outward' || $this->entry->status !== 'loaded') {
+        if (! auth()->user()->holdsRole(Role::Guard) || $this->entry->entry_type !== 'outward' || $this->entry->status !== 'loaded') {
             return;
         }
 
@@ -86,7 +86,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function allowEntry(): void
     {
-        if (auth()->user()->role !== Role::Guard || $this->entry->entry_type !== 'visitor' || $this->entry->status !== 'validated') {
+        if (! auth()->user()->holdsRole(Role::Guard) || $this->entry->entry_type !== 'visitor' || $this->entry->status !== 'validated') {
             return;
         }
 
@@ -98,7 +98,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function checkOutVisitor(): void
     {
-        if (auth()->user()->role !== Role::Guard || $this->entry->entry_type !== 'visitor' || $this->entry->status !== 'checked_in') {
+        if (! auth()->user()->holdsRole(Role::Guard) || $this->entry->entry_type !== 'visitor' || $this->entry->status !== 'checked_in') {
             return;
         }
 
@@ -110,7 +110,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function verifyGuardEntry(): void
     {
-        if (auth()->user()->role !== Role::StoreExec
+        if (! auth()->user()->holdsRole(Role::StoreExec)
             || $this->entry->entry_type !== 'inward'
             || ! in_array($this->entry->status, ['validated', 'dock_assigned', 'allotted', 'unloading', 'grn', 'qc_done', 'grn_posted', 'closed'], true)
             || $this->entry->store_exec_verified_at) {
@@ -554,7 +554,7 @@ new #[Layout('layouts.app')] class extends Component
                 <p class="text-sm mt-1" style="color: var(--text-secondary);">Full gate entry form as submitted{{ $timeline->isNotEmpty() ? ', plus every stage it has moved through since' : '' }}.</p>
             </div>
             <div class="flex gap-2 shrink-0">
-                @if (auth()->user()->role === \App\Enums\Role::Guard)
+                @if (auth()->user()->holdsRole(\App\Enums\Role::Guard))
                     @if ($entry->entry_type === 'outward' && $entry->status === 'loaded')
                         <button wire:click="confirmExit" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
                             <x-icon name="check-circle" class="w-4 h-4" /> Confirm exit
@@ -571,7 +571,7 @@ new #[Layout('layouts.app')] class extends Component
                         </button>
                     @endif
                 @endif
-                @if (auth()->user()->role === \App\Enums\Role::StoreExec && $entry->entry_type === 'inward')
+                @if (auth()->user()->holdsRole(\App\Enums\Role::StoreExec) && $entry->entry_type === 'inward')
                     @if ($entry->store_exec_verified_at)
                         <span class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold" style="background: var(--status-good-bg); color: var(--status-good);">
                             <x-icon name="check-circle" class="w-4 h-4" /> Guard verified {{ $entry->store_exec_verified_at->format('d M, H:i') }}

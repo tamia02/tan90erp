@@ -2,6 +2,7 @@
 
 use App\Enums\Role;
 use App\Models\User;
+use App\Services\Access\SuperAdminAccessSync;
 use App\Services\AuditLogger;
 use App\Support\SlaDirectives;
 use Illuminate\Support\Facades\Hash;
@@ -47,6 +48,10 @@ new #[Layout('layouts.app')] class extends Component
             'super_admin' => $this->superAdmin,
             'password' => Hash::make($validated['password']),
         ]);
+
+        if ($user->super_admin && $user->role === Role::Admin) {
+            app(SuperAdminAccessSync::class)->syncUser($user->id);
+        }
 
         AuditLogger::log('User added'.($user->super_admin ? ' (Super Admin)' : ''), "{$user->name} · {$user->role->label()}", $user);
 

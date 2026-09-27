@@ -15,6 +15,7 @@ use App\Models\ValidationIssue;
 use App\Models\VendorMaster;
 use App\Models\VendorStockUpdate;
 use App\Models\VendorSubmission;
+use App\Services\Access\SuperAdminAccessSync;
 use Database\Seeders\Access\AccessControlSeeder;
 use Database\Seeders\Flow\FlowAccessSeeder;
 use Database\Seeders\Forge\ForgeAccessSeeder;
@@ -54,6 +55,10 @@ class DatabaseSeeder extends Seeder
         $this->call(AccessControlSeeder::class);
         $this->call(ForgeAccessSeeder::class);
         $this->call(FlowAccessSeeder::class);
+
+        // Last, once ACCESS-SUPER-ADMIN exists: give the GRN Super Admin
+        // (Priya Admin) full Access Control / Forge / Flow access too.
+        app(SuperAdminAccessSync::class)->syncAll();
     }
 
     private function seedUsers(): void

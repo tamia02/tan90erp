@@ -19,7 +19,11 @@ class EnsureRole
     {
         $user = $request->user();
 
-        if ($user && ($user->isAdmin() || ($user->role && in_array($user->role->value, $roles, true)))) {
+        // Main role or any extra role (user_extra_roles) opens the module.
+        $holdsAllowedRole = $user && collect($user->operationalRoles())
+            ->contains(fn ($role) => in_array($role->value, $roles, true));
+
+        if ($user && ($user->isAdmin() || $holdsAllowedRole)) {
             return $next($request);
         }
 

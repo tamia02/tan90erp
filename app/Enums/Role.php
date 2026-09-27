@@ -53,6 +53,15 @@ enum Role: string
         };
     }
 
+    // Roles one person can combine (main role + extra roles). Vendor is an
+    // outside company's login and Admin is the Super Admin, so neither is
+    // ever an extra hat an employee wears.
+    /** @return array<self> */
+    public static function combinable(): array
+    {
+        return [self::Guard, self::StoreExec, self::Qc, self::StoreManager, self::Finance];
+    }
+
     /** @return array<string> */
     public static function values(): array
     {

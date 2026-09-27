@@ -9,6 +9,7 @@ use App\Models\Access\AccessRole;
 use App\Models\Access\AccessVertical;
 use App\Services\Access\AccessControlService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class AccessRoleController extends Controller
 {
@@ -89,7 +90,7 @@ class AccessRoleController extends Controller
         abort_unless($this->access->canManageRole($request->user(), $role), 403);
         abort_if($role->is_system && $request->string('status') === 'deleted', 403, 'System roles cannot be deleted.');
         $before = $role->toArray();
-        $role->update($this->validated($request));
+        $role->update($this->validated($request, $role));
         $this->syncPermissions($request, $role);
         $role->users->each(fn ($user) => $this->access->flushUser($user));
         $this->access->audit($request->user(), 'role.updated', $role, $before, $role->fresh()->toArray());
@@ -114,12 +115,12 @@ class AccessRoleController extends Controller
         return redirect()->route('access.roles.edit', $copy)->with('status', 'Role cloned.');
     }
 
-    private function validated(Request $request): array
+    private function validated(Request $request, ?AccessRole $role = null): array
     {
         return $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'label' => ['required', 'string', 'max:255'],
-            'code' => ['required', 'string', 'max:255'],
+            'code' => ['required', 'string', 'max:255', Rule::unique('access_roles', 'code')->ignore($role)],
             'level' => ['required', 'integer', 'between:1,4'],
             'vertical_id' => ['nullable', 'exists:access_verticals,id'],
             'parent_role_id' => ['nullable', 'exists:access_roles,id'],

@@ -32,9 +32,9 @@
                     <input class="access-input mt-1" type="password" name="password" required minlength="8">
                 </div>
                 <div>
-                    <label class="text-xs font-bold access-muted uppercase">Role</label>
-                    <select class="access-input mt-1" name="role_id" required>
-                        <option value="">Select a role</option>
+                    <label class="text-xs font-bold access-muted uppercase">Access Control role{{ $canSetJobRoles ? ' (optional if a main job role is picked below)' : '' }}</label>
+                    <select class="access-input mt-1" name="role_id" @required(! $canSetJobRoles)>
+                        <option value="">{{ $canSetJobRoles ? 'None' : 'Select a role' }}</option>
                         @foreach ($roles as $role)
                             <option value="{{ $role->id }}" @selected(old('role_id') == $role->id)>
                                 {{ $role->name }} (Level {{ $role->hierarchy_level ?? $role->level }})
@@ -53,6 +53,31 @@
                     </select>
                 </div>
             </div>
+
+            @if ($canSetJobRoles)
+                <div class="space-y-3" x-data="{ main: @js(old('main_role', '')) }">
+                    <div>
+                        <label class="text-xs font-bold access-muted uppercase">Job roles (Guard, Store, QC, Finance screens)</label>
+                        <p class="text-xs access-muted">The <b>main role</b> decides their home page after login. Tick <b>extra roles</b> if the same person also does other jobs - e.g. main role Store Manager, extra roles Store Executive and QC.</p>
+                    </div>
+                    <div class="max-w-sm">
+                        <select class="access-input" name="main_role" x-model="main">
+                            <option value="">No main role</option>
+                            @foreach ($combinableRoles as $role)
+                                <option value="{{ $role->value }}">{{ $role->label() }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="flex flex-wrap gap-2" x-show="main !== ''">
+                        @foreach ($combinableRoles as $role)
+                            <label class="flex items-center gap-2 text-sm border rounded-lg px-3 py-2" style="border-color:#dfe7e2;" x-show="main !== '{{ $role->value }}'">
+                                <input type="checkbox" name="extra_roles[]" value="{{ $role->value }}" :disabled="main === '' || main === '{{ $role->value }}'" @checked(collect(old('extra_roles'))->contains($role->value))>
+                                <span>{{ $role->label() }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
 
             <div>
                 <label class="text-xs font-bold access-muted uppercase">Team reporting to this person</label>

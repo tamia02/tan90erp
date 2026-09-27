@@ -20,8 +20,8 @@
                         <div><h2 class="font-bold">{{ $person->name }}</h2><div class="access-muted text-sm">{{ $person->email }} @if($person->phone) / {{ $person->phone }} @endif</div></div>
                     </div>
                     <div class="flex flex-wrap gap-2">@forelse($person->accessRoles as $role)<span class="access-chip">{{ $role->label }}</span>@empty<span class="access-muted text-sm">No new access assignment</span>@endforelse</div>
-                    <div class="text-sm access-muted">Status: {{ $person->is_active ? 'Active' : 'Inactive' }}. Legacy role: {{ $person->role?->label() ?? 'None' }}</div>
-                    <a class="access-btn" href="{{ route('access.people.show', $person) }}">View access</a>
+                    <div class="text-sm access-muted">Status: {{ $person->is_active ? 'Active' : 'Inactive' }}. Job roles: {{ $person->role ? collect([$person->role->label().' (main)', ...array_map(fn ($role) => $role->label(), $person->extraRoles())])->join(', ') : 'None' }}</div>
+                    <a class="access-btn" href="{{ route('access.people.show', $person) }}">View / edit roles</a>
                     @if($canManageUser($person))
                         <form method="post" action="{{ route('access.people.assign-role',$person) }}" class="flex gap-2">
                             @csrf

@@ -32,7 +32,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function confirmPutaway(int $gateId): void
     {
-        if (auth()->user()?->role !== Role::StoreExec) {
+        if (! auth()->user()?->holdsRole(Role::StoreExec)) {
             session()->flash('error', 'Only the Store Executive can confirm the physical putaway bin.');
             $this->cancelConfirm();
 
@@ -160,7 +160,7 @@ new #[Layout('layouts.app')] class extends Component
                             <div class="text-xs mt-1 font-semibold" style="color: var(--status-warning);">Putaway allowed now; GRN and vendor document remain pending until QC hold is resolved.</div>
                         @endif
                     </a>
-                    @if ($confirming !== $gate->id && auth()->user()?->role === Role::StoreExec)
+                    @if ($confirming !== $gate->id && auth()->user()?->holdsRole(Role::StoreExec))
                         <button wire:click="startConfirm({{ $gate->id }})" class="rounded-lg px-3.5 py-2 text-sm font-medium text-white shrink-0" style="background: var(--brand);">Confirm putaway</button>
                     @elseif ($confirming !== $gate->id)
                         <span class="rounded-lg px-3.5 py-2 text-xs font-semibold" style="background: var(--surface-2); color: var(--text-secondary);">Store Executive confirmation required</span>
