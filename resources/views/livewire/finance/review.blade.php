@@ -1,0 +1,159 @@
+<?php
+
+use App\Models\FinanceRecord;
+use App\Services\AuditLogger;
+use App\Services\ThreeWayMatchService;
+use App\Services\ZohoInventoryService;
+use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Layout;
+use Livewire\Volt\Component;
+
+new #[Layout('layouts.app')] class extends Component
+{
+    public ?int $editing = null;
+
+    public string $notes = '';
+
+    public function recheckMatch(int $id): void
+    {
+        $record = FinanceRecord::with('gateEntry')->findOrFail($id);
+        $record = app(ThreeWayMatchService::class)->check($record);
+        AuditLogger::log('Three-way match rechecked', "Finance record {$record->id} · {$record->match_status}", $record);
+        session()->flash('success', $record->match_status === 'matched'
+            ? "Invoice {$record->invoice_number} now matches the PO and gate receipt. Review the payable before clearing it."
+            : "Invoice {$record->invoice_number} still needs review: {$record->match_notes}");
+    }
+
+    public function setStatus(int $id, string $status): void
+    {
+        $record = FinanceRecord::findOrFail($id);
+
+        if ($status === 'cleared' && $record->match_status !== 'matched') {
+            $this->addError('match', 'Only invoices that have passed the three-way match can be cleared for payment.');
+
+            return;
+        }
+
+        $wasCleared = $record->vendor_status === 'cleared';
+
+        $record->update(['vendor_status' => $status, 'notes' => $this->notes ?: $record->notes]);
+
+        AuditLogger::log("Vendor status set to {$status}", (string) $record->gate_entry_id, $record);
+
+        // Previously nothing told Zoho a vendor was actually paid — Bills
+        // push automatically on every FinanceRecord save, but "cleared"
+        // (payment made) was never itself a Zoho event. Only push once, the
+        // moment it first becomes cleared, not on every subsequent save.
+        if ($status === 'cleared' && ! $wasCleared) {
+            $inventory = app(ZohoInventoryService::class);
+            if ($inventory->isActive()) {
+                try {
+                    if (! $inventory->pushPaymentMade($record)) {
+                        Log::warning('Zoho Inventory payment push failed from Finance Review', [
+                            'finance_record_id' => $record->id,
+                            'error' => $inventory->lastError(),
+                        ]);
+                    }
+                } catch (Throwable $exception) {
+                    Log::warning('Zoho Inventory payment push exception from Finance Review', [
+                        'finance_record_id' => $record->id,
+                        'error' => $exception->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        $this->reset(['editing', 'notes']);
+    }
+
+    public function with(): array
+    {
+        return ['records' => FinanceRecord::with(['gateEntry.grnRecord.lines', 'debitNotes'])->orderByDesc('created_at')->get()];
+    }
+}; ?>
+
+<div>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Finance Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Finance Review</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Every payable, deductions and vendor closure status.</p>
+    </section>
+
+    @error('match') <div class="mb-4 p-3 rounded text-sm text-red-800 bg-red-100">{{ $message }}</div> @enderror
+    @if (session('success')) <div role="status" aria-live="polite" class="mb-4 rounded-xl border px-4 py-3 text-sm" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">{{ session('success') }}</div> @endif
+
+    <div class="flex flex-col gap-3">
+        @forelse ($records as $r)
+            <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+                <div class="flex items-center justify-between gap-3 flex-wrap">
+                    <a href="{{ $r->gateEntry ? route('gate-entries.show', $r->gateEntry) : '#' }}" wire:navigate class="hover:opacity-80">
+                        <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $r->gateEntry?->gate_no }} · {{ $r->vendor_name }}</div>
+                        <div class="text-xs mt-0.5" style="color: var(--text-muted);">Invoice {{ $r->invoice_number ?? '—' }} · @if ($r->gateEntry?->grnRecord?->lines?->count() > 1) invoice-weighted average ₹{{ number_format((float) $r->rate_per_unit, 2) }}/unit (SKU prices shown below) @else Rate ₹{{ $r->rate_per_unit }}/unit @endif</div>
+                    </a>
+                    <div class="flex gap-2">
+                        <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->match_status === 'matched' ? 'var(--status-good)' : ($r->match_status === 'exception' ? 'var(--status-critical)' : 'var(--text-muted)') }};">match: {{ $r->match_status }}</span>
+                        <span class="text-xs font-medium capitalize px-2 py-0.5 rounded" style="background: var(--surface-2); color: {{ $r->vendor_status === 'cleared' ? 'var(--status-good)' : ($r->vendor_status === 'hold' ? 'var(--status-critical)' : 'var(--status-warning)') }};">{{ $r->vendor_status }}</span>
+                    </div>
+                </div>
+                @if ($r->match_status === 'exception' && $r->match_notes)
+                    <div class="text-xs mt-2" style="color: var(--status-critical);">{{ $r->match_notes }}</div>
+                @endif
+                @if ($r->debitNotes->isNotEmpty())
+                    <div class="text-xs mt-2" style="color: var(--text-secondary);">
+                        Debit notes: {{ $r->debitNotes->map(fn ($d) => "{$d->reason} (₹".number_format($d->amount, 2).")")->implode(', ') }}
+                    </div>
+                @endif
+                @if ($r->gateEntry?->grnRecord?->lines?->count() > 1)
+                    <div class="mt-3 rounded-lg border p-3 text-xs" style="border-color:var(--border);background:var(--surface-2);">
+                        <div class="font-semibold mb-2" style="color:var(--text-primary);">Per-SKU valuation (kept separate)</div>
+                        <div class="flex flex-col gap-1.5">
+                            @foreach ($r->gateEntry->grnRecord->lines as $skuLine)
+                                <div class="flex flex-wrap gap-x-4 gap-y-1"><strong>{{ $skuLine->sku }}</strong><span>{{ $skuLine->accepted_qty }} accepted</span><span>₹{{ number_format((float) $skuLine->unit_price, 4) }} / unit</span><span>Accepted value ₹{{ number_format((float) $skuLine->accepted_value, 2) }}</span></div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3 text-xs">
+                    <div><div style="color: var(--text-muted);">Invoice Value</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->invoice_value, 2) }}</div></div>
+                    <div><div style="color: var(--text-muted);">Accepted Value</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->accepted_value, 2) }}</div></div>
+                    <div><div style="color: var(--text-muted);">Deductions</div><div class="font-medium" style="color: var(--status-critical);">₹{{ number_format($r->totalDeductions(), 2) }}</div></div>
+                    @if ($r->deduction_hold > 0)
+                        <div><div style="color: var(--text-muted);">Held (pending QC resolution)</div><div class="font-medium" style="color: var(--status-warning);">₹{{ number_format($r->deduction_hold, 2) }}</div></div>
+                    @endif
+                    <div><div style="color: var(--text-muted);">Final Payable</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->final_payable, 2) }}</div></div>
+                </div>
+                @if ($r->deduction_hold > 0)
+                    <p class="text-xs mt-2" style="color: var(--text-muted);">Invoice value − deductions − held = final payable. The held amount is withheld pending QC's hold being resolved, not a confirmed loss — it isn't part of Deductions above.</p>
+                @endif
+                @if ($r->notes)
+                    <div class="text-xs mt-2" style="color: var(--text-secondary);">{{ $r->notes }}</div>
+                @endif
+
+                @if ($editing === $r->id)
+                    <div class="mt-3">
+                        <textarea wire:model="notes" rows="2" class="w-full rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="Notes (optional)"></textarea>
+                    </div>
+                @endif
+
+                <div class="flex gap-2 mt-3">
+                    @if ($r->match_status !== 'matched')
+                        <button wire:click="recheckMatch({{ $r->id }})" wire:loading.attr="disabled" wire:target="recheckMatch({{ $r->id }})" class="min-h-11 text-xs font-medium rounded-lg px-3 py-2 border disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-offset-2" style="border-color: var(--brand); color: var(--brand);">Recheck PO match</button>
+                    @endif
+                    @if ($editing !== $r->id)
+                        <button wire:click="$set('editing', {{ $r->id }})" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--border); color: var(--text-primary);">Add note</button>
+                    @endif
+                    <button
+                        wire:click="setStatus({{ $r->id }}, 'cleared')"
+                        @disabled($r->match_status !== 'matched')
+                        title="{{ $r->match_status !== 'matched' ? 'Blocked until the three-way match passes' : '' }}"
+                        class="text-xs font-medium rounded-lg px-2.5 py-1.5 border disabled:opacity-40 disabled:cursor-not-allowed"
+                        style="border-color: var(--status-good); color: var(--status-good);"
+                    >Clear</button>
+                    <button wire:click="setStatus({{ $r->id }}, 'hold')" class="text-xs font-medium rounded-lg px-2.5 py-1.5 border" style="border-color: var(--status-critical); color: var(--status-critical);">Hold</button>
+                </div>
+            </div>
+        @empty
+            <div class="text-center text-sm py-10" style="color: var(--text-muted);">No finance records yet.</div>
+        @endforelse
+    </div>
+</div>

@@ -1,0 +1,82 @@
+<?php
+
+use App\Models\FinanceRecord;
+use App\Support\CombinedActivityFeed;
+use Livewire\Attributes\Layout;
+use Livewire\Volt\Component;
+
+new #[Layout('layouts.app')] class extends Component
+{
+    private const ACTIVITY_KEYWORDS = ['Vendor status', 'Finance User'];
+
+    public bool $showAllActivity = false;
+
+    public function with(): array
+    {
+        $activity = CombinedActivityFeed::forUser(auth()->user(), self::ACTIVITY_KEYWORDS);
+
+        return [
+            'pending' => FinanceRecord::where('vendor_status', 'pending')->count(),
+            'cleared' => FinanceRecord::where('vendor_status', 'cleared')->count(),
+            'onHold' => FinanceRecord::where('vendor_status', 'hold')->count(),
+            'totalPayable' => FinanceRecord::where('vendor_status', 'pending')->sum('final_payable'),
+            'activityTotal' => $activity->count(),
+            'recentActivity' => $this->showAllActivity ? $activity : $activity->take(5),
+        ];
+    }
+}; ?>
+
+<div>
+    <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Finance Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Dashboard</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Payable review at a glance.</p>
+    </section>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <a href="{{ route('finance.review') }}" wire:navigate class="rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="text-xs" style="color: var(--text-muted);">Pending Review</div>
+            <div class="text-2xl font-semibold mt-1" style="color: var(--status-warning);">{{ $pending }}</div>
+            <div class="text-xs mt-1 font-semibold" style="color: var(--brand);">Open review queue →</div>
+        </a>
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="text-xs" style="color: var(--text-muted);">Cleared</div>
+            <div class="text-2xl font-semibold mt-1" style="color: var(--status-good);">{{ $cleared }}</div>
+        </div>
+        <a href="{{ route('finance.review') }}" wire:navigate class="rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="text-xs" style="color: var(--text-muted);">On Hold</div>
+            <div class="text-2xl font-semibold mt-1" style="color: var(--status-critical);">{{ $onHold }}</div>
+            <div class="text-xs mt-1 font-semibold" style="color: var(--brand);">Review holds →</div>
+        </a>
+        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="text-xs" style="color: var(--text-muted);">Pending Payable</div>
+            <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">₹{{ number_format($totalPayable, 0) }}</div>
+        </div>
+    </div>
+
+    <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="font-semibold text-sm" style="color: var(--text-primary);">Activity</h2>
+            @if ($activityTotal > 5)
+                <button wire:click="$toggle('showAllActivity')" class="text-xs font-medium" style="color: var(--brand);">
+                    {{ $showAllActivity ? 'Show less' : 'View all activity ('.$activityTotal.')' }}
+                </button>
+            @endif
+        </div>
+        <div class="flex flex-col divide-y" style="border-color: var(--border);">
+            @forelse ($recentActivity as $row)
+                <a href="{{ $row['url'] }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
+                    <div class="min-w-0">
+                        <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ $row['title'] }}</div>
+                        @if ($row['detail'])
+                            <div class="text-xs mt-0.5 truncate" style="color: var(--text-muted);">{{ $row['detail'] }}</div>
+                        @endif
+                    </div>
+                    <span class="text-xs shrink-0" style="color: var(--text-muted);">{{ $row['created_at']->format('d M, H:i') }}</span>
+                </a>
+            @empty
+                <p class="text-sm py-4" style="color: var(--text-muted);">No activity recorded yet.</p>
+            @endforelse
+        </div>
+    </div>
+</div>

@@ -1,0 +1,310 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens — indigo brand, status colors, card radius/shadow conventions.
+   These are also referenced directly throughout the Livewire views via
+   var(--token), so retuning a value here reaches every screen at once. */
+:root {
+    --brand: #4f46e5;
+    --brand-hover: #4338ca;
+    --brand-bg: #eef2ff;
+
+    --surface-1: #ffffff;
+    --surface-2: #f8fafc;
+    --surface-3: #ffffff;
+
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+
+    --border: #e5e7eb;
+    --border-strong: #cbd5e1;
+
+    --status-good: #0ca30c;
+    --status-good-bg: #e6f6e6;
+    --status-warning: #fab219;
+    --status-warning-bg: #fef3e0;
+    --status-critical: #dc2626;
+    --status-critical-bg: #fde8e8;
+
+    --radius: 0.625rem;
+    --shadow-hover: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.tan90-login-shell {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
+    background: var(--surface-2);
+    color: var(--text-primary);
+}
+
+.tan90-login-hero,
+.tan90-login-panel {
+    min-height: 100vh;
+}
+
+.tan90-login-hero {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(2rem, 6vw, 5rem);
+    background: #0f172a;
+    color: #f1f5f9;
+}
+
+.tan90-brand-mark {
+    width: 3.25rem;
+    height: 3.25rem;
+    display: grid;
+    place-items: center;
+    border-radius: 0.65rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #ffffff;
+    background: var(--brand);
+}
+
+.tan90-eyebrow {
+    margin-top: 2.25rem;
+    color: #93a3ba;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+}
+
+.tan90-login-hero h1 {
+    margin-top: 0.6rem;
+    font-size: clamp(2.1rem, 3.4vw, 2.85rem);
+    line-height: 1.15;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.tan90-lead {
+    margin-top: 1.1rem;
+    max-width: 30rem;
+    color: #cbd5e1;
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+.tan90-health-grid {
+    margin-top: 2.5rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    max-width: 28rem;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 0.65rem;
+    overflow: hidden;
+    background: rgba(148, 163, 184, 0.18);
+}
+
+.tan90-health-grid div {
+    background: #111e33;
+    padding: 1rem 1.1rem;
+}
+
+.tan90-health-grid strong {
+    display: block;
+    color: #ffffff;
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.tan90-health-grid span {
+    display: block;
+    margin-top: 0.15rem;
+    color: #93a3ba;
+    font-size: 0.78rem;
+}
+
+.tan90-login-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(1.5rem, 4vw, 4rem);
+    background: var(--surface-1);
+    border-left: 1px solid var(--border);
+}
+
+.tan90-panel-heading p {
+    color: var(--brand);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+}
+
+.tan90-panel-heading h2 {
+    margin-top: 0.35rem;
+    font-size: clamp(1.35rem, 2vw, 1.6rem);
+    line-height: 1.25;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.tan90-role-grid {
+    margin-top: 1.25rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.tan90-role-card {
+    min-height: 5.5rem;
+    text-align: left;
+    border-radius: var(--radius);
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    transition: border-color 150ms ease, background 150ms ease;
+}
+
+.tan90-role-card:hover {
+    border-color: var(--brand);
+    background: var(--brand-bg);
+}
+
+.tan90-role-card span {
+    display: block;
+    font-size: 0.92rem;
+    font-weight: 700;
+}
+
+.tan90-role-card small {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--text-secondary);
+    line-height: 1.35;
+    font-size: 0.78rem;
+}
+
+.tan90-divider {
+    margin: 1.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.tan90-divider::before,
+.tan90-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--border);
+}
+
+.tan90-demo-access {
+    margin-top: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.85rem;
+    background: var(--surface-2);
+    color: var(--text-primary);
+}
+
+.tan90-demo-access p {
+    font-weight: 700;
+    margin-bottom: 0.55rem;
+    font-size: 0.85rem;
+}
+
+.tan90-demo-access div {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+}
+
+.tan90-demo-access summary {
+    cursor: pointer;
+    font-weight: 700;
+    margin: 0.7rem 0 0.45rem;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.tan90-demo-access button {
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    transition: border-color 150ms ease;
+}
+
+.tan90-demo-access button:hover {
+    border-color: var(--brand);
+}
+
+.tan90-demo-access button span,
+.tan90-demo-access button small {
+    display: block;
+}
+
+.tan90-demo-access small {
+    display: block;
+    margin-top: 0.55rem;
+    color: var(--text-muted);
+}
+
+.tan90-manual-form {
+    display: grid;
+    gap: 1rem;
+    color: var(--text-primary);
+}
+
+.tan90-manual-form input[type="email"],
+.tan90-manual-form input[type="password"] {
+    min-height: 2.75rem;
+    color: var(--text-primary);
+}
+
+.tan90-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 980px) {
+    .tan90-login-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .tan90-login-hero,
+    .tan90-login-panel {
+        min-height: auto;
+    }
+
+    .tan90-login-panel {
+        border-left: none;
+        border-top: 1px solid var(--border);
+    }
+}
+
+@media (max-width: 560px) {
+    .tan90-login-hero {
+        padding: 1.25rem;
+    }
+
+    .tan90-login-panel {
+        padding: 1.25rem;
+    }
+
+    .tan90-health-grid,
+    .tan90-role-grid {
+        grid-template-columns: 1fr;
+    }
+}

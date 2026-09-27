@@ -1,0 +1,37 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('tan90_legal_entities', function (Blueprint $table) {
+            $table->id();
+            $table->string('code')->unique();
+            $table->string('name');
+            $table->string('cin')->nullable();
+            $table->string('pan')->nullable();
+            $table->string('gstin')->nullable();
+            $table->string('country')->default('India');
+            $table->string('state')->nullable();
+            $table->string('base_currency', 8)->default('INR');
+            $table->string('timezone')->default('Asia/Kolkata');
+            $table->string('fiscal_year')->default('April-March');
+            $table->string('status')->default('active');
+            $table->string('approval_status')->default('draft');
+            $table->unsignedInteger('version')->default(1);
+            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('tan90_legal_entities');
+    }
+};

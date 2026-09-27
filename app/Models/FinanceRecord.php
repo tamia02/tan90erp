@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'created_by', 'gate_entry_id', 'vendor_name', 'invoice_number', 'rate_per_unit',
+    'invoice_value', 'accepted_value', 'deduction_defective', 'deduction_rejected',
+    'deduction_missing', 'deduction_hold', 'final_payable', 'match_status', 'match_notes', 'vendor_status', 'notes',
+])]
+class FinanceRecord extends Model
+{
+    protected function casts(): array
+    {
+        return [
+            'rate_per_unit' => 'decimal:2',
+            'invoice_value' => 'decimal:2',
+            'accepted_value' => 'decimal:2',
+            'deduction_defective' => 'decimal:2',
+            'deduction_rejected' => 'decimal:2',
+            'deduction_missing' => 'decimal:2',
+            'deduction_hold' => 'decimal:2',
+            'final_payable' => 'decimal:2',
+        ];
+    }
+
+    /** @return BelongsTo<GateEntry, $this> */
+    public function gateEntry(): BelongsTo
+    {
+        return $this->belongsTo(GateEntry::class);
+    }
+
+    public function debitNotes(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DebitNote::class);
+    }
+
+    /** Confirmed, final losses only -- goods that will never be paid for. Held
+     * quantity is deliberately excluded: it's withheld pending resolution,
+     * not yet a permanent write-off, so it's tracked separately via
+     * deduction_hold/heldValue() rather than lumped in here. */
+    public function totalDeductions(): float
+    {
+        return (float) $this->deduction_defective + (float) $this->deduction_rejected + (float) $this->deduction_missing;
+    }
+
+    public function heldValue(): float
+    {
+        return (float) $this->deduction_hold;
+    }
+}
