@@ -11,10 +11,12 @@ new #[Layout('layouts.app')] class extends Component
 {
     public string $type = '';
     public ?int $historyItemId = null;
+    public bool $showArchived = false;
 
     public function with(): array
     {
         $items = InventoryItem::when($this->type, fn ($q) => $q->where('item_type', $this->type))
+            ->when(! $this->showArchived, fn ($q) => $q->where('active', true))
             ->orderByRaw("CASE item_type WHEN 'rm' THEN 1 WHEN 'pm' THEN 2 WHEN 'fg' THEN 3 ELSE 4 END")->orderBy('sku')->get();
 
         $historyItem = $this->historyItemId ? InventoryItem::find($this->historyItemId) : null;
@@ -56,6 +58,7 @@ new #[Layout('layouts.app')] class extends Component
             <option value="">All item types</option>
             @foreach ($types as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
         </select>
+        <label class="inline-flex items-center gap-2 text-sm" style="color: var(--text-secondary);"><input type="checkbox" wire:model.live="showArchived"> Show archived items</label>
     </div>
 
     <div class="rounded-2xl border overflow-x-auto" style="background: var(--surface-3); border-color: var(--border);">

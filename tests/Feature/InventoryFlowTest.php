@@ -149,6 +149,45 @@ class InventoryFlowTest extends TestCase
         $this->get(route('inventory.stock'))->assertOk()->assertSee('PCM Pouch 500g Blue')->assertSee('= Final');
     }
 
+    public function test_remove_deletes_unused_items_and_archives_used_ones(): void
+    {
+        $this->actingAs($this->admin);
+        $typo = InventoryItem::create(['sku' => 'aPouch 500gm', 'item_type' => 'pm', 'unit' => 'NOS', 'opening_qty' => 1000]);
+
+        Volt::test('inventory.items')->call('removeItem', $typo->id);
+        $this->assertDatabaseMissing('inventory_items', ['id' => $typo->id]);
+
+        // The compound is in a recipe, so it is archived, not deleted.
+        Volt::test('inventory.items')->call('removeItem', $this->compound->id);
+        $this->assertFalse($this->compound->fresh()->active);
+        $this->get(route('inventory.stock'))->assertOk()->assertDontSee('PCM Compound');
+
+        Volt::test('inventory.items')->call('restoreItem', $this->compound->id);
+        $this->assertTrue($this->compound->fresh()->active);
+    }
+
+    public function test_editing_an_item_clears_an_earlier_duplicate_error(): void
+    {
+        $this->actingAs($this->admin);
+
+        Volt::test('inventory.items')
+            ->set('sku', 'Pouch 500g')->call('save')->assertHasErrors('sku')
+            ->call('edit', $this->pouch->id)->assertHasNoErrors()
+            ->set('openingQty', '5')->call('save')->assertHasNoErrors();
+        $this->assertSame('5.000', $this->pouch->fresh()->opening_qty);
+    }
+
+    public function test_reset_demo_command_clears_only_inventory_tables(): void
+    {
+        app(InventoryService::class)->produce($this->fg, 5, [], null, $this->admin);
+
+        $this->artisan('inventory:reset-demo', ['--force' => true])->assertSuccessful();
+
+        $this->assertSame(0, InventoryItem::count());
+        $this->assertSame(0, InventoryMovement::count());
+        $this->assertSame(1, LedgerEntry::count()); // GRN stock untouched
+    }
+
     public function test_only_admin_and_store_manager_can_open_inventory(): void
     {
         foreach (['inventory.stock', 'inventory.items', 'inventory.production', 'inventory.dispatch'] as $route) {

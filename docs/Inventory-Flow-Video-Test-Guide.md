@@ -14,6 +14,7 @@ Total time: about 10 minutes. The numbers below match the local demo data, which
 ## 0. Before you record
 
 1. Start XAMPP → **MySQL**, then in the project folder run `php artisan serve`.
+   To record from a clean start (it clears only Inventory test data – GRN stock is kept), first run `php artisan inventory:reset-demo` and answer **yes**.
 2. Open http://127.0.0.1:8000 and log in as **Super Admin**: click the *Super Admin* card, or use `admin@tan90.test` / `demo123`.
 3. In the left menu, under **All Modules**, click **Inventory (RM → FG → Dispatch)**.
 
@@ -30,11 +31,12 @@ Click tab **1. Items & Recipes** and add these 4 items with the form on the left
 | `PCM Raw Compound (TN-1 Grade)` – **pick it from the suggestions** | Raw Material (RM) | KG | 0 |
 | `Pouch 500gm` | Packaging Material (PM) | NOS | 1000 |
 | `500gm PCM Pouch - Blue` | Finished Good (FG) | NOS | 0 |
-| `Hand Gloves (PPE) - Bulk Pack` | Trading Good | BOX | 300 |
+| `Hand Gloves (PPE) — Bulk Pack` – **pick it from the suggestions** (it uses a long dash —) | Trading Good | BOX | 300 |
 
 ✅ **Check:** PCM Raw Compound shows **690 KG in stock**, even though you typed 0. That 690 came from the GRN, so received goods count automatically.
 
 > ⚠️ The SKU name must match the PO/GRN name exactly. That's why the box suggests existing names – always pick from the list.
+> Made a typo? Click **Remove** on that row. An unused item is deleted; an item that already has stock history is **archived** (hidden, history kept) and can be restored.
 
 *Say:* "Current stock is what we already had. Anything received through GRN is added automatically."
 
@@ -83,7 +85,7 @@ Click tab **3. Dispatch**.
 **Safety test:** dispatch **600** of the same item → ✅ **blocked**: "Only 500 NOS of 500gm PCM Pouch - Blue in stock."
 
 **B. Trading good (no production needed)**
-- Item: **Hand Gloves (PPE) - Bulk Pack**, Quantity **100**, Customer **XYZ Traders**
+- Item: **Hand Gloves (PPE) — Bulk Pack**, Quantity **100**, Customer **XYZ Traders**
 - ✅ "DSP-00002: dispatched 100 BOX…"
 
 > Only Finished Goods and Trading Goods appear in this list. Raw and packaging materials can't be dispatched.

@@ -53,6 +53,42 @@ new #[Layout('layouts.app')] class extends Component
         $this->itemType = $item->item_type;
         $this->unit = $item->unit;
         $this->openingQty = rtrim(rtrim((string) $item->opening_qty, '0'), '.') ?: '0';
+        $this->resetValidation(); // don't carry an earlier "already added" error onto the edit form
+    }
+
+    // Unused items are deleted outright. Items with stock history or used in a
+    // recipe are archived instead (hidden from lists, history kept) so past
+    // productions/dispatches and the Stock Summary stay correct.
+    public function removeItem(int $id): void
+    {
+        $item = InventoryItem::findOrFail($id);
+        $inUse = $item->movements()->exists()
+            || InventoryBomLine::where('component_item_id', $item->id)->exists();
+
+        if ($inUse) {
+            $item->update(['active' => false]);
+            AuditLogger::log('Inventory item archived', $item->sku, $item);
+            session()->flash('success', "Archived {$item->displayName()} - it has stock history or is used in a recipe, so it is hidden instead of deleted.");
+        } else {
+            $item->bomLines()->delete();
+            AuditLogger::log('Inventory item deleted', $item->sku);
+            $item->delete();
+            session()->flash('success', "Deleted {$item->displayName()}.");
+        }
+
+        if ($this->editingId === $id) {
+            $this->resetForm();
+        }
+        if ($this->recipeFgId === $id) {
+            $this->recipeFgId = null;
+        }
+    }
+
+    public function restoreItem(int $id): void
+    {
+        $item = InventoryItem::findOrFail($id);
+        $item->update(['active' => true]);
+        session()->flash('success', "Restored {$item->displayName()}.");
     }
 
     public function resetForm(): void
@@ -103,7 +139,7 @@ new #[Layout('layouts.app')] class extends Component
             'types' => InventoryItem::TYPES,
             'knownSkus' => $known,
             'recipeFg' => $this->recipeFgId ? $items->firstWhere('id', $this->recipeFgId) : null,
-            'componentOptions' => $items->whereIn('item_type', ['rm', 'pm']),
+            'componentOptions' => $items->whereIn('item_type', ['rm', 'pm'])->where('active', true),
         ];
     }
 }; ?>
@@ -150,7 +186,7 @@ new #[Layout('layouts.app')] class extends Component
                     <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Type</th><th class="px-4 py-3 text-right">In stock now</th><th class="px-4 py-3">Recipe</th><th class="px-4 py-3"></th></tr></thead>
                     <tbody>
                         @forelse ($items as $item)
-                            <tr wire:key="inv-item-{{ $item->id }}" style="border-top: 1px solid var(--border);">
+                            <tr wire:key="inv-item-{{ $item->id }}" style="border-top: 1px solid var(--border);{{ $item->active ? "" : " opacity: .55;" }}">
                                 <td class="px-4 py-3"><div class="font-medium" style="color: var(--text-primary);">{{ $item->displayName() }}</div>@if ($item->name)<div class="text-xs" style="color: var(--text-muted);">{{ $item->sku }}</div>@endif</td>
                                 <td class="px-4 py-3">{{ $item->typeLabel() }}</td>
                                 <td class="px-4 py-3 text-right font-semibold">{{ rtrim(rtrim(number_format($balances[$item->id]['final'], 3, '.', ''), '0'), '.') }} {{ $item->unit }}</td>
@@ -160,8 +196,14 @@ new #[Layout('layouts.app')] class extends Component
                                     @else — @endif
                                 </td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
+                                    @if (! $item->active)
+                                        <span class="text-xs font-semibold mr-2" style="color: var(--text-muted);">Archived</span>
+                                        <button type="button" wire:click="restoreItem({{ $item->id }})" class="text-xs font-semibold" style="color: var(--brand);">Restore</button>
+                                    @else
                                     <button type="button" wire:click="edit({{ $item->id }})" class="text-xs font-semibold" style="color: var(--brand);">Edit</button>
-                                    @if ($item->item_type === 'fg')<button type="button" wire:click="openRecipe({{ $item->id }})" class="text-xs font-semibold ml-3" style="color: var(--brand);">Recipe</button>@endif
+                                    <button type="button" wire:click="removeItem({{ $item->id }})" wire:confirm="Remove {{ $item->displayName() }}? If it already has stock history it will be archived instead of deleted." class="text-xs font-semibold ml-3" style="color: var(--status-critical);">Remove</button>
+                                    @endif
+                                    @if ($item->item_type === 'fg' && $item->active)<button type="button" wire:click="openRecipe({{ $item->id }})" class="text-xs font-semibold ml-3" style="color: var(--brand);">Recipe</button>@endif
                                 </td>
                             </tr>
                         @empty

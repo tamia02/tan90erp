@@ -97,7 +97,7 @@ new #[Layout('layouts.app')] class extends Component
                                     <td class="py-2 pr-3"><input wire:model.live.debounce.400ms="wastage.{{ $line->component_item_id }}" type="number" step="0.001" min="0" placeholder="0" class="rounded-lg border px-2 py-1 w-28" style="border-color: var(--border);">
                                         @error('wastage.'.$line->component_item_id) <div class="text-xs mt-1" style="color: var(--status-critical);">{{ $message }}</div> @enderror</td>
                                     <td class="py-2 pr-3 text-right">{{ $have }} {{ $component?->unit }}</td>
-                                    <td class="py-2 text-right font-semibold" style="color: {{ $left < 0 ? 'var(--status-critical)' : 'var(--status-good)' }};">{{ $left }} {{ $component?->unit }}</td>
+                                    <td class="py-2 text-right font-semibold" style="color: {{ $left < 0 ? 'var(--status-critical)' : 'var(--status-good)' }};">{{ $left < 0 ? 'Short by '.abs($left) : $left }} {{ $component?->unit }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
