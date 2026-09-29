@@ -55,6 +55,7 @@ new #[Layout('layouts.app')] class extends Component
 <div>
     @include('partials.inventory-tabs', ['current' => 'inventory.production', 'title' => 'Create Bundle (Production)', 'subtitle' => 'Turn Raw Material + Packaging Material into a Finished Good. The recipe decides how much RM/PM is used; add any wastage per material.'])
 
+    {{-- Inputs use deferred wire:model so a fast click on "Create Bundle" always sends the typed qty/wastage; the debounced $refresh only redraws the preview. (wire:model.live.debounce lost values typed <400ms before the click.) --}}
     <form wire:submit="produce" class="rounded-2xl border p-5 space-y-4" style="background: var(--surface-3); border-color: var(--border);">
         <div class="grid sm:grid-cols-3 gap-3">
             <label class="flex flex-col gap-1 text-sm sm:col-span-2"><span class="font-medium">Finished Good to make</span>
@@ -65,7 +66,7 @@ new #[Layout('layouts.app')] class extends Component
                 @error('fgItemId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Quantity to make{{ $selected ? " ({$selected->unit})" : '' }}</span>
-                <input wire:model.live.debounce.400ms="qty" type="number" step="0.001" min="0" class="rounded-lg border px-3 py-2" style="border-color: var(--border);">
+                <input wire:model="qty" x-on:input.debounce.400ms="$wire.$refresh()" type="number" step="0.001" min="0" class="rounded-lg border px-3 py-2" style="border-color: var(--border);">
                 @error('qty') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
         </div>
@@ -94,7 +95,7 @@ new #[Layout('layouts.app')] class extends Component
                                     <td class="py-2 pr-3"><span class="font-medium">{{ $component?->displayName() }}</span> <span class="text-xs" style="color: var(--text-muted);">{{ $component?->typeLabel() }}</span></td>
                                     <td class="py-2 pr-3 text-right">{{ rtrim(rtrim((string) $line->qty_per_unit, '0'), '.') }} {{ $component?->unit }}</td>
                                     <td class="py-2 pr-3 text-right font-semibold">{{ $use }} {{ $component?->unit }}</td>
-                                    <td class="py-2 pr-3"><input wire:model.live.debounce.400ms="wastage.{{ $line->component_item_id }}" type="number" step="0.001" min="0" placeholder="0" class="rounded-lg border px-2 py-1 w-28" style="border-color: var(--border);">
+                                    <td class="py-2 pr-3"><input wire:model="wastage.{{ $line->component_item_id }}" x-on:input.debounce.400ms="$wire.$refresh()" type="number" step="0.001" min="0" placeholder="0" class="rounded-lg border px-2 py-1 w-28" style="border-color: var(--border);">
                                         @error('wastage.'.$line->component_item_id) <div class="text-xs mt-1" style="color: var(--status-critical);">{{ $message }}</div> @enderror</td>
                                     <td class="py-2 pr-3 text-right">{{ $have }} {{ $component?->unit }}</td>
                                     <td class="py-2 text-right font-semibold" style="color: {{ $left < 0 ? 'var(--status-critical)' : 'var(--status-good)' }};">{{ $left < 0 ? 'Short by '.abs($left) : $left }} {{ $component?->unit }}</td>
