@@ -1,0 +1,199 @@
+<?php
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\Validate;
+use Livewire\Volt\Component;
+use App\Models\PurchaseOrder;
+use App\Models\VendorStockUpdate;
+use App\Models\VendorSubmission;
+use App\Services\AuditLogger;
+
+new #[Layout('layouts.app')] class extends Component
+{
+    private const UNITS = ['KG', 'LTR', 'MTR', 'NOS', 'BOX', 'TON'];
+
+    public ?int $editingId = null;
+
+    #[Validate('required|string|max:255')]
+    public string $material = '';
+
+    #[Validate('required|integer|min:0')]
+    public ?int $quantity = null;
+
+    #[Validate('required|in:KG,LTR,MTR,NOS,BOX,TON')]
+    public string $unit = 'KG';
+
+    // A single static action bound via wire:submit — a form that swaps
+    // between two dynamic method names ("submit" vs "saveEdit") depending
+    // on $editingId can lose its click binding after Livewire morphs the
+    // DOM between add/edit mode, which is why "Update Stock" stopped
+    // responding. One fixed action name sidesteps that entirely.
+    public function save(): void
+    {
+        $this->validate();
+
+        if ($this->editingId) {
+            $update = VendorStockUpdate::where('vendor_name', auth()->user()->name)->findOrFail($this->editingId);
+            $update->update([
+                'material' => $this->material,
+                'quantity' => $this->quantity,
+                'unit' => $this->unit,
+            ]);
+
+            AuditLogger::log('Vendor stock updated', "{$update->material} · {$update->quantity} {$update->unit} (edited)", $update);
+
+            $this->cancelEdit();
+            session()->flash('success', 'Stock entry updated successfully.');
+
+            return;
+        }
+
+        $update = VendorStockUpdate::create([
+            'vendor_name' => auth()->user()->name,
+            'material' => $this->material,
+            'quantity' => $this->quantity,
+            'unit' => $this->unit,
+        ]);
+
+        AuditLogger::log('Vendor stock updated', "{$update->material} · {$update->quantity} {$update->unit}", $update);
+
+        $this->reset(['material', 'quantity']);
+        $this->unit = 'KG';
+
+        session()->flash('success', 'Stock updated successfully.');
+    }
+
+    public function edit(int $id): void
+    {
+        $update = VendorStockUpdate::where('vendor_name', auth()->user()->name)->findOrFail($id);
+
+        $this->editingId = $update->id;
+        $this->material = $update->material;
+        $this->quantity = $update->quantity;
+        $this->unit = $update->unit;
+    }
+
+    public function cancelEdit(): void
+    {
+        $this->reset(['editingId', 'material', 'quantity', 'unit']);
+        $this->unit = 'KG';
+    }
+
+    public function with(): array
+    {
+        $vendorName = auth()->user()->name;
+
+        // Previously discovered a vendor's open POs only via their
+        // VendorSubmission rows (a separate, unrelated document-upload
+        // flow) — with just 1 such row existing system-wide, every other
+        // vendor saw an empty dropdown and could never save a stock update
+        // at all. POs already carry vendor_name directly; match on that.
+        $submissions = VendorSubmission::where('vendor_name', $vendorName)->get();
+        $purchaseOrders = PurchaseOrder::where('vendor_name', $vendorName)->with('lines')->get();
+
+        // Only materials on POs that aren't fully invoiced yet — the
+        // vendor should only be updating stock against what's still open.
+        $skuOptions = $purchaseOrders
+            ->filter(function ($po) use ($submissions) {
+                $ordered = (float) ($po->primaryLine()?->quantity ?? 0);
+                $fulfilled = (float) $submissions->where('po_number', $po->po_number)->sum('invoice_qty');
+
+                return $ordered > 0 && $fulfilled < $ordered;
+            })
+            ->flatMap(fn ($po) => $po->lines->pluck('product'))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return [
+            'units' => self::UNITS,
+            'skuOptions' => $skuOptions,
+            'updates' => VendorStockUpdate::where('vendor_name', $vendorName)
+                                ->orderBy('updated_at', 'desc')
+                                ->take(10)
+                                ->get(),
+        ];
+    }
+}; ?>
+
+<div class="space-y-5">
+    <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Vendor Module</div>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Stock Update</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Update daily available stock for raw materials.</p>
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="lg:col-span-1">
+            <form wire:submit="save" class="rounded-2xl border p-5 space-y-4" style="background: var(--surface-3); border-color: var(--border);">
+                @if (session()->has('success'))
+                    <div class="p-2 rounded-lg text-xs" style="background: var(--status-good-bg); color: var(--status-good);">{{ session('success') }}</div>
+                @endif
+                @if ($editingId)
+                    <div class="p-2 rounded text-xs" style="background: var(--brand-bg); color: var(--brand);">Editing existing stock entry</div>
+                @endif
+                <div>
+                    <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">SKU/Material</label>
+                    <select wire:model="material" class="w-full rounded border px-3 py-2 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                        <option value="">{{ $skuOptions->isEmpty() ? 'No open PO materials' : 'Choose SKU…' }}</option>
+                        @foreach ($skuOptions as $sku)
+                            <option value="{{ $sku }}">{{ $sku }}</option>
+                        @endforeach
+                        @if ($editingId && $material && ! $skuOptions->contains($material))
+                            <option value="{{ $material }}">{{ $material }}</option>
+                        @endif
+                    </select>
+                    @error('material') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">Available Qty</label>
+                    <input type="number" wire:model="quantity" class="w-full rounded-xl border px-3 py-2.5 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                    @error('quantity') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1" style="color: var(--text-primary);">Unit</label>
+                    <select wire:model="unit" class="w-full rounded-xl border px-3 py-2.5 text-sm" style="background: var(--surface-1); border-color: var(--border); color: var(--text-primary);">
+                        @foreach ($units as $u)
+                            <option value="{{ $u }}">{{ $u }}</option>
+                        @endforeach
+                    </select>
+                    @error('unit') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                </div>
+                <div class="flex gap-2">
+                    <button type="submit" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-white" style="background: var(--brand);">{{ $editingId ? 'Save Changes' : 'Update Stock' }}</button>
+                    @if ($editingId)
+                        <button type="button" wire:click="cancelEdit" class="px-4 py-2.5 rounded-xl text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Cancel</button>
+                    @endif
+                </div>
+            </form>
+        </div>
+
+        <div class="lg:col-span-2">
+            <div class="rounded-2xl border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+                            <th class="px-4 py-2.5 font-medium">SKU</th>
+                            <th class="px-4 py-2.5 font-medium">Quantity</th>
+                            <th class="px-4 py-2.5 font-medium">Updated On</th>
+                            <th class="px-4 py-2.5 font-medium"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($updates as $upd)
+                            <tr style="border-top: 1px solid var(--border);">
+                                <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $upd->material }}</td>
+                                <td class="px-4 py-2.5" style="color: var(--text-primary);">{{ $upd->quantity }} {{ $upd->unit }}</td>
+                                <td class="px-4 py-2.5" style="color: var(--text-secondary);">{{ $upd->updated_at->format('d M, Y H:i') }}</td>
+                                <td class="px-4 py-2.5 text-right">
+                                    <button wire:click="edit({{ $upd->id }})" class="text-xs font-medium" style="color: var(--brand);">Update</button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="4" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No stock updates found.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

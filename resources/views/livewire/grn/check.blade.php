@@ -151,7 +151,8 @@ new #[Layout('layouts.app')] class extends Component
                 @endif
 
                 @if ($posting === $g->id)
-                    <div class="mt-4">
+                    {{-- relative z-10: sit above the card's stretched gate-entry link, or clicks on the bin field open the entry instead --}}
+                    <div class="relative z-10 mt-4">
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">Suggested bin</span>
                             <input wire:model="suggestedBin" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="e.g. BHW-PCM-A1" />
