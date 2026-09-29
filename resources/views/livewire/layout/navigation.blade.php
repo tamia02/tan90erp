@@ -101,6 +101,12 @@ new class extends Component
             'tan90.master-data.*' => ['Master Data', fn () => Tan90ModuleNavigation::forMasterData()],
             'forge.*' => ['Forge (Manufacturing)', fn () => $this->forgeItems($user, $access)],
             'flow.*' => ['Flow (Warehouse & Delivery)', fn () => $this->flowItems($user, $access)],
+            'inventory.*' => ['Inventory', fn () => [
+                ['label' => 'Items & Recipes', 'route' => 'inventory.items', 'icon' => 'list'],
+                ['label' => 'Create Bundle', 'route' => 'inventory.production', 'icon' => 'factory'],
+                ['label' => 'Dispatch', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
+                ['label' => 'Stock Summary', 'route' => 'inventory.stock', 'icon' => 'boxes'],
+            ]],
         ];
 
         $items = [];
@@ -112,6 +118,7 @@ new class extends Component
         }
 
         $modules = $this->permitted($user, $access, [
+            ['label' => 'Inventory (RM → FG → Dispatch)', 'route' => 'inventory.stock', 'icon' => 'boxes'],
             ['label' => 'BOM, Recipe & Costing', 'route' => 'tan90.brc.dashboard', 'icon' => 'flask'],
             ['label' => 'Forge (Manufacturing)', 'route' => 'forge.dashboard', 'icon' => 'factory', 'permission' => 'forge.dashboard.view'],
             ['label' => 'Flow (Warehouse & Delivery)', 'route' => 'flow.dashboard', 'icon' => 'truck', 'permission' => 'flow.dashboard.view'],

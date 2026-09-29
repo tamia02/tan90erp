@@ -415,6 +415,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('reports', 'admin.reports')->name('reports');
     });
 
+    // Inventory: RM/PM -> Create Bundle -> FG -> Dispatch, plus Trading goods.
+    Route::middleware('role:admin,storeManager')->prefix('inventory')->name('inventory.')->group(function () {
+        Volt::route('/', 'inventory.stock')->name('stock');
+        Volt::route('items', 'inventory.items')->name('items');
+        Volt::route('production', 'inventory.production')->name('production');
+        Volt::route('dispatch', 'inventory.dispatch')->name('dispatch');
+    });
+
     Route::middleware('role:admin')->group(function () {
         Volt::route('command-center', 'admin.command-center')->name('command-center');
     });
