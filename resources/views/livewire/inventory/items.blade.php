@@ -13,6 +13,12 @@ use Livewire\Volt\Component;
 
 new #[Layout('layouts.app')] class extends Component
 {
+    // New SKU Master items / GRN SKUs appear here automatically.
+    public function mount(): void
+    {
+        app(\App\Services\Inventory\InventoryService::class)->syncFromMasters();
+    }
+
     public ?int $editingId = null;
     public string $sku = '';
     public string $name = '';
@@ -145,11 +151,11 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items & Recipes', 'subtitle' => 'Mark every item as Raw Material, Packaging Material, Finished Good or Trading Good, set its current stock, and for each Finished Good list what it is made of.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items & Recipes', 'subtitle' => 'Every item from SKU Master (and anything received through GRN) is listed here automatically. Check its type (RM / PM / FG / Trading), and give each Finished Good its recipe. Use the form only for items not in SKU Master, e.g. a Finished Good you make yourself.'])
 
     <div class="grid lg:grid-cols-3 gap-5">
         <form wire:submit="save" class="rounded-2xl border p-5 space-y-3 self-start" style="background: var(--surface-3); border-color: var(--border);">
-            <h2 class="text-lg font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add item' }}</h2>
+            <h2 class="text-lg font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add item not in SKU Master' }}</h2>
             <label class="flex flex-col gap-1 text-sm"><span class="font-medium">SKU / item name (same as on the PO)</span>
                 <input wire:model="sku" list="known-skus" class="rounded-lg border px-3 py-2" style="border-color: var(--border);" placeholder="e.g. PCM Raw Compound (TN-1 Grade)">
                 <datalist id="known-skus">@foreach ($knownSkus as $known)<option value="{{ $known }}"></option>@endforeach</datalist>
@@ -207,7 +213,7 @@ new #[Layout('layouts.app')] class extends Component
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add your Raw Materials, Packaging Materials, Finished Goods and Trading Goods on the left.</td></tr>
+                            <tr><td colspan="5" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

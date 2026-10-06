@@ -147,13 +147,14 @@ new class extends Component
     // the main role's menu already links to. Empty for single-role users.
     private function extraRoleItems($user): array
     {
-        $seen = collect(RoleNavigation::forRole($user->role))->map(fn ($item) => $item['route'].json_encode($item['params'] ?? []));
+        // Headings (no 'route') never count as "already shown" links.
+        $seen = collect(RoleNavigation::forRole($user->role))->filter(fn ($item) => isset($item['route']))->map(fn ($item) => $item['route'].json_encode($item['params'] ?? []));
         $items = [];
 
         foreach ($user->extraRoles() as $role) {
             $screens = array_values(array_filter(
                 RoleNavigation::ownScreensFor($role),
-                fn ($item) => ! $seen->contains($item['route'].json_encode($item['params'] ?? [])),
+                fn ($item) => isset($item['route']) && ! $seen->contains($item['route'].json_encode($item['params'] ?? [])),
             ));
             if ($screens) {
                 $items = [...$items, ['heading' => $role->label()], ...$screens];

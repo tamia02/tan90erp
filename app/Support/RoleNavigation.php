@@ -93,6 +93,12 @@ class RoleNavigation
                 ['label' => 'Stock Balance', 'route' => 'grn.stock-balance', 'icon' => 'package-search'],
                 ['label' => 'Shelf & Bin', 'route' => 'grn.bins', 'icon' => 'warehouse'],
                 ['label' => 'Validation Issues', 'route' => 'validation.issues', 'icon' => 'list-checks'],
+                // Inventory module: SKU Master / GRN stock -> production -> dispatch.
+                ['heading' => 'Inventory'],
+                ['label' => 'Stock Summary', 'route' => 'inventory.stock', 'icon' => 'boxes'],
+                ['label' => 'Items & Recipes', 'route' => 'inventory.items', 'icon' => 'list'],
+                ['label' => 'Create Bundle', 'route' => 'inventory.production', 'icon' => 'factory'],
+                ['label' => 'Dispatch', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
             ],
             Role::Finance => [
                 ['label' => 'Dashboard', 'route' => 'finance.dashboard', 'icon' => 'gauge'],

@@ -7,6 +7,7 @@ use App\Models\Inventory\InventoryItem;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\InventoryProduction;
 use App\Models\LedgerEntry;
+use App\Models\SkuMaster;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +59,51 @@ class InventoryService
         }
 
         return $balances;
+    }
+
+    /**
+     * Every SKU Master item, and every SKU that has come in through GRN, shows
+     * up in Inventory automatically - nobody re-creates items here. Reads
+     * sku_masters / ledger_entries only (never writes them, so no Zoho push).
+     * Type is a best guess from the SKU Master category and can be changed.
+     */
+    public function syncFromMasters(): int
+    {
+        $existing = InventoryItem::pluck('sku')->map(fn ($sku) => mb_strtolower($sku))->flip();
+        $created = 0;
+
+        $candidates = SkuMaster::get(['sku', 'category', 'unit'])
+            ->map(fn ($sku) => ['sku' => $sku->sku, 'category' => $sku->category, 'unit' => $sku->unit])
+            ->concat(LedgerEntry::distinct()->pluck('sku')->map(fn ($sku) => ['sku' => $sku, 'category' => null, 'unit' => null]));
+
+        foreach ($candidates as $candidate) {
+            $sku = trim((string) $candidate['sku']);
+            if ($sku === '' || $existing->has(mb_strtolower($sku))) {
+                continue;
+            }
+            InventoryItem::create([
+                'sku' => $sku,
+                'item_type' => self::guessType($candidate['category']),
+                'unit' => strtoupper(trim((string) $candidate['unit'])) ?: 'NOS',
+                'opening_qty' => 0,
+            ]);
+            $existing->put(mb_strtolower($sku), true);
+            $created++;
+        }
+
+        return $created;
+    }
+
+    public static function guessType(?string $category): string
+    {
+        $category = mb_strtolower((string) $category);
+
+        return match (true) {
+            str_contains($category, 'pack') || preg_match('/\bpm\b/', $category) === 1 => 'pm',
+            str_contains($category, 'finish') || preg_match('/\bfg\b/', $category) === 1 => 'fg',
+            str_contains($category, 'trad') => 'trading',
+            default => 'rm',
+        };
     }
 
     public function available(InventoryItem $item): float

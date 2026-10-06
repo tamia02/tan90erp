@@ -9,6 +9,12 @@ use Livewire\Volt\Component;
 
 new #[Layout('layouts.app')] class extends Component
 {
+    // New SKU Master items / GRN SKUs appear here automatically.
+    public function mount(): void
+    {
+        app(\App\Services\Inventory\InventoryService::class)->syncFromMasters();
+    }
+
     public string $type = '';
     public ?int $historyItemId = null;
     public bool $showArchived = false;

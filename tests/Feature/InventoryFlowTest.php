@@ -188,6 +188,31 @@ class InventoryFlowTest extends TestCase
         $this->assertSame(1, LedgerEntry::count()); // GRN stock untouched
     }
 
+    public function test_new_sku_master_item_received_through_grn_shows_up_in_inventory_automatically(): void
+    {
+        \App\Models\SkuMaster::create(['sku' => 'PORM666', 'category' => 'Raw Material', 'unit' => 'kg']);
+        \App\Models\SkuMaster::create(['sku' => 'PKG-BOX-01', 'category' => 'Packaging Panels', 'unit' => 'NOS']);
+        $this->grnReceive('PORM666', 250);
+        $this->grnReceive('GRN-ONLY-SKU', 40); // received but never added to SKU Master
+
+        $manager = User::factory()->create(['role' => Role::StoreManager]);
+        $this->actingAs($manager)->get(route('inventory.stock'))->assertOk()->assertSee('PORM666')->assertSee('GRN-ONLY-SKU');
+
+        $porm = InventoryItem::where('sku', 'PORM666')->firstOrFail();
+        $this->assertSame(['rm', 'KG'], [$porm->item_type, $porm->unit]);
+        $this->assertSame('pm', InventoryItem::where('sku', 'PKG-BOX-01')->value('item_type'));
+        $this->assertSame(250.0, $this->balance($porm)['received']);
+        $this->assertSame(250.0, $this->balance($porm)['final']);
+
+        // Opening the page again never duplicates items.
+        $count = InventoryItem::count();
+        $this->actingAs($manager)->get(route('inventory.items'))->assertOk();
+        $this->assertSame($count, InventoryItem::count());
+
+        // Store Manager sees the Inventory section in their own sidebar.
+        $this->actingAs($manager)->get(route('grn.dashboard'))->assertOk()->assertSeeInOrder(['Validation Issues', 'Inventory', 'Stock Summary', 'Create Bundle']);
+    }
+
     public function test_only_admin_and_store_manager_can_open_inventory(): void
     {
         foreach (['inventory.stock', 'inventory.items', 'inventory.production', 'inventory.dispatch'] as $route) {
