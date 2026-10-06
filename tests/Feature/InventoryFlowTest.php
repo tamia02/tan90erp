@@ -149,6 +149,16 @@ class InventoryFlowTest extends TestCase
         $this->get(route('inventory.stock'))->assertOk()->assertSee('PCM Pouch 500g Blue')->assertSee('= Final');
     }
 
+    public function test_shortage_message_clears_when_quantity_changes(): void
+    {
+        $this->actingAs($this->admin);
+
+        Volt::test('inventory.production')
+            ->set('fgItemId', (string) $this->fg->id)
+            ->set('qty', '500')->call('produce')->assertHasErrors()
+            ->set('qty', '20')->assertHasNoErrors();
+    }
+
     public function test_remove_deletes_unused_items_and_archives_used_ones(): void
     {
         $this->actingAs($this->admin);

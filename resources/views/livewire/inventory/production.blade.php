@@ -26,6 +26,14 @@ new #[Layout('layouts.app')] class extends Component
         $this->resetValidation();
     }
 
+    // Changing qty/wastage invalidates the last "Not enough ..." message.
+    public function updated(string $property): void
+    {
+        if ($property === 'qty' || str_starts_with($property, 'wastage')) {
+            $this->resetValidation();
+        }
+    }
+
     public function produce(InventoryService $inventory): void
     {
         $this->validate([
