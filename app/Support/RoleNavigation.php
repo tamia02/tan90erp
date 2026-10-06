@@ -88,6 +88,7 @@ class RoleNavigation
                 ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Entry Approvals', 'route' => 'store-manager.entry-approvals', 'icon' => 'check-circle'],
                 ['label' => 'PO Master', 'route' => 'admin.po', 'icon' => 'file-text'],
+                ['label' => 'SKU Master', 'route' => 'admin.sku', 'icon' => 'package'],
                 ['label' => 'GRN Check', 'route' => 'grn.check', 'icon' => 'clipboard-check'],
                 ['label' => 'GRN Register', 'route' => 'grn.register', 'icon' => 'layout-list'],
                 ['label' => 'Stock Balance', 'route' => 'grn.stock-balance', 'icon' => 'package-search'],

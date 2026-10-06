@@ -402,10 +402,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('ap-aging', 'finance.ap-aging')->name('ap-aging');
     });
 
+    // SKU Master: Store Manager adds the SKUs they raise POs for (client ask).
+    Route::middleware('role:admin,storeManager')->prefix('admin')->name('admin.')->group(function () {
+        Volt::route('sku', 'admin.sku-master')->name('sku');
+    });
+
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
         Volt::route('/', 'admin.overview')->name('dashboard');
         Volt::route('users', 'admin.users')->name('users');
-        Volt::route('sku', 'admin.sku-master')->name('sku');
         Volt::route('vendors', 'admin.vendor-master')->name('vendors');
         Volt::route('rfq', 'admin.rfq')->name('rfq');
         Volt::route('quote-comparison', 'admin.quote-comparison')->name('quote-comparison');

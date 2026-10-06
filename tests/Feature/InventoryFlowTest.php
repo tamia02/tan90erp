@@ -213,6 +213,40 @@ class InventoryFlowTest extends TestCase
         $this->actingAs($manager)->get(route('grn.dashboard'))->assertOk()->assertSeeInOrder(['Validation Issues', 'Inventory', 'Stock Summary', 'Create Bundle']);
     }
 
+    public function test_store_manager_adds_sku_raises_and_releases_po_then_grn_stock_shows_in_inventory(): void
+    {
+        $manager = User::factory()->create(['role' => Role::StoreManager]);
+        $vendor = \App\Models\VendorMaster::create(['vendor_name' => 'PORM Test Vendor', 'gst_number' => '27AABCP1234Q1Z5', 'contact_phone' => '+91 22 0000 0000', 'category' => 'Raw Material', 'active' => true]);
+        $this->actingAs($manager);
+
+        $this->get(route('grn.dashboard'))->assertOk()->assertSee('SKU Master');
+        $this->get(route('admin.sku'))->assertOk();
+        Volt::test('admin.sku-master')
+            ->set('sku', 'PORM666')->set('category', 'PCM — Raw Material')->set('unit', 'KG')
+            ->call('addSku')->assertHasNoErrors();
+        $this->assertDatabaseHas('sku_masters', ['sku' => 'PORM666']);
+
+        Volt::test('admin.po-master')
+            ->set('purchaseNature', 'Raw Material')
+            ->call('selectVendor', $vendor->vendor_name)
+            ->set('poNumber', 'PO-PORM666-1')
+            ->set('billingBuilding', 'Tan90 Office')->set('billingStreet', 'MIDC Road')->set('billingCity', 'Thane')
+            ->set('billingState', 'Maharashtra')->set('billingZip', '400604')
+            ->set('items.0.product', 'PORM666')->set('items.0.hsnSac', '3824')
+            ->set('items.0.quantity', '250')->set('items.0.uom', 'KG')->set('items.0.listPrice', '40')
+            ->call('saveAndSubmit')->assertHasNoErrors();
+        $po = \App\Models\PurchaseOrder::where('po_number', 'PO-PORM666-1')->firstOrFail();
+        Volt::test('admin.po-master')->call('releasePo', $po->id)->assertHasNoErrors();
+        $this->assertNotNull($po->fresh()->released_at);
+
+        $this->grnReceive('PORM666', 250); // what GRN posting writes after gate -> unloading -> QC
+
+        $this->get(route('inventory.stock'))->assertOk()->assertSee('PORM666');
+        $porm = InventoryItem::where('sku', 'PORM666')->firstOrFail();
+        $this->assertSame('rm', $porm->item_type);
+        $this->assertSame(250.0, $this->balance($porm)['final']);
+    }
+
     public function test_only_admin_and_store_manager_can_open_inventory(): void
     {
         foreach (['inventory.stock', 'inventory.items', 'inventory.production', 'inventory.dispatch'] as $route) {
