@@ -54,6 +54,8 @@ new #[Layout('layouts.app')] class extends Component
     public function deleteSku(int $id): void
     {
         $entry = SkuMaster::findOrFail($id);
+        // Zoho is the source of truth: a Zoho item would only come back on the next sync.
+        abort_if($entry->zoho_item_id, 403, 'This item is managed in Zoho. Mark it inactive in Zoho instead.');
         AuditLogger::log('SKU removed from master', $entry->sku);
         $entry->delete();
     }
@@ -69,8 +71,8 @@ new #[Layout('layouts.app')] class extends Component
         <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
                 <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Admin Module</div>
-                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">SKU Master</h1>
-                <p class="text-sm mt-1" style="color: var(--text-secondary);">Every product, matching the client's Zoho CRM Products module — Guard Bill Scan checks mapped status against this list.</p>
+                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Items</h1>
+                <p class="text-sm mt-1" style="color: var(--text-secondary);">Items are managed in <b>Zoho Inventory</b> (the source of truth) and sync here automatically - create or edit them in Zoho. Guard Bill Scan checks mapped status against this list.</p>
             </div>
             <button wire:click="$toggle('adding')" class="inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
                 {{ $adding ? 'Cancel' : 'Add SKU' }}
@@ -158,7 +160,7 @@ new #[Layout('layouts.app')] class extends Component
                             <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ $s->category ?: '—' }}</td>
                             <td class="px-4 py-2.5">{{ $s->mapped ? 'Yes' : 'No' }}</td>
                             <td class="px-4 py-2.5 text-right">
-                                <button wire:click="deleteSku({{ $s->id }})" wire:confirm="Remove {{ $s->sku }}?" style="color: var(--status-critical);">Remove</button>
+                                @if ($s->zoho_item_id)<span class="text-xs font-semibold" style="color: var(--brand);" title="Managed in Zoho">Zoho</span>@else<button wire:click="deleteSku({{ $s->id }})" wire:confirm="Remove {{ $s->sku }}?" style="color: var(--status-critical);">Remove</button>@endif
                             </td>
                         </tr>
                         @if ($expanded === $s->id)

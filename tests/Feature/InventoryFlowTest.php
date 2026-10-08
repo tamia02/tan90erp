@@ -229,7 +229,7 @@ class InventoryFlowTest extends TestCase
         $vendor = \App\Models\VendorMaster::create(['vendor_name' => 'PORM Test Vendor', 'gst_number' => '27AABCP1234Q1Z5', 'contact_phone' => '+91 22 0000 0000', 'category' => 'Raw Material', 'active' => true]);
         $this->actingAs($manager);
 
-        $this->get(route('grn.dashboard'))->assertOk()->assertSee('SKU Master');
+        $this->get(route('grn.dashboard'))->assertOk()->assertSee('Items (Zoho)');
         $this->get(route('admin.sku'))->assertOk();
         Volt::test('admin.sku-master')
             ->set('sku', 'PORM666')->set('category', 'PCM — Raw Material')->set('unit', 'KG')

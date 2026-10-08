@@ -132,4 +132,18 @@ return [
         'api_url' => env('CLAUDE_API_URL', 'https://api.anthropic.com/v1'),
     ],
 
+    // Zoho -> ERP item pull (Zoho is the source of truth for Items). READ-ONLY:
+    // only GET calls. Uses the ZOHO_DISCOVERY_* key when present (the client's
+    // real org, kept apart from the push integration), else the Inventory key.
+    'zoho_items_pull' => [
+        'organization_id' => env('ZOHO_DISCOVERY_ORGANIZATION_ID', env('ZOHO_INVENTORY_ORGANIZATION_ID')),
+        'refresh_token' => env('ZOHO_DISCOVERY_REFRESH_TOKEN', env('ZOHO_INVENTORY_REFRESH_TOKEN')),
+        'client_id' => env('ZOHO_DISCOVERY_CLIENT_ID', env('ZOHO_INVENTORY_CLIENT_ID', env('ZOHO_CLIENT_ID'))),
+        'client_secret' => env('ZOHO_DISCOVERY_CLIENT_SECRET', env('ZOHO_INVENTORY_CLIENT_SECRET', env('ZOHO_CLIENT_SECRET'))),
+        'accounts_url' => env('ZOHO_ACCOUNTS_BASE_URL', 'https://accounts.zoho.in'),
+        'api_base_url' => env('ZOHO_DISCOVERY_API_BASE_URL', env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1')),
+        // Off until approved: when true the item pull runs hourly.
+        'schedule_enabled' => env('ZOHO_ITEMS_PULL_ENABLED', false),
+    ],
+
 ];

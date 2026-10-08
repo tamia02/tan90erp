@@ -137,6 +137,15 @@ class AppServiceProvider extends ServiceProvider
                 ->command(SyncZohoInventoryPurchaseOrders::class)
                 ->cron("*/{$minutes} * * * *")
                 ->withoutOverlapping();
+
+            // Zoho is the source of truth for Items: hourly GET-only pull, off
+            // until ZOHO_ITEMS_PULL_ENABLED=true.
+            if (config('services.zoho_items_pull.schedule_enabled')) {
+                $this->app->make(Schedule::class)
+                    ->command('zoho:pull-items')
+                    ->hourly()
+                    ->withoutOverlapping();
+            }
         });
     }
 }

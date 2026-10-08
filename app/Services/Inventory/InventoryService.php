@@ -9,6 +9,7 @@ use App\Models\Inventory\InventoryProduction;
 use App\Models\LedgerEntry;
 use App\Models\SkuMaster;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -81,12 +82,20 @@ class InventoryService
             if ($sku === '' || $existing->has(mb_strtolower($sku))) {
                 continue;
             }
-            InventoryItem::create([
-                'sku' => $sku,
-                'item_type' => self::guessType($candidate['category']),
-                'unit' => strtoupper(trim((string) $candidate['unit'])) ?: 'NOS',
-                'opening_qty' => 0,
-            ]);
+            try {
+                InventoryItem::create([
+                    'sku' => $sku,
+                    'item_type' => self::guessType($candidate['category']),
+                    'unit' => strtoupper(trim((string) $candidate['unit'])) ?: 'NOS',
+                    'opening_qty' => 0,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                // MySQL's collation treats some names as equal that PHP doesn't
+                // (accents, trailing spaces) - the item already exists, skip it.
+                $existing->put(mb_strtolower($sku), true);
+
+                continue;
+            }
             $existing->put(mb_strtolower($sku), true);
             $created++;
         }

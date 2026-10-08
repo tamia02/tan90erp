@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
     'unit_price', 'tax', 'commission_rate', 'taxable',
     'quantity_in_stock', 'handler', 'qty_ordered', 'reorder_level', 'quantity_in_demand',
     'description',
+    'zoho_item_id', 'zoho_item_type', 'zoho_is_composite', 'zoho_tags', 'zoho_hsn', 'zoho_synced_at',
 ])]
 class SkuMaster extends Model
 {
@@ -24,6 +25,8 @@ class SkuMaster extends Model
             'mapped' => 'boolean',
             'active' => 'boolean',
             'taxable' => 'boolean',
+            'zoho_is_composite' => 'boolean',
+            'zoho_synced_at' => 'datetime',
             'sales_start_date' => 'date',
             'sales_end_date' => 'date',
             'support_start_date' => 'date',
