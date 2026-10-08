@@ -4,8 +4,6 @@ namespace App\Services\Zoho;
 
 use App\Models\Inventory\InventoryItem;
 use App\Models\SkuMaster;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 // Zoho is the source of truth for Items. This pulls EVERY Zoho item (active and
@@ -25,14 +23,11 @@ class ZohoItemPullService
         'trading' => 'Zoho — Trading Good',
     ];
 
-    private int $apiCalls = 0;
+    public function __construct(private ZohoReadClient $zoho) {}
 
     public function configured(): bool
     {
-        $c = config('services.zoho_items_pull');
-
-        return filled($c['organization_id'] ?? null) && filled($c['refresh_token'] ?? null)
-            && filled($c['client_id'] ?? null) && filled($c['client_secret'] ?? null);
+        return $this->zoho->configured();
     }
 
     /** @return array<string, int|array> */
@@ -42,7 +37,7 @@ class ZohoItemPullService
             throw new RuntimeException('Zoho item pull is not configured (organization id / refresh token / client).');
         }
 
-        $items = $this->fetchAllItems();
+        $items = $this->zoho->all('/items', 'items');
         $nameCounts = collect($items)->countBy(fn ($i) => mb_strtolower(self::cleanName((string) $i['name'])));
 
         $stats = ['fetched' => count($items), 'created' => 0, 'updated' => 0, 'duplicate_names' => 0, 'by_type' => []];
@@ -96,7 +91,7 @@ class ZohoItemPullService
             $this->syncInventoryItem($oldSku, $values, $type);
         }
 
-        $stats['api_calls'] = $this->apiCalls;
+        $stats['api_calls'] = $this->zoho->calls;
 
         return $stats;
     }
@@ -149,55 +144,6 @@ class ZohoItemPullService
             'unit' => $values['unit'],
             'active' => $values['active'],
         ])->save();
-    }
-
-    /** @return array<int, array> */
-    private function fetchAllItems(): array
-    {
-        $items = [];
-        for ($page = 1; $page <= 60; $page++) {
-            $body = $this->get('/items', ['page' => $page, 'per_page' => 200]);
-            $items = [...$items, ...($body['items'] ?? [])];
-            if (! ($body['page_context']['has_more_page'] ?? false)) {
-                break;
-            }
-        }
-
-        return $items;
-    }
-
-    private function get(string $path, array $query = []): array
-    {
-        $c = config('services.zoho_items_pull');
-        $this->apiCalls++;
-        $response = Http::withHeaders(['Authorization' => 'Zoho-oauthtoken '.$this->accessToken()])
-            ->timeout(40)->retry(2, 1500, throw: false)
-            ->get(rtrim($c['api_base_url'], '/').$path, $query + ['organization_id' => $c['organization_id']]);
-
-        if (! $response->successful()) {
-            throw new RuntimeException("Zoho GET {$path} failed ({$response->status()}): ".($response->json('message') ?? 'no message'));
-        }
-
-        return $response->json() ?? [];
-    }
-
-    private function accessToken(): string
-    {
-        $c = config('services.zoho_items_pull');
-
-        return Cache::remember('zoho_items_pull_token:'.md5($c['client_id'].$c['organization_id']), now()->addMinutes(50), function () use ($c) {
-            $this->apiCalls++;
-            $response = Http::asForm()->timeout(20)->post(rtrim($c['accounts_url'], '/').'/oauth/v2/token', [
-                'refresh_token' => $c['refresh_token'], 'client_id' => $c['client_id'],
-                'client_secret' => $c['client_secret'], 'grant_type' => 'refresh_token',
-            ]);
-            $token = $response->json('access_token');
-            if (! $token) {
-                throw new RuntimeException('Zoho token refresh failed: '.($response->json('error') ?? $response->status()));
-            }
-
-            return $token;
-        });
     }
 
     /** @return array<int, string> */

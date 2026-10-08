@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
     'unit_price', 'tax', 'commission_rate', 'taxable',
     'quantity_in_stock', 'handler', 'qty_ordered', 'reorder_level', 'quantity_in_demand',
     'description',
-    'zoho_item_id', 'zoho_item_type', 'zoho_is_composite', 'zoho_tags', 'zoho_hsn', 'zoho_synced_at',
+    'zoho_item_id', 'zoho_item_type', 'zoho_is_composite', 'zoho_tags', 'zoho_hsn', 'zoho_synced_at', 'zoho_recipe_modified_at',
 ])]
 class SkuMaster extends Model
 {
