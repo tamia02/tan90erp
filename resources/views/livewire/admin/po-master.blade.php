@@ -6,6 +6,7 @@ use App\Models\PurchaseOrderCustomFieldDefinition;
 use App\Models\PurchaseOrderTermsTemplate;
 use App\Models\User;
 use App\Models\VendorMaster;
+use App\Models\ZohoFieldDefinition;
 use App\Models\Tan90\MasterData\Customer;
 use App\Models\Tan90\MasterData\Location;
 use App\Models\Tan90\MasterData\Warehouse;
@@ -57,6 +58,8 @@ new #[Layout('layouts.app')] class extends Component
     public string $warehouseSearch = '';
     public string $termsAndConditions = '';
     public array $headerCustomFields = [];
+    // Zoho Inventory PO custom fields (zoho_field_definitions), keyed by Zoho api_name.
+    public array $zohoFields = [];
     public bool $reverseCharge = false;
     public array $attachments = [];
     public string $vendorSearch = '';
@@ -410,6 +413,21 @@ new #[Layout('layouts.app')] class extends Component
             'attachments.*' => ['file', 'max:10240'],
         ]);
 
+        // Zoho's PO custom fields: same required flags / dropdown values as Zoho.
+        $zohoRules = [];
+        $zohoNames = [];
+        foreach (ZohoFieldDefinition::forEntity('purchaseorder')->get() as $definition) {
+            $builtIn = ZohoFieldDefinition::PO_BUILT_IN[$definition->api_name] ?? null;
+            $key = $builtIn ?? 'zohoFields.'.$definition->api_name;
+            $zohoRules[$key] = $builtIn === 'validUpto'
+                ? [$definition->is_mandatory ? 'required' : 'nullable', 'date', 'after_or_equal:poDate']
+                : $definition->rules();
+            $zohoNames[$key] = $definition->label;
+        }
+        if ($zohoRules) {
+            $this->validate($zohoRules, [], $zohoNames);
+        }
+
         $taxService = app(PurchaseOrderTaxService::class);
         if ($this->termsTemplateId !== '') {
             $template = PurchaseOrderTermsTemplate::whereKey($this->termsTemplateId)->where('material_type', $this->materialType)->where('active', true)->first();
@@ -458,6 +476,7 @@ new #[Layout('layouts.app')] class extends Component
             'warehouse_location' => $this->warehouseLocation ?: null,
             'terms_and_conditions' => $this->termsAndConditions ?: null,
             'header_custom_fields' => $headerValues,
+            'zoho_custom_fields' => array_filter($this->zohoFields, fn ($value) => $value !== '' && $value !== null) ?: null,
         ]);
 
         foreach ($this->items as $item) {
@@ -501,7 +520,7 @@ new #[Layout('layouts.app')] class extends Component
 
         AuditLogger::log($releaseToVendor ? 'Purchase Order released to vendor' : ($submit ? 'Purchase Order submitted for release' : 'Purchase Order saved as draft'), "{$po->po_number} · {$po->vendor_name}", $po);
 
-        $this->reset(['poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'materialType', 'pdfTemplate', 'termsTemplateId', 'shipmentPreference', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'headerCustomFields', 'reverseCharge', 'attachments', 'vendorSearch', 'adding', 'shippingAddressMode', 'sameAsBillingAddress']);
+        $this->reset(['poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'materialType', 'pdfTemplate', 'termsTemplateId', 'shipmentPreference', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'headerCustomFields', 'zohoFields', 'reverseCharge', 'attachments', 'vendorSearch', 'adding', 'shippingAddressMode', 'sameAsBillingAddress']);
         $this->billingCountry = $this->shippingCountry = 'India';
         $this->purchaseNature = '';
         $this->materialType = '';
@@ -517,7 +536,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function cancelPo(): void
     {
-        $this->reset(['adding', 'poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'headerCustomFields', 'attachments', 'vendorSearch', 'shippingAddressMode', 'sameAsBillingAddress']);
+        $this->reset(['adding', 'poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'headerCustomFields', 'zohoFields', 'attachments', 'vendorSearch', 'shippingAddressMode', 'sameAsBillingAddress']);
         $this->items = [['product' => '', 'hsnSac' => '', 'quantity' => '', 'uom' => 'PCS', 'listPrice' => '', 'customFields' => []]];
         $this->billingCountry = $this->shippingCountry = 'India';
         $this->materialType = '';
@@ -701,6 +720,8 @@ new #[Layout('layouts.app')] class extends Component
                 $q->where('vendor_name', 'like', $term)->orWhere('gst_number', 'like', $term);
             }))->orderBy('vendor_name')->limit(50)->get(),
             'loginVendorNames' => $loginVendorNames,
+            'zohoPoFields' => ZohoFieldDefinition::forEntity('purchaseorder')->whereNotIn('api_name', array_keys(ZohoFieldDefinition::PO_BUILT_IN))->get(),
+            'validUptoRequired' => ZohoFieldDefinition::forEntity('purchaseorder')->where('api_name', 'cf_po_valid_upto')->where('is_mandatory', true)->exists(),
             'headerFieldDefinitions' => PurchaseOrderCustomFieldDefinition::where('scope', 'header')->where('active', true)->where(fn ($query) => $query->whereNull('material_type')->orWhere('material_type', $this->materialType))->orderBy('sort_order')->orderBy('label')->get(),
             'itemFieldDefinitions' => PurchaseOrderCustomFieldDefinition::where('scope', 'item')->where('active', true)->where(fn ($query) => $query->whereNull('material_type')->orWhere('material_type', $this->materialType))->orderBy('sort_order')->orderBy('label')->get(),
             'termsTemplates' => PurchaseOrderTermsTemplate::where('material_type', $this->materialType)->where('active', true)->orderBy('name')->get(),
@@ -888,7 +909,7 @@ new #[Layout('layouts.app')] class extends Component
                 <input wire:model="referenceNumber" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="PR / project reference" />
             </label>
             <label class="flex flex-col gap-1.5 text-sm">
-                <span class="font-medium" style="color: var(--text-primary);">Valid up to</span>
+                <span class="font-medium" style="color: var(--text-primary);">{{ $validUptoRequired ? 'PO Valid Upto *' : 'Valid up to' }}</span>
                 <input wire:model="validUpto" type="date" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
                 @error('validUpto') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
@@ -970,6 +991,36 @@ new #[Layout('layouts.app')] class extends Component
                     @endforeach
                 </div>
             </div>
+            @if ($zohoPoFields->isNotEmpty())
+                <div class="sm:col-span-3 rounded-lg border p-3" style="border-color: var(--border);">
+                    <div class="text-xs font-semibold uppercase tracking-wide mb-1" style="color: var(--text-muted);">Zoho Inventory fields</div>
+                    <p class="text-xs mb-2" style="color: var(--text-muted);">Same fields as the Purchase Order in Zoho. Fields marked * are required in Zoho.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        @foreach ($zohoPoFields as $field)
+                            <label class="flex flex-col gap-1 text-sm" wire:key="zoho-po-field-{{ $field->api_name }}">
+                                <span class="font-medium" style="color: var(--text-primary);">{{ $field->label }}{{ $field->is_mandatory ? ' *' : '' }}</span>
+                                @switch($field->inputType())
+                                    @case('select')
+                                        <select wire:model="zohoFields.{{ $field->api_name }}" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                                            <option value="">Select…</option>
+                                            @foreach ($field->options ?? [] as $option)<option value="{{ $option }}">{{ $option }}</option>@endforeach
+                                        </select>
+                                        @break
+                                    @case('textarea')
+                                        <textarea wire:model="zohoFields.{{ $field->api_name }}" rows="2" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);"></textarea>
+                                        @break
+                                    @case('checkbox')
+                                        <input wire:model="zohoFields.{{ $field->api_name }}" type="checkbox" class="self-start mt-1">
+                                        @break
+                                    @default
+                                        <input wire:model="zohoFields.{{ $field->api_name }}" type="{{ $field->inputType() }}" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
+                                @endswitch
+                                @error('zohoFields.'.$field->api_name) <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
             <label class="sm:col-span-3 flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">Notes / terms &amp; conditions</span>
                 @if ($termsTemplates->isNotEmpty())

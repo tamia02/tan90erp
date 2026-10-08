@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'po_date', 'due_date', 'status', 'submitted_at', 'released_at', 'carrier', 'tracking_number', 'excise_duty', 'sales_commission',
     'billing_country', 'billing_building', 'billing_street', 'billing_city', 'billing_state', 'billing_zip',
     'shipping_country', 'shipping_building', 'shipping_street', 'shipping_city', 'shipping_state', 'shipping_zip',
-    'discount', 'tax', 'adjustment', 'terms_and_conditions', 'description', 'reference_number', 'payment_terms', 'valid_upto', 'purchase_nature', 'material_type', 'terms_template_id', 'shipment_preference', 'reverse_charge', 'tax_level', 'warehouse_location', 'header_custom_fields', 'attachments', 'pdf_template',
+    'discount', 'tax', 'adjustment', 'terms_and_conditions', 'description', 'reference_number', 'payment_terms', 'valid_upto', 'purchase_nature', 'material_type', 'terms_template_id', 'shipment_preference', 'reverse_charge', 'tax_level', 'warehouse_location', 'header_custom_fields', 'zoho_custom_fields', 'attachments', 'pdf_template',
 ])]
 class PurchaseOrder extends Model
 {
@@ -34,6 +34,7 @@ class PurchaseOrder extends Model
             'tax' => 'decimal:2',
             'adjustment' => 'decimal:2',
             'header_custom_fields' => 'array',
+            'zoho_custom_fields' => 'array',
             'attachments' => 'array',
         ];
     }

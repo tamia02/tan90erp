@@ -145,6 +145,15 @@ class AppServiceProvider extends ServiceProvider
                     ->command('zoho:pull-items')
                     ->hourly()
                     ->withoutOverlapping();
+                $this->app->make(Schedule::class)
+                    ->command('zoho:pull-fields')
+                    ->hourly()
+                    ->withoutOverlapping();
+                // Incremental: only composites changed in Zoho are re-fetched.
+                $this->app->make(Schedule::class)
+                    ->command('zoho:pull-recipes')
+                    ->hourlyAt(20)
+                    ->withoutOverlapping();
             }
         });
     }
