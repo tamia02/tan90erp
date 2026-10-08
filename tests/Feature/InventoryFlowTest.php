@@ -7,6 +7,8 @@ use App\Models\GateEntry;
 use App\Models\Inventory\InventoryItem;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\LedgerEntry;
+use App\Models\Outward\OutwardShipment;
+use App\Models\Tan90\MasterData\Location;
 use App\Models\User;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -95,7 +97,7 @@ class InventoryFlowTest extends TestCase
         $service->produce($this->fg, 40, [], null, $this->admin);
 
         $dispatch = $service->dispatch($this->fg, 15, 'Cold Chain Foods', 'INV-1', null, $this->admin);
-        $this->assertSame('DSP-00001', $dispatch->number);
+        $this->assertSame(sprintf('DSP-%05d', $dispatch->id), $dispatch->number);
         $fg = $this->balance($this->fg);
         $this->assertSame(15.0, $fg['dispatched']);
         $this->assertSame(25.0, $fg['final']);
@@ -133,13 +135,25 @@ class InventoryFlowTest extends TestCase
             ->assertHasNoErrors();
         $this->assertSame(10.0, $this->balance($this->fg)['final']);
 
-        Volt::test('inventory.dispatch')
-            ->set('itemId', (string) $this->fg->id)
-            ->set('qty', '4')
-            ->set('customerName', 'Cold Chain Foods')
-            ->call('dispatchGoods')
+        // Outward: same-GSTIN transfer under Rs 50,000 = Delivery Challan only, ready at once.
+        $chennai = Location::create(['code' => 'CHN', 'name' => 'Chennai', 'state' => 'Tamil Nadu', 'city' => 'Chennai', 'gstin' => '33AAGCT9099K1ZP']);
+        $page = Volt::test('inventory.dispatch')
+            ->set('purpose', 'transfer')
+            ->set('fromLocationId', (string) $chennai->id)
+            ->set('toLocationId', (string) $chennai->id)
+            ->set('lines', [['item' => 'PCM Pouch 500g Blue', 'qty' => '4', 'rate' => '100']])
+            ->call('createShipment')
             ->assertHasNoErrors();
+        $shipment = OutwardShipment::sole();
+        $this->assertSame(['delivery_challan', 'ready'], [$shipment->document_type, $shipment->status]);
+        $this->assertSame(10.0, $this->balance($this->fg)['final']);
+        $page->call('dispatchShipment', $shipment->id)->assertHasNoErrors();
         $this->assertSame(6.0, $this->balance($this->fg)['final']);
+        $page->set('purpose', 'transfer')->set('fromLocationId', (string) $chennai->id)->set('toLocationId', (string) $chennai->id)
+            ->set('lines', [['item' => 'PCM Pouch 500g Blue', 'qty' => '999', 'rate' => '0']])->call('createShipment');
+        $page->call('dispatchShipment', OutwardShipment::latest('id')->value('id'))->assertHasErrors('dispatch')->assertSee('in stock.');
+        $this->assertSame(6.0, $this->balance($this->fg)['final']);
+        $this->get(route('inventory.outward.challan', $shipment))->assertOk()->assertSee($shipment->challan_number)->assertSee('DELIVERY CHALLAN');
 
         Volt::test('inventory.items')
             ->set('sku', 'New Trading Item')->set('itemType', 'trading')->set('unit', 'box')->set('openingQty', '5')

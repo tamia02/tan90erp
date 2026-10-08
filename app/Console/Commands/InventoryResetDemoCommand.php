@@ -15,7 +15,7 @@ class InventoryResetDemoCommand extends Command
 
     protected $description = 'Delete all Inventory module items, recipes, productions and dispatches (local/demo only).';
 
-    private const TABLES = ['inventory_movements', 'inventory_dispatches', 'inventory_productions', 'inventory_bom_lines', 'inventory_items'];
+    private const TABLES = ['outward_shipment_lines', 'outward_shipments', 'inventory_movements', 'inventory_dispatches', 'inventory_productions', 'inventory_bom_lines', 'inventory_items'];
 
     public function handle(): int
     {

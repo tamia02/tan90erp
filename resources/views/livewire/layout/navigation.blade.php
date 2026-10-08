@@ -104,7 +104,7 @@ new class extends Component
             'inventory.*' => ['Inventory', fn () => [
                 ['label' => 'Items & Recipes', 'route' => 'inventory.items', 'icon' => 'list'],
                 ['label' => 'Create Bundle', 'route' => 'inventory.production', 'icon' => 'factory'],
-                ['label' => 'Dispatch', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
+                ['label' => 'Outward Shipment', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
                 ['label' => 'Stock Summary', 'route' => 'inventory.stock', 'icon' => 'boxes'],
             ]],
         ];

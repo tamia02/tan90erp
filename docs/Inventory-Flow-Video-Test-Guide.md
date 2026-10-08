@@ -18,7 +18,7 @@ Total time: about 10 minutes. The numbers below match the local demo data, which
 2. Open http://127.0.0.1:8000 and log in as **Super Admin**: click the *Super Admin* card, or use `admin@tan90.test` / `demo123`.
 3. In the left menu, under **All Modules**, click **Inventory (RM → FG → Dispatch)**.
 
-*Say:* "The new Inventory module has 4 steps, shown as tabs at the top: Items & Recipes, Create Bundle, Dispatch and Stock Summary."
+*Say:* "The new Inventory module has 4 steps, shown as tabs at the top: Items & Recipes, Create Bundle, Outward Shipment and Stock Summary."
 
 ---
 
@@ -73,22 +73,30 @@ Click tab **2. Create Bundle (Production)**.
 
 ---
 
-## 3. Dispatch – sell Finished Goods and Trading goods
+## 3. Outward Shipment – the GST way (Tax Invoice / Delivery Challan, IRN, E-Way Bill)
 
-Click tab **3. Dispatch**.
+Click tab **3. Outward Shipment**. Choose the **purpose**; the blue box then tells you which documents are needed and why.
 
-**A. Finished Good**
-- Item: **500gm PCM Pouch - Blue** (the list shows "1000 NOS in stock")
-- Quantity **500**, Customer **ABC Cold Chain Pvt Ltd**, Invoice/SO **SO-1001**
-- Click **Dispatch & update stock** → ✅ "DSP-00001: dispatched 500 NOS…"
+| Purpose | Receiver | Documents |
+|---|---|---|
+| Sales Order | customer **with** GSTIN (B2B) | Tax Invoice + e-Invoice IRN + E-Way Bill |
+| Sales Order | customer **without** GSTIN (B2C) | Tax Invoice; E-Way Bill only above Rs 50,000 |
+| Transfer / Job Work | **different** GSTIN | Tax Invoice + IRN + E-Way Bill |
+| Transfer / Job Work | **same** GSTIN | Delivery Challan; E-Way Bill only above Rs 50,000 or inter-state job work |
 
-**Safety test:** dispatch **600** of the same item → ✅ **blocked**: "Only 500 NOS of 500gm PCM Pouch - Blue in stock."
+**A. B2B sale of a Finished Good**
+- Purpose **Sales Order**, From **Chennai**, Customer **Pharma Distribution Demo** (has GSTIN)
+- Item **500gm PCM Pouch - Blue**, Qty **500**, Rate **100** → blue box: *Tax Invoice + e-Invoice IRN + E-Way Bill*
+- **Create outward shipment** → ✅ "OUT-0000x created … Add the documents below". No *Mark dispatched* button yet, stock unchanged.
+- Your team makes the invoice, IRN and E-Way Bill on the government portals, then fills in the numbers and uploads the files → **Save documents** → ✅ "all documents in - ready to dispatch".
+- **Mark dispatched** → ✅ "dispatched - stock has been deducted". Stock goes down only now.
 
-**B. Trading good (no production needed)**
-- Item: **Hand Gloves (PPE) — Bulk Pack**, Quantity **100**, Customer **XYZ Traders**
-- ✅ "DSP-00002: dispatched 100 BOX…"
+**B. Transfer to a branch with the same GSTIN** (no tax invoice)
+- Purpose **Transfer Order**, From **Chennai**, To **Chennai**, small value → *Delivery Challan (print challan only)*. It is ready at once: **Print challan**, then **Mark dispatched**.
 
-> Only Finished Goods and Trading Goods appear in this list. Raw and packaging materials can't be dispatched.
+**Safety test:** a shipment for more than you have in stock → **Mark dispatched** is ✅ **blocked**: "Only … in stock." Nothing is deducted.
+
+> Sales can only include Finished Goods and Trading Goods. Transfers and Job Work may also send raw or packaging material.
 
 ---
 
@@ -125,7 +133,8 @@ Receive more PCM Raw Compound through the normal flow: Guard gate entry → Unlo
 - [ ] Production is blocked when material is short
 - [ ] FG added on production, reduced on dispatch
 - [ ] Trading goods dispatch without production
-- [ ] RM/PM can't be dispatched; you can't dispatch more than is in stock
+- [ ] RM/PM can't be sold (transfers/job work may send them); you can't dispatch more than is in stock
+- [ ] B2B sale can't be dispatched until Invoice, IRN and E-Way Bill are uploaded
 - [ ] Stock Summary matches the formula; History shows every movement
 
 **Who can use it:** Super Admin and Store Manager (including anyone with Store Manager as an extra role). Other roles get "no access".

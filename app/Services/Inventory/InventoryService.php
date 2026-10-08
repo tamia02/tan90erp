@@ -176,9 +176,10 @@ class InventoryService
         });
     }
 
-    public function dispatch(InventoryItem $item, float $qty, string $customer, ?string $reference, ?string $notes, User $user): InventoryDispatch
+    // $anyItemType: transfers / job work may also send out RM or PM; sales stay FG/Trading only.
+    public function dispatch(InventoryItem $item, float $qty, string $customer, ?string $reference, ?string $notes, User $user, bool $anyItemType = false): InventoryDispatch
     {
-        if (! in_array($item->item_type, InventoryItem::SELLABLE_TYPES, true)) {
+        if (! $anyItemType && ! in_array($item->item_type, InventoryItem::SELLABLE_TYPES, true)) {
             throw ValidationException::withMessages(['itemId' => 'Only Finished Goods and Trading Goods can be dispatched.']);
         }
         if ($qty <= 0) {

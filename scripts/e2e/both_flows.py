@@ -3,7 +3,8 @@
 Flow 1: Store Manager PO -> release -> Guard gate entry -> approval -> unloading
         (with POD) -> QC -> GRN -> putaway -> stock shows in Stock Balance + Inventory.
 Flow 2: Inventory -> top up packaging stock -> Create Bundle (Zoho recipe) ->
-        Dispatch (+ over-dispatch must be blocked) -> Stock Summary.
+        Outward Shipment (B2B sale: upload Invoice/IRN/E-Way Bill, then dispatch;
+        challan transfer over stock must be blocked) -> Stock Summary.
 
 Usage (from the project folder; needs Python + Playwright, MySQL and `php artisan serve`):
     python scripts/e2e/both_flows.py            # both flows, headless
@@ -71,6 +72,15 @@ def tick_all(page):
     for box in page.locator("input[type=checkbox]").all():
         if box.is_visible() and not box.is_checked():
             box.check()
+
+
+def upload(page, model, path):
+    """Pick a file and wait until Livewire has finished uploading it (clicking Save earlier loses the file)."""
+    sel = f"[wire\\:model='{model}']"
+    page.evaluate("() => { window.__upDone = false; document.addEventListener('livewire-upload-finish', () => window.__upDone = true, {once: true}); }")
+    page.set_input_files(sel, path)
+    page.wait_for_function("() => window.__upDone === true", timeout=30000)
+    settle(page, 300)
 
 
 def run(name, fn, page):
@@ -165,7 +175,7 @@ def unload(page):
         unit.select_option(index=1)
     else:
         unit.fill("Drum")
-    page.set_input_files("[wire\\:model='podFile']", POD); settle(page, 1500)
+    upload(page, "podFile", POD)
     tick_all(page)
     page.get_by_role("button", name="Complete unloading & send to QC Check").first.click()
     wait_for_text(page, "sent to QC")
@@ -240,21 +250,49 @@ def bundle(page):
     return messages(page)[:110]
 
 
-def dispatch(page):
+def outward_form(page, purpose, qty, rate):
     page.goto(f"{BASE}/inventory/dispatch"); settle(page)
-    sel = page.locator("[wire\\:model\\.live='itemId']")
-    pick = lambda: sel.select_option(label=[o for o in sel.locator("option").all_inner_texts() if o.startswith(FG)][0])
-    pick()
-    page.fill("[wire\\:model='qty']", "20"); page.fill("[wire\\:model='customerName']", "E2E Customer")
-    page.get_by_role("button", name="Dispatch & update stock").click()
-    wait_for_text(page, "DSP-")
+    page.locator(f"input[type=radio][value='{purpose}']").check(); settle(page)
+    page.locator("[wire\\:model\\.live='fromLocationId']").select_option(index=1); settle(page)
+    if purpose == "sales":  # first customer that has a GSTIN = B2B
+        cust = page.locator("[wire\\:model\\.live='customerId']")
+        cust.select_option(label=[o for o in cust.locator("option").all_inner_texts() if "no GSTIN" not in o and "Select" not in o][0])
+    else:  # transfer to the same location = same GSTIN = Delivery Challan
+        dest = page.locator("[wire\\:model\\.live='toLocationId']")
+        dest.select_option(value=page.locator("[wire\\:model\\.live='fromLocationId']").input_value())
+    settle(page)
+    page.fill("[wire\\:model\\.blur='lines.0.item']", FG)
+    page.fill("[wire\\:model\\.live\\.debounce\\.500ms='lines.0.qty']", str(qty))
+    page.fill("[wire\\:model\\.live\\.debounce\\.500ms='lines.0.rate']", str(rate)); settle(page, 1200)
+    page.get_by_role("button", name="Create outward shipment").click()
+    wait_for_text(page, " created (")  # the flash, not an older shipment card
+
+
+def dispatch(page):
+    page.on("dialog", lambda d: d.accept())  # "Dispatch ...? Stock will be deducted now."
+    # B2B sale: Tax Invoice + IRN + E-Way Bill must be uploaded before dispatch.
+    outward_form(page, "sales", 20, 100)
+    wait_for_text(page, "Add the documents below")
+    newest = page.locator("[wire\\:key^='outward-shipment-']").first  # list is newest first
+    if newest.get_by_role("button", name="Mark dispatched").count():
+        raise AssertionError("Mark dispatched shown before documents were uploaded")
+    today, later = date.today().isoformat(), (date.today() + timedelta(days=2)).isoformat()
+    for field, value in [("invoice_number", f"INV-{TS}"), ("invoice_date", today), ("irn", f"IRN{TS}abc"), ("irn_ack_number", f"ACK{TS}"),
+                         ("ewb_number", f"33{TS}0000"), ("ewb_valid_until", later)]:
+        page.fill(f"[wire\\:model='doc.{field}']", value)
+    upload(page, "invoiceFile", POD)
+    upload(page, "ewbFile", POD)
+    page.get_by_role("button", name="Save documents").click()
+    wait_for_text(page, "ready to dispatch")
+    page.locator("[wire\\:key^='outward-shipment-']").first.get_by_role("button", name="Mark dispatched").click()
+    wait_for_text(page, "stock has been deducted")
     ok = messages(page)
-    settle(page, 1500)  # let the form re-render after the first dispatch
-    pick(); settle(page)
-    page.fill("[wire\\:model='qty']", "99999"); page.fill("[wire\\:model='customerName']", "E2E Customer")
-    page.get_by_role("button", name="Dispatch & update stock").click()
+    # Same-GSTIN transfer under Rs 50,000 = Delivery Challan, ready at once; too much qty must be blocked.
+    outward_form(page, "transfer", 99999, 0)
+    wait_for_text(page, "Ready to dispatch")
+    page.locator("[wire\\:key^='outward-shipment-']").first.get_by_role("button", name="Mark dispatched").click()
     wait_for_text(page, "in stock.")
-    return ok[:90] + " | over-dispatch blocked"
+    return ok[:90] + " | challan over-dispatch blocked"
 
 
 def final(page):
@@ -266,7 +304,7 @@ FLOW1 = [("1. Store Manager creates PO (Zoho required fields)", create_po), ("2.
          ("5. Store Executive unloads with POD", unload), ("6. QC accepts 100", qc), ("7. Store Manager posts GRN", grn),
          ("8. Store Executive putaway", putaway), ("9. Stock shows in Stock Balance + Inventory", check_received)]
 FLOW2 = [("10. Top up packaging stock", pm_stock), ("11. Create Bundle from Zoho recipe", bundle),
-         ("12. Dispatch + over-dispatch blocked", dispatch), ("13. Stock Summary", final)]
+         ("12. Outward: B2B sale with Invoice/IRN/E-Way Bill + challan over-dispatch blocked", dispatch), ("13. Stock Summary", final)]
 steps = (FLOW1 if not args.flow2 else []) + (FLOW2 if not args.flow1 else [])
 
 with sync_playwright() as p:

@@ -99,7 +99,7 @@ class RoleNavigation
                 ['label' => 'Stock Summary', 'route' => 'inventory.stock', 'icon' => 'boxes'],
                 ['label' => 'Items & Recipes', 'route' => 'inventory.items', 'icon' => 'list'],
                 ['label' => 'Create Bundle', 'route' => 'inventory.production', 'icon' => 'factory'],
-                ['label' => 'Dispatch', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
+                ['label' => 'Outward Shipment', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
             ],
             Role::Finance => [
                 ['label' => 'Dashboard', 'route' => 'finance.dashboard', 'icon' => 'gauge'],

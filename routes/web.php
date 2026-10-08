@@ -425,6 +425,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('items', 'inventory.items')->name('items');
         Volt::route('production', 'inventory.production')->name('production');
         Volt::route('dispatch', 'inventory.dispatch')->name('dispatch');
+        Route::get('outward/{shipment}/challan', function (\App\Models\Outward\OutwardShipment $shipment) {
+            abort_unless($shipment->challan_number, 404);
+
+            return view('inventory.delivery-challan', ['shipment' => $shipment->load('lines.item')]);
+        })->name('outward.challan');
+        Route::get('outward/{shipment}/{document}', function (\App\Models\Outward\OutwardShipment $shipment, string $document) {
+            $path = $shipment->{$document.'_file'};
+            abort_unless($path && \Illuminate\Support\Facades\Storage::disk('local')->exists($path), 404);
+
+            return \Illuminate\Support\Facades\Storage::disk('local')->response($path);
+        })->whereIn('document', ['invoice', 'irn', 'ewb'])->name('outward.file');
     });
 
     Route::middleware('role:admin')->group(function () {
