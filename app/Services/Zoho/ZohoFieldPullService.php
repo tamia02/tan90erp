@@ -3,6 +3,7 @@
 namespace App\Services\Zoho;
 
 use App\Models\ZohoFieldDefinition;
+use App\Models\ZohoLocation;
 use RuntimeException;
 
 // Copies Zoho's custom field definitions (label, type, required flag, dropdown
@@ -50,6 +51,15 @@ class ZohoFieldPullService
                 $stats['fields']++;
                 $stats['mandatory'] += ($active && ($field['is_mandatory'] ?? false)) ? 1 : 0;
             }
+        }
+
+        // Warehouses: the /locations API is not open to this key (403), so learn
+        // them from the client's recent bundles - every bundle carries one.
+        $bundles = $this->zoho->get('/bundles', ['per_page' => 200])['bundles'] ?? [];
+        $stats['locations'] = 0;
+        foreach (collect($bundles)->filter(fn ($b) => filled($b['location_id'] ?? null))->unique('location_id') as $bundle) {
+            ZohoLocation::updateOrCreate(['zoho_location_id' => (string) $bundle['location_id']], ['name' => (string) ($bundle['location_name'] ?? $bundle['location_id']), 'active' => true]);
+            $stats['locations']++;
         }
 
         foreach (ZohoFieldDefinition::where('active', true)->get() as $definition) {

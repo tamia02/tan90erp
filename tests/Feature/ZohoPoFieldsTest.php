@@ -83,11 +83,16 @@ class ZohoPoFieldsTest extends TestCase
                     'values' => [['name' => 'Sample', 'order' => 2, 'is_active' => true], ['name' => 'Inward Stock', 'order' => 1, 'is_active' => true], ['name' => 'Gone', 'order' => 3, 'is_active' => false]]]],
                 'creditnote' => [],
             ]]),
+            'zoho.test/inventory/v1/bundles*' => Http::response(['bundles' => [
+                ['bundle_id' => 'b1', 'location_id' => 'loc-1', 'location_name' => 'Tan90 Mumbai (Warehouse)'],
+                ['bundle_id' => 'b2', 'location_id' => 'loc-1', 'location_name' => 'Tan90 Mumbai (Warehouse)'],
+            ]]),
         ]);
 
         $stats = app(ZohoFieldPullService::class)->pull();
 
-        $this->assertSame([1, 1, 1], [$stats['fields'], $stats['mandatory'], $stats['deactivated']]);
+        $this->assertSame([1, 1, 1, 1], [$stats['fields'], $stats['mandatory'], $stats['deactivated'], $stats['locations']]);
+        $this->assertSame('Tan90 Mumbai (Warehouse)', \App\Models\ZohoLocation::where('zoho_location_id', 'loc-1')->value('name'));
         $this->assertSame(['Inward Stock', 'Sample'], ZohoFieldDefinition::where('api_name', 'cf_purchase_nature')->value('options'));
         $this->assertFalse(ZohoFieldDefinition::where('api_name', 'cf_old')->value('active'));
         Http::assertNotSent(fn (Request $r) => $r->method() !== 'GET' && ! str_contains($r->url(), 'oauth'));

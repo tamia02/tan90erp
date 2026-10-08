@@ -66,6 +66,20 @@ return [
             'api_base_url' => env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1'),
             'write_enabled' => env('ZOHO_INVENTORY_WRITE_ENABLED', true),
 
+            // 'zoho' = Zoho is the source of truth for Items: the ERP never
+            // creates or updates items in Zoho (it pulls them instead) and a PO
+            // line must match an existing Zoho item. 'erp' = legacy behaviour.
+            'items_master' => env('ZOHO_ITEMS_MASTER', 'erp'),
+
+            // Moment the ERP was switched to this Zoho organization: records
+            // created earlier (old tests, data pulled from a previous org) are
+            // never pushed. e.g. ZOHO_PUSH_CUTOVER_AT="2026-10-08 18:00:00"
+            'push_cutover_at' => env('ZOHO_PUSH_CUTOVER_AT'),
+
+            // true = data only comes FROM Zoho; nothing is ever written to Zoho
+            // (blocked in every push method and again at the HTTP layer).
+            'read_only' => env('ZOHO_READ_ONLY', false),
+
             // Master kill switch. Set false to make every Zoho Inventory call a
             // no-op without removing credentials — the fastest way to stop a
             // runaway quota drain in production.

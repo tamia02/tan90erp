@@ -37,8 +37,20 @@ class ZohoService
 {
     private ?string $lastLookupError = null;
 
+    // CRM credentials present? Without them every CRM call is skipped quietly
+    // instead of hitting Zoho's token endpoint and logging a failure each time.
+    public function isConfigured(): bool
+    {
+        return filled(config('services.zoho.client_id')) && filled(config('services.zoho.client_secret'))
+            && filled(config('services.zoho.refresh_token'));
+    }
+
     private function accessToken(): ?string
     {
+        if (! $this->isConfigured()) {
+            return null;
+        }
+
         return Cache::remember('zoho_access_token', 3300, function () {
             $accountsBase = config('services.zoho.accounts_base_url');
 

@@ -31,6 +31,10 @@ use Illuminate\Support\Facades\Log;
 // Inventory access is confirmed, and switch on the moment it is.
 class ZohoInventoryService
 {
+    // True while a Zoho -> ERP pull is saving a record: the outbound push
+    // observers check this so pulled data isn't sent straight back to Zoho.
+    public static bool $pullingFromZoho = false;
+
     private ?string $lastError = null;
 
     public function __construct(private readonly ZohoApiGate $apiGate) {}
@@ -118,6 +122,15 @@ class ZohoInventoryService
             ->timeout((int) config('services.zoho.inventory.timeout', 15))
             ->withMiddleware(function (callable $handler): callable {
                 return function ($request, array $options) use ($handler) {
+                    // Read-only: refuse any write before it leaves the server.
+                    if ($this->readOnly() && strtoupper($request->getMethod()) !== 'GET') {
+                        return Create::promiseFor(new Psr7Response(
+                            403,
+                            ['Content-Type' => 'application/json', 'X-Tan90-Zoho-Read-Only' => '1'],
+                            json_encode(['code' => -1, 'message' => 'Zoho is read-only in this ERP (ZOHO_READ_ONLY=true) - nothing was sent.', 'blocked_read_only' => true], JSON_THROW_ON_ERROR),
+                        ));
+                    }
+
                     if ($reason = $this->apiGate->acquire()) {
                         $body = json_encode([
                             'code' => 45,
@@ -164,7 +177,7 @@ class ZohoInventoryService
      */
     public function pushOperationalData(int $limit = 200): array
     {
-        if (! $this->isActive()) {
+        if (! $this->isActive() || $this->readOnly()) {
             return ['items' => 0, 'vendors' => 0, 'purchase_orders' => 0, 'bills' => 0, 'purchase_receives' => 0, 'failed' => 0, 'skipped' => true];
         }
 
@@ -183,6 +196,9 @@ class ZohoInventoryService
             ['finance_bills', FinanceRecord::class, fn ($q) => $q->with('gateEntry'), fn ($v) => $this->pushFinanceBill($v)],
             ['purchase_receives', GrnRecord::class, fn ($q) => $q->with('gateEntry'), fn ($v) => $this->pushPurchaseReceive($v)],
         ];
+        if ($this->zohoOwnsItems()) {
+            $entities = array_values(array_filter($entities, fn ($entity) => $entity[0] !== 'items'));
+        }
 
         foreach ($entities as [$key, $modelClass, $queryModifier, $pusher]) {
             $result = $this->pushChangedSince($modelClass, $key, $limit, $queryModifier, $pusher);
@@ -246,6 +262,11 @@ class ZohoInventoryService
 
         if ($queryModifier) {
             $queryModifier($query);
+        }
+
+        // Never even consider records from before the switch to this Zoho org.
+        if (filled($cutover = config('services.zoho.inventory.push_cutover_at'))) {
+            $query->where('created_at', '>=', \Illuminate\Support\Carbon::parse($cutover));
         }
 
         if ($since) {
@@ -335,6 +356,10 @@ class ZohoInventoryService
 
     public function pushVendorContact(VendorMaster $vendor): bool
     {
+        if ($this->pushBlocked($vendor)) {
+            return false;
+        }
+
         if (! $this->isActive() || trim($vendor->vendor_name) === '') {
             return false;
         }
@@ -382,6 +407,10 @@ class ZohoInventoryService
      */
     public function pushMasterDataVendor(\App\Models\Tan90\MasterData\Vendor $vendor): bool
     {
+        if ($this->pushBlocked($vendor)) {
+            return false;
+        }
+
         if (! $this->isActive() || trim((string) $vendor->name) === '') {
             return false;
         }
@@ -413,6 +442,10 @@ class ZohoInventoryService
 
     public function pushMasterDataCustomer(\App\Models\Tan90\MasterData\Customer $customer): bool
     {
+        if ($this->pushBlocked($customer)) {
+            return false;
+        }
+
         if (! $this->isActive() || trim((string) $customer->name) === '') {
             return false;
         }
@@ -431,9 +464,44 @@ class ZohoInventoryService
         return $this->upsertContact($customer->name, $payload);
     }
 
+    // ZOHO_READ_ONLY=true: data only comes FROM Zoho, nothing is ever sent to it.
+    public function readOnly(): bool
+    {
+        return (bool) config('services.zoho.inventory.read_only', false);
+    }
+
+    private function pushBlocked(?\Illuminate\Database\Eloquent\Model $model): bool
+    {
+        return $this->readOnly() || $this->beforeCutover($model);
+    }
+
+    /**
+     * Records created before ZOHO_PUSH_CUTOVER_AT (the moment the ERP was
+     * switched to this Zoho organization) are never pushed: old test data and
+     * records pulled from a previous org must not land in the client's Zoho.
+     */
+    private function beforeCutover(?\Illuminate\Database\Eloquent\Model $model): bool
+    {
+        $cutover = config('services.zoho.inventory.push_cutover_at');
+
+        return filled($cutover) && $model?->created_at !== null
+            && $model->created_at->lt(\Illuminate\Support\Carbon::parse($cutover));
+    }
+
+    // Zoho is the source of truth for Items (ZOHO_ITEMS_MASTER=zoho): never
+    // create or update an item in Zoho from the ERP.
+    public function zohoOwnsItems(): bool
+    {
+        return config('services.zoho.inventory.items_master') === 'zoho';
+    }
+
     public function pushMasterDataItem(\App\Models\Tan90\MasterData\Item $item): bool
     {
-        if (! $this->isActive() || trim((string) $item->sku) === '') {
+        if ($this->pushBlocked($item)) {
+            return false;
+        }
+
+        if (! $this->isActive() || $this->zohoOwnsItems() || trim((string) $item->sku) === '') {
             return false;
         }
 
@@ -453,7 +521,11 @@ class ZohoInventoryService
 
     public function pushItem(SkuMaster $sku): bool
     {
-        if (! $this->isActive() || trim($sku->sku) === '') {
+        if ($this->pushBlocked($sku)) {
+            return false;
+        }
+
+        if (! $this->isActive() || $this->zohoOwnsItems() || trim($sku->sku) === '') {
             return false;
         }
 
@@ -476,6 +548,10 @@ class ZohoInventoryService
      */
     public function pushPurchaseOrder(PurchaseOrder $po): array
     {
+        if ($this->pushBlocked($po)) {
+            return ['success' => false, 'action' => 'skipped', 'status' => null, 'message' => $this->readOnly() ? 'Zoho is read-only for now - not sent.' : 'Created before the switch to this Zoho organization - not sent.', 'zoho_id' => null];
+        }
+
         if (! $this->isActive() || ! config('services.zoho.inventory.write_enabled', true)) {
             return ['success' => false, 'action' => 'disabled', 'status' => null, 'message' => 'Zoho Inventory is not active.', 'zoho_id' => null];
         }
@@ -493,6 +569,11 @@ class ZohoInventoryService
         foreach ($po->lines as $line) {
             $item = $this->findOrCreateItem((string) $line->product, (float) $line->list_price);
             if (! $item) {
+                // Zoho owns items: never send a PO with silently dropped lines.
+                if ($this->zohoOwnsItems()) {
+                    return ['success' => false, 'action' => 'failed', 'status' => null, 'message' => $this->lastError ?: "Item '{$line->product}' is not in Zoho.", 'zoho_id' => null];
+                }
+
                 continue;
             }
 
@@ -515,6 +596,9 @@ class ZohoInventoryService
             'notes' => $po->description,
         ], fn ($value) => $value !== null && $value !== '');
         $payload['line_items'] = $lineItems;
+        if ($customFields = $this->purchaseOrderCustomFields($po)) {
+            $payload['custom_fields'] = $customFields;
+        }
 
         $existing = $this->findPurchaseOrderByReference($po->po_number);
 
@@ -542,8 +626,84 @@ class ZohoInventoryService
         ];
     }
 
+    /**
+     * ERP "Create Bundle" -> Zoho Bundle (POST /bundles), so Zoho's stock moves
+     * the same way: components (used + wastage) out, composite item in.
+     * Records the outcome on the production (sent / failed + reason / skipped);
+     * never throws, so a Zoho problem can't undo the ERP production.
+     */
+    public function pushBundle(\App\Models\Inventory\InventoryProduction $production): string
+    {
+        if ($this->pushBlocked($production)) {
+            $production->forceFill(['zoho_status' => 'skipped', 'zoho_error' => $this->readOnly() ? 'Zoho is read-only for now - nothing is sent to Zoho.' : 'Made before the switch to this Zoho organization.'])->save();
+
+            return 'skipped';
+        }
+
+        $record = function (string $status, ?string $error = null, ?string $bundleId = null) use ($production): string {
+            $production->forceFill(['zoho_status' => $status, 'zoho_error' => $error, 'zoho_bundle_id' => $bundleId ?? $production->zoho_bundle_id])->save();
+
+            return $status;
+        };
+
+        if ($production->zoho_status === 'sent') {
+            return 'sent';
+        }
+        if (! $this->isActive() || ! config('services.zoho.inventory.write_enabled', true)) {
+            return $record('skipped', 'Zoho Inventory is not connected or writing to Zoho is switched off.');
+        }
+
+        $production->loadMissing(['fgItem', 'movements.item']);
+        $zohoId = fn (?string $name) => $name === null ? null
+            : SkuMaster::whereRaw('LOWER(sku) = ?', [mb_strtolower($name)])->whereNotNull('zoho_item_id')->value('zoho_item_id');
+
+        $fgName = $production->fgItem?->sku;
+        $fgZohoId = $zohoId($fgName);
+        if (! $fgZohoId) {
+            return $record('failed', "Finished good '{$fgName}' is not a Zoho item.");
+        }
+        if (! $production->zoho_location_id) {
+            return $record('failed', 'Choose the Zoho warehouse for this bundle.');
+        }
+
+        $lines = [];
+        foreach ($production->movements->whereIn('type', ['consumed', 'wastage']) as $movement) {
+            $componentId = $zohoId($movement->item?->sku);
+            if (! $componentId) {
+                return $record('failed', "Component '{$movement->item?->sku}' is not a Zoho item.");
+            }
+            $lines[$componentId] = ($lines[$componentId] ?? 0) + (float) $movement->qty;
+        }
+        if (! $lines) {
+            return $record('failed', 'No components to consume.');
+        }
+
+        $payload = array_filter([
+            'reference_number' => $production->number,
+            'date' => $production->created_at?->format('Y-m-d') ?? now()->format('Y-m-d'),
+            'description' => $production->notes,
+            'composite_item_id' => $fgZohoId,
+            'composite_item_name' => $fgName,
+            'quantity_to_bundle' => (float) $production->qty_produced,
+            'location_id' => $production->zoho_location_id,
+            'is_completed' => true,
+        ], fn ($value) => $value !== null && $value !== '');
+        $payload['line_items'] = collect($lines)->map(fn ($qty, $itemId) => ['item_id' => (string) $itemId, 'quantity_consumed' => round($qty, 4)])->values()->all();
+
+        $response = $this->inventoryRequest()->post($this->invUrl('/bundles'), $payload);
+        if ($response->successful() && (int) $response->json('code') === 0) {
+            return $record('sent', null, (string) $response->json('bundle.bundle_id'));
+        }
+
+        return $record('failed', 'Zoho: '.((string) ($response->json('message') ?: $response->status())));
+    }
+
     public function pushVendorBill(VendorSubmission $submission): bool
     {
+        if ($this->pushBlocked($submission)) {
+            return false;
+        }
+
         if (! $this->isActive() || trim((string) $submission->invoice_number) === '') {
             return false;
         }
@@ -575,6 +735,10 @@ class ZohoInventoryService
 
     public function pushFinanceBill(FinanceRecord $record): bool
     {
+        if ($this->pushBlocked($record)) {
+            return false;
+        }
+
         if (! $this->isActive() || trim((string) $record->invoice_number) === '') {
             return false;
         }
@@ -615,6 +779,10 @@ class ZohoInventoryService
      */
     public function pushPaymentMade(FinanceRecord $record): bool
     {
+        if ($this->pushBlocked($record)) {
+            return false;
+        }
+
         if (! $this->isActive() || ! config('services.zoho.inventory.write_enabled', true) || trim((string) $record->invoice_number) === '') {
             return false;
         }
@@ -674,6 +842,10 @@ class ZohoInventoryService
      */
     public function pushVendorCredit(DebitNote $note): bool
     {
+        if ($this->pushBlocked($note)) {
+            return false;
+        }
+
         if (! $this->isActive() || ! config('services.zoho.inventory.write_enabled', true) || trim((string) $note->vendor_name) === '') {
             return false;
         }
@@ -714,6 +886,10 @@ class ZohoInventoryService
     /** One Purchase Receive per PO, looked up and updated rather than re-created on every GRN re-save (posting, corrections, etc.). */
     public function pushPurchaseReceive(GrnRecord $record): bool
     {
+        if ($this->pushBlocked($record)) {
+            return false;
+        }
+
         if (! $this->isActive() || ! config('services.zoho.inventory.write_enabled', true)) {
             return false;
         }
@@ -790,7 +966,8 @@ class ZohoInventoryService
 
         return [
             'vendors' => $this->syncVendors($limit),
-            'items' => $this->syncItems($limit),
+            // zoho:pull-items owns items when Zoho is the source of truth.
+            'items' => $this->zohoOwnsItems() ? 0 : $this->syncItems($limit),
             'customers' => $this->syncCustomers($limit),
             'failed' => 0,
         ];
@@ -869,25 +1046,27 @@ class ZohoInventoryService
         $code = $existing?->code ?? 'ZOHO-'.str($name)->slug()->upper();
         $realGst = $gstNumber !== 'ZOHO-N/A' ? $gstNumber : null;
 
-        // No withoutEvents here (unlike VendorMaster above): this model has no
-        // outbound-Zoho-push observer to guard against, and its own audit
-        // trail (via IsMasterRecord) is exactly the kind of provenance this
-        // module is designed to record — an admin should be able to see that
-        // a vendor row came from a Zoho sync, same as any other change.
-        \App\Models\Tan90\MasterData\Vendor::updateOrCreate(
-            ['name' => $name],
-            [
-                'code' => $code,
-                'gstin' => $realGst ?: $existing?->gstin,
-                'gst_status' => $realGst ? 'verified' : ($existing?->gst_status ?? 'pending'),
-                'category' => $existing?->category ?: 'Zoho Vendor',
-                'contact' => $primaryContact['first_name'] ?? $existing?->contact,
-                'phone' => $primaryContact['phone'] ?? $existing?->phone,
-                'email' => $primaryContact['email'] ?? $existing?->email,
-                'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
-                'approval_status' => 'approved',
-            ],
-        );
+        // Pulled from Zoho: keep model events (Master Data audit trail) but mute the
+        // outbound push observers so the record isn't sent straight back to Zoho.
+        self::$pullingFromZoho = true;
+        try {
+            \App\Models\Tan90\MasterData\Vendor::updateOrCreate(
+                ['name' => $name],
+                [
+                    'code' => $code,
+                    'gstin' => $realGst ?: $existing?->gstin,
+                    'gst_status' => $realGst ? 'verified' : ($existing?->gst_status ?? 'pending'),
+                    'category' => $existing?->category ?: 'Zoho Vendor',
+                    'contact' => $primaryContact['first_name'] ?? $existing?->contact,
+                    'phone' => $primaryContact['phone'] ?? $existing?->phone,
+                    'email' => $primaryContact['email'] ?? $existing?->email,
+                    'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
+                    'approval_status' => 'approved',
+                ],
+            );
+        } finally {
+            self::$pullingFromZoho = false;
+        }
     }
 
     private function syncItems(int $limit): int
@@ -963,18 +1142,25 @@ class ZohoInventoryService
 
         $code = $existing?->code ?? 'ZI-'.str($sku)->slug()->upper();
 
-        \App\Models\Tan90\MasterData\Item::updateOrCreate(
-            ['sku' => $sku],
-            [
-                'code' => $code,
-                'name' => (string) ($record['name'] ?? $sku),
-                'tan90_item_category_id' => $existing?->tan90_item_category_id ?? $category->id,
-                'tan90_uom_id' => $existing?->tan90_uom_id ?? $uom->id,
-                'standard_cost' => $record['rate'] ?? $existing?->standard_cost,
-                'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
-                'approval_status' => 'approved',
-            ],
-        );
+        // Pulled from Zoho: keep model events (Master Data audit trail) but mute the
+        // outbound push observers so the record isn't sent straight back to Zoho.
+        self::$pullingFromZoho = true;
+        try {
+            \App\Models\Tan90\MasterData\Item::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'code' => $code,
+                    'name' => (string) ($record['name'] ?? $sku),
+                    'tan90_item_category_id' => $existing?->tan90_item_category_id ?? $category->id,
+                    'tan90_uom_id' => $existing?->tan90_uom_id ?? $uom->id,
+                    'standard_cost' => $record['rate'] ?? $existing?->standard_cost,
+                    'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
+                    'approval_status' => 'approved',
+                ],
+            );
+        } finally {
+            self::$pullingFromZoho = false;
+        }
     }
 
     private function syncCustomers(int $limit): int
@@ -1027,27 +1213,34 @@ class ZohoInventoryService
         $gstNumber = ($record['gst_no'] ?? null) ?: null;
         $billingAddress = $record['billing_address'] ?? [];
 
-        \App\Models\Tan90\MasterData\Customer::updateOrCreate(
-            ['name' => $name],
-            [
-                'code' => $code,
-                'gstin' => $gstNumber ?: $existing?->gstin,
-                // tan90_customers.segment is a fixed enum (Pharma/Frozen
-                // Foods/Dairy/Agriculture/E-commerce/Other) — Zoho contacts
-                // carry no equivalent field, so this falls back to the same
-                // "Other" default the column itself uses, for an admin to
-                // reclassify later, rather than writing a value the enum
-                // rejects outright.
-                'segment' => $existing?->segment ?: 'Other',
-                'state' => $billingAddress['state'] ?? $existing?->state,
-                'city' => $billingAddress['city'] ?? $existing?->city,
-                'credit_limit' => $record['credit_limit'] ?? $existing?->credit_limit,
-                'payment_terms' => $record['payment_terms_label'] ?? $existing?->payment_terms,
-                'sales_owner' => $existing?->sales_owner,
-                'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
-                'approval_status' => 'approved',
-            ],
-        );
+        // Pulled from Zoho: keep model events (Master Data audit trail) but mute the
+        // outbound push observers so the record isn't sent straight back to Zoho.
+        self::$pullingFromZoho = true;
+        try {
+            \App\Models\Tan90\MasterData\Customer::updateOrCreate(
+                ['name' => $name],
+                [
+                    'code' => $code,
+                    'gstin' => $gstNumber ?: $existing?->gstin,
+                    // tan90_customers.segment is a fixed enum (Pharma/Frozen
+                    // Foods/Dairy/Agriculture/E-commerce/Other) — Zoho contacts
+                    // carry no equivalent field, so this falls back to the same
+                    // "Other" default the column itself uses, for an admin to
+                    // reclassify later, rather than writing a value the enum
+                    // rejects outright.
+                    'segment' => $existing?->segment ?: 'Other',
+                    'state' => $billingAddress['state'] ?? $existing?->state,
+                    'city' => $billingAddress['city'] ?? $existing?->city,
+                    'credit_limit' => $record['credit_limit'] ?? $existing?->credit_limit,
+                    'payment_terms' => $record['payment_terms_label'] ?? $existing?->payment_terms,
+                    'sales_owner' => $existing?->sales_owner,
+                    'status' => ($record['status'] ?? 'active') !== 'inactive' ? 'active' : 'inactive',
+                    'approval_status' => 'approved',
+                ],
+            );
+        } finally {
+            self::$pullingFromZoho = false;
+        }
     }
 
     /**
@@ -1300,6 +1493,21 @@ class ZohoInventoryService
             return null;
         }
 
+        // Zoho owns items: use the pulled Zoho item id, else look it up - never create.
+        if ($this->zohoOwnsItems()) {
+            $linkedId = SkuMaster::whereRaw('LOWER(sku) = ?', [mb_strtolower($sku)])->whereNotNull('zoho_item_id')->value('zoho_item_id');
+            if ($linkedId) {
+                return ['item_id' => $linkedId, 'name' => $sku];
+            }
+            $found = $this->findItemBySku($sku);
+            if (is_array($found)) {
+                return $found;
+            }
+            $this->lastError = "Item '{$sku}' is not in Zoho. Zoho is the source of truth for items - create it in Zoho first, then retry.";
+
+            return null;
+        }
+
         $existing = $this->findItemBySku($sku);
         if ($existing === false) {
             $this->lastError = "Zoho Inventory item lookup failed for {$sku} — not attempting create to avoid a duplicate.";
@@ -1329,8 +1537,56 @@ class ZohoInventoryService
     }
 
     /** See findContactByName() — same false-on-lookup-failure vs null-on-genuinely-not-found distinction. */
+    /**
+     * Zoho PO custom fields from the ERP PO: the Zoho-field values captured on
+     * the PO form plus "PO Valid Upto" from the built-in Valid up to field.
+     * Sent by customfield_id when known (from zoho:pull-fields), else api_name.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function purchaseOrderCustomFields(PurchaseOrder $po): array
+    {
+        $values = (array) ($po->zoho_custom_fields ?? []);
+        if ($po->valid_upto) {
+            $values['cf_po_valid_upto'] = $po->valid_upto instanceof \DateTimeInterface
+                ? $po->valid_upto->format('Y-m-d')
+                : substr((string) $po->valid_upto, 0, 10);
+        }
+
+        $ids = \App\Models\ZohoFieldDefinition::where('entity', 'purchaseorder')->pluck('zoho_field_id', 'api_name');
+        $fields = [];
+        foreach ($values as $apiName => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $fields[] = filled($ids[$apiName] ?? null)
+                ? ['customfield_id' => $ids[$apiName], 'value' => $value]
+                : ['api_name' => $apiName, 'value' => $value];
+        }
+
+        return $fields;
+    }
+
+    /**
+     * Finds the Zoho PO for an ERP PO number. POs pulled from Zoho carry Zoho's
+     * own purchaseorder_number as their ERP po_number, while POs created in the
+     * ERP are sent with po_number as reference_number - so check both, or a
+     * pulled PO would be re-created in Zoho as a duplicate.
+     */
     private function findPurchaseOrderByReference(string $reference): array|false|null
     {
+        $byNumber = $this->inventoryRequest()->get($this->invUrl('/purchaseorders', ['purchaseorder_number' => $reference]));
+        if (! $byNumber->successful()) {
+            return false;
+        }
+        foreach ($byNumber->json('purchaseorders', []) as $po) {
+            if (strcasecmp((string) ($po['purchaseorder_number'] ?? ''), $reference) === 0) {
+                $full = $this->inventoryRequest()->get($this->invUrl("/purchaseorders/{$po['purchaseorder_id']}"));
+
+                return $full->successful() ? $full->json('purchaseorder') : $po;
+            }
+        }
+
         $response = $this->inventoryRequest()->get($this->invUrl('/purchaseorders', ['reference_number' => $reference]));
 
         if (! $response->successful()) {

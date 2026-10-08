@@ -14,7 +14,7 @@ class PullZohoFields extends Command
     public function handle(ZohoFieldPullService $pull): int
     {
         $stats = $pull->pull();
-        $this->info("Zoho fields: {$stats['fields']} across {$stats['entities']} modules ({$stats['mandatory']} required, {$stats['deactivated']} switched off).");
+        $this->info("Zoho fields: {$stats['fields']} across {$stats['entities']} modules ({$stats['mandatory']} required, {$stats['deactivated']} switched off), {$stats['locations']} Zoho warehouses.");
 
         return self::SUCCESS;
     }

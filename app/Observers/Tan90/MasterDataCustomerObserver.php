@@ -10,6 +10,10 @@ class MasterDataCustomerObserver
 {
     public function saved(Customer $customer): void
     {
+        if (ZohoInventoryService::$pullingFromZoho) {
+            return; // just pulled from Zoho - don't push it back
+        }
+
         $inventory = app(ZohoInventoryService::class);
 
         if (! $inventory->isActive()) {

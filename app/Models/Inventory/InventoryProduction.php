@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InventoryProduction extends Model
 {
-    protected $fillable = ['number', 'fg_item_id', 'qty_produced', 'notes', 'created_by'];
+    protected $fillable = ['number', 'fg_item_id', 'qty_produced', 'notes', 'created_by', 'zoho_location_id', 'zoho_status', 'zoho_bundle_id', 'zoho_error'];
 
     protected function casts(): array
     {

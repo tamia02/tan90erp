@@ -3,7 +3,10 @@
 use App\Models\Inventory\InventoryItem;
 use App\Models\Inventory\InventoryProduction;
 use App\Services\AuditLogger;
+use App\Models\SkuMaster;
+use App\Models\ZohoLocation;
 use App\Services\Inventory\InventoryService;
+use App\Services\ZohoInventoryService;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
@@ -19,6 +22,7 @@ new #[Layout('layouts.app')] class extends Component
     public string $qty = '';
     public array $wastage = [];
     public string $notes = '';
+    public string $zohoLocationId = '';
 
     public function updatedFgItemId(): void
     {
@@ -40,14 +44,42 @@ new #[Layout('layouts.app')] class extends Component
             'fgItemId' => ['required', 'exists:inventory_items,id'],
             'qty' => ['required', 'numeric', 'gt:0'],
             'wastage.*' => ['nullable', 'numeric', 'min:0'],
-        ], ['fgItemId.required' => 'Pick the Finished Good to make.', 'qty.gt' => 'Quantity must be more than 0.']);
+            'zohoLocationId' => [$this->sendsToZoho() ? 'required' : 'nullable', 'string'],
+        ], ['fgItemId.required' => 'Pick the Finished Good to make.', 'qty.gt' => 'Quantity must be more than 0.', 'zohoLocationId.required' => 'Choose the Zoho warehouse this bundle is made in.']);
 
+        $sendsToZoho = $this->sendsToZoho();
         $production = $inventory->produce(InventoryItem::findOrFail($this->fgItemId), (float) $this->qty, $this->wastage, $this->notes ?: null, auth()->user());
         $fg = $production->fgItem;
         AuditLogger::log('Production posted', "{$production->number} · {$production->qty_produced} {$fg->unit} {$fg->displayName()}", $production);
 
-        session()->flash('success', "{$production->number}: made {$this->qty} {$fg->unit} of {$fg->displayName()}. Raw/packaging material and wastage have been deducted.");
+        $zohoNote = '';
+        if ($sendsToZoho) {
+            $production->forceFill(['zoho_location_id' => $this->zohoLocationId])->save();
+            $status = app(ZohoInventoryService::class)->pushBundle($production);
+            $zohoNote = $status === 'sent' ? ' Bundle created in Zoho.' : ' Not sent to Zoho: '.$production->fresh()->zoho_error.' (use Retry below).';
+        }
+
+        session()->flash('success', "{$production->number}: made {$this->qty} {$fg->unit} of {$fg->displayName()}. Raw/packaging material and wastage have been deducted.".$zohoNote);
         $this->reset(['fgItemId', 'qty', 'wastage', 'notes']);
+    }
+
+    public function retryZoho(int $productionId): void
+    {
+        $production = InventoryProduction::findOrFail($productionId);
+        $status = app(ZohoInventoryService::class)->pushBundle($production);
+        session()->flash('success', $status === 'sent' ? "{$production->number} sent to Zoho." : "{$production->number} still not sent to Zoho: ".$production->fresh()->zoho_error);
+    }
+
+    // Zoho connected for writing and the chosen Finished Good is a Zoho item.
+    private function sendsToZoho(): bool
+    {
+        $zoho = app(ZohoInventoryService::class);
+        if (! $this->fgItemId || ! $zoho->isActive() || $zoho->readOnly() || ! config('services.zoho.inventory.write_enabled', true)) {
+            return false;
+        }
+        $fg = InventoryItem::find($this->fgItemId);
+
+        return $fg && SkuMaster::whereRaw('LOWER(sku) = ?', [mb_strtolower($fg->sku)])->whereNotNull('zoho_item_id')->exists();
     }
 
     public function with(): array
@@ -62,6 +94,8 @@ new #[Layout('layouts.app')] class extends Component
             'selected' => $selected,
             'componentBalances' => $inventory->balances($components),
             'recent' => InventoryProduction::with(['fgItem', 'movements.item', 'creator'])->latest('id')->limit(10)->get(),
+            'sendsToZoho' => $this->sendsToZoho(),
+            'zohoLocations' => ZohoLocation::where('active', true)->orderBy('name')->get(),
         ];
     }
 }; ?>
@@ -118,6 +152,16 @@ new #[Layout('layouts.app')] class extends Component
                         </tbody>
                     </table>
                 </div>
+                @if ($sendsToZoho)
+                    <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Zoho warehouse *</span>
+                        <select wire:model="zohoLocationId" class="rounded-lg border px-3 py-2" style="border-color: var(--border);">
+                            <option value="">Select the warehouse this is made in…</option>
+                            @foreach ($zohoLocations as $location)<option value="{{ $location->zoho_location_id }}">{{ $location->name }}</option>@endforeach
+                        </select>
+                        <span class="text-xs" style="color: var(--text-muted);">This bundle will also be created in Zoho Inventory, so Zoho's stock moves the same way.</span>
+                        @error('zohoLocationId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                    </label>
+                @endif
                 <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Notes (optional)</span>
                     <input wire:model="notes" class="rounded-lg border px-3 py-2" style="border-color: var(--border);" placeholder="Batch / shift / remarks">
                 </label>
@@ -136,6 +180,12 @@ new #[Layout('layouts.app')] class extends Component
                         {{ $movement->type === 'wastage' ? 'Wastage' : 'Used' }} {{ rtrim(rtrim((string) $movement->qty, '0'), '.') }} {{ $movement->item?->unit }} {{ $movement->item?->displayName() }}@if (! $loop->last) · @endif
                     @endforeach
                     @if ($production->notes) · Note: {{ $production->notes }} @endif
+                    @if ($production->zoho_status === 'sent')
+                        <span class="ml-1 font-semibold" style="color: var(--status-good);">· Zoho: sent</span>
+                    @elseif ($production->zoho_status === 'failed')
+                        <span class="ml-1 font-semibold" style="color: var(--status-critical);">· Zoho: not sent - {{ $production->zoho_error }}</span>
+                        <button type="button" wire:click="retryZoho({{ $production->id }})" class="ml-1 underline font-semibold" style="color: var(--brand);">Retry</button>
+                    @endif
                 </div>
             </div>
         @empty
