@@ -175,7 +175,7 @@ new #[Layout('layouts.app')] class extends Component
                             @error('finalBin') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                         <div class="flex gap-2 sm:mt-6">
-                            <button wire:click="confirmPutaway({{ $gate->id }})" wire:loading.attr="disabled" wire:target="confirmPutaway({{ $gate->id }})" class="rounded-lg px-3.5 py-2 text-sm font-medium text-white disabled:opacity-50" style="background: var(--brand);">{{ $isQcHoldPutaway ? 'Save Putaway · keep GRN pending' : 'Save &amp; close entry' }}</button>
+                            <button wire:click="confirmPutaway({{ $gate->id }})" wire:loading.attr="disabled" wire:target="confirmPutaway({{ $gate->id }})" class="rounded-lg px-3.5 py-2 text-sm font-medium text-white disabled:opacity-50" style="background: var(--brand);">{{ $isQcHoldPutaway ? 'Save Putaway · keep GRN pending' : 'Save & close entry' }}</button>
                             <button wire:click="cancelConfirm" class="rounded-lg px-3.5 py-2 text-sm font-medium border" style="border-color: var(--border); color: var(--text-primary);">Cancel</button>
                         </div>
                     </div>

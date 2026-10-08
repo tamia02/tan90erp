@@ -18,12 +18,26 @@ new #[Layout('layouts.app')] class extends Component
     public string $type = '';
     public ?int $historyItemId = null;
     public bool $showArchived = false;
+    public string $search = '';
+    public int $perPage = 100;
+
+    public function updatedSearch(): void
+    {
+        $this->perPage = 100;
+    }
 
     public function with(): array
     {
-        $items = InventoryItem::when($this->type, fn ($q) => $q->where('item_type', $this->type))
+        $all = InventoryItem::when($this->type, fn ($q) => $q->where('item_type', $this->type))
             ->when(! $this->showArchived, fn ($q) => $q->where('active', true))
+            ->when(trim($this->search) !== '', fn ($q) => $q->where('sku', 'like', '%'.trim($this->search).'%'))
             ->orderByRaw("CASE item_type WHEN 'rm' THEN 1 WHEN 'pm' THEN 2 WHEN 'fg' THEN 3 ELSE 4 END")->orderBy('sku')->get();
+
+        // 2,000+ Zoho items: items with any stock or movement first, 100 at a time.
+        $allBalances = app(InventoryService::class)->balances($all);
+        $active = fn ($item) => collect($allBalances[$item->id])->except('final')->contains(fn ($v) => abs($v) > 0.0005);
+        $total = $all->count();
+        $items = $all->sortBy(fn ($item) => $active($item) ? 0 : 1)->values()->take($this->perPage);
 
         $historyItem = $this->historyItemId ? InventoryItem::find($this->historyItemId) : null;
         $history = collect();
@@ -47,7 +61,8 @@ new #[Layout('layouts.app')] class extends Component
 
         return [
             'items' => $items,
-            'balances' => app(InventoryService::class)->balances($items),
+            'total' => $total,
+            'balances' => $allBalances,
             'types' => InventoryItem::TYPES,
             'historyItem' => $historyItem,
             'history' => $history,
@@ -65,6 +80,8 @@ new #[Layout('layouts.app')] class extends Component
             @foreach ($types as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
         </select>
         <label class="inline-flex items-center gap-2 text-sm" style="color: var(--text-secondary);"><input type="checkbox" wire:model.live="showArchived"> Show archived items</label>
+        <input wire:model.live.debounce.400ms="search" type="search" placeholder="Search items…" class="rounded-lg border px-3 py-2 text-sm flex-1 min-w-[200px]" style="border-color: var(--border);">
+        <span class="text-xs" style="color: var(--text-muted);">Showing {{ $items->count() }} of {{ $total }} (items with stock or movements first)</span>
     </div>
 
     <div class="rounded-2xl border overflow-x-auto" style="background: var(--surface-3); border-color: var(--border);">
@@ -101,6 +118,10 @@ new #[Layout('layouts.app')] class extends Component
             </tbody>
         </table>
     </div>
+
+    @if ($items->count() < $total)
+        <button type="button" wire:click="$set('perPage', {{ $perPage + 100 }})" class="mt-3 rounded-lg border px-4 py-2 text-sm font-semibold" style="border-color: var(--border); color: var(--brand);">Show more ({{ $total - $items->count() }} more)</button>
+    @endif
 
     @if ($historyItem)
         <section class="rounded-2xl border p-5 mt-6" style="background: var(--surface-3); border-color: var(--border);">

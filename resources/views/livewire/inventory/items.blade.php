@@ -27,6 +27,19 @@ new #[Layout('layouts.app')] class extends Component
     public string $openingQty = '0';
 
     public ?int $recipeFgId = null;
+    public string $search = '';
+    public string $typeFilter = '';
+    public int $perPage = 100;
+
+    public function updatedSearch(): void
+    {
+        $this->perPage = 100;
+    }
+
+    public function updatedTypeFilter(): void
+    {
+        $this->perPage = 100;
+    }
     public string $componentId = '';
     public string $componentQty = '';
 
@@ -130,22 +143,31 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        $items = InventoryItem::with('bomLines.component')->orderByRaw("CASE item_type WHEN 'rm' THEN 1 WHEN 'pm' THEN 2 WHEN 'fg' THEN 3 ELSE 4 END")->orderBy('sku')->get();
+        // 2,000+ Zoho items: search/filter and show them 100 at a time so every
+        // click doesn't re-render the whole catalogue.
+        $query = InventoryItem::query()
+            ->when(trim($this->search) !== '', fn ($q) => $q->where('sku', 'like', '%'.trim($this->search).'%'))
+            ->when($this->typeFilter !== '', fn ($q) => $q->where('item_type', $this->typeFilter));
+        $total = (clone $query)->count();
+        $items = $query->with('bomLines.component')
+            ->orderByRaw("CASE item_type WHEN 'rm' THEN 1 WHEN 'pm' THEN 2 WHEN 'fg' THEN 3 ELSE 4 END")->orderBy('sku')
+            ->limit($this->perPage)->get();
 
         // Suggest SKU names already used by POs / GRN / SKU Master so stock links up.
         $known = collect()
             ->merge(SkuMaster::pluck('sku'))
             ->merge(LedgerEntry::distinct()->pluck('sku'))
             ->merge(PurchaseOrderLine::distinct()->pluck('product'))
-            ->filter()->unique()->diff($items->pluck('sku'))->sort()->values();
+            ->filter()->unique()->diff(InventoryItem::pluck('sku'))->sort()->values();
 
         return [
             'items' => $items,
+            'total' => $total,
             'balances' => app(InventoryService::class)->balances($items),
             'types' => InventoryItem::TYPES,
             'knownSkus' => $known,
-            'recipeFg' => $this->recipeFgId ? $items->firstWhere('id', $this->recipeFgId) : null,
-            'componentOptions' => $items->whereIn('item_type', ['rm', 'pm'])->where('active', true),
+            'recipeFg' => $this->recipeFgId ? InventoryItem::with('bomLines.component')->find($this->recipeFgId) : null,
+            'componentOptions' => InventoryItem::whereIn('item_type', ['rm', 'pm'])->where('active', true)->orderBy('sku')->get(),
         ];
     }
 }; ?>
@@ -187,6 +209,14 @@ new #[Layout('layouts.app')] class extends Component
         </form>
 
         <div class="lg:col-span-2 space-y-5">
+            <div class="flex flex-wrap items-center gap-2">
+                <input wire:model.live.debounce.400ms="search" type="search" placeholder="Search items…" class="rounded-lg border px-3 py-2 text-sm flex-1 min-w-[200px]" style="border-color: var(--border);">
+                <select wire:model.live="typeFilter" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                    <option value="">All types</option>
+                    @foreach ($types as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
+                </select>
+                <span class="text-xs" style="color: var(--text-muted);">Showing {{ $items->count() }} of {{ $total }}</span>
+            </div>
             <div class="rounded-2xl border overflow-x-auto" style="background: var(--surface-3); border-color: var(--border);">
                 <table class="w-full text-sm min-w-[640px]">
                     <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Type</th><th class="px-4 py-3 text-right">In stock now</th><th class="px-4 py-3">Recipe</th><th class="px-4 py-3"></th></tr></thead>
@@ -218,6 +248,9 @@ new #[Layout('layouts.app')] class extends Component
                     </tbody>
                 </table>
             </div>
+            @if ($items->count() < $total)
+                <button type="button" wire:click="$set('perPage', {{ $perPage + 100 }})" class="rounded-lg border px-4 py-2 text-sm font-semibold" style="border-color: var(--border); color: var(--brand);">Show more ({{ $total - $items->count() }} more)</button>
+            @endif
 
             @if ($recipeFg)
                 <div class="rounded-2xl border p-5 space-y-3" style="background: var(--surface-3); border-color: var(--border);">
