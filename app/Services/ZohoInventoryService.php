@@ -1044,6 +1044,10 @@ class ZohoInventoryService
     {
         $existing = \App\Models\Tan90\MasterData\Vendor::where('name', $name)->first();
         $code = $existing?->code ?? 'ZOHO-'.str($name)->slug()->upper();
+        // Two Zoho names can slug to the same code ("Co. Ltd" vs "Co Ltd"): keep codes unique.
+        if (! $existing && \App\Models\Tan90\MasterData\Vendor::where('code', $code)->exists()) {
+            $code .= '-'.strtoupper(substr(md5($name), 0, 5));
+        }
         $realGst = $gstNumber !== 'ZOHO-N/A' ? $gstNumber : null;
 
         // Pulled from Zoho: keep model events (Master Data audit trail) but mute the
@@ -1209,6 +1213,10 @@ class ZohoInventoryService
     {
         $existing = \App\Models\Tan90\MasterData\Customer::where('name', $name)->first();
         $code = $existing?->code ?? 'ZC-'.str($name)->slug()->upper();
+        // Two Zoho names can slug to the same code ("Co. Ltd" vs "Co Ltd"): keep codes unique.
+        if (! $existing && \App\Models\Tan90\MasterData\Customer::where('code', $code)->exists()) {
+            $code .= '-'.strtoupper(substr(md5($name), 0, 5));
+        }
 
         $gstNumber = ($record['gst_no'] ?? null) ?: null;
         $billingAddress = $record['billing_address'] ?? [];
