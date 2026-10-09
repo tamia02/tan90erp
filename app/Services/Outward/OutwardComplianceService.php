@@ -8,8 +8,8 @@ namespace App\Services\Outward;
 //     B2B (customer has GSTIN; turnover > Rs 5 Cr) -> e-Invoice IRN -> E-Way Bill
 //     B2C (no IRN)                                  -> E-Way Bill only above the threshold
 // Transfer Order / Internal Movement / Job Work -> are sender and receiver GSTINs identical?
-//     NO  (different GSTINs / inter-state branch) -> Tax Invoice (B2B supply) -> IRN -> E-Way Bill
-//     YES (same GSTIN / non-taxable movement)     -> Delivery Challan
+//     NO, both GST-registered (different GSTINs)   -> Transfer Order with GST (job work: Tax Invoice) -> IRN -> E-Way Bill
+//     YES (same GSTIN), or receiver's GST not yet received -> Delivery Challan (no GST)
 //          -> E-Way Bill if consignment > Rs 50,000 OR inter-state job work, else print challan only
 //
 // Returns the documents required plus the path taken, in plain words.
@@ -44,22 +44,27 @@ class OutwardComplianceService
             return $this->result('tax_invoice', false, false, $needsEwb, $steps);
         }
 
-        $steps[] = 'Purpose: '.($purpose === 'job_work' ? 'Job Work' : 'Transfer Order / Internal Movement').' -> are sender and receiver GSTINs identical?';
+        $label = $purpose === 'job_work' ? 'Job Work' : 'Transfer Order / Internal Movement';
+        $steps[] = "Purpose: {$label} -> are sender and receiver GSTINs identical?";
         $same = $fromGstin !== null && $toGstin !== null && $fromGstin === $toGstin;
+        $interstate = $this->interstate($fromGstin, $toGstin, $fromState, $toState);
 
-        if (! $same) {
-            $steps[] = 'No - '.($toGstin ? "different GSTINs ({$fromGstin} -> {$toGstin})" : 'receiver GSTIN differs / not given').' -> treated as a B2B supply: generate a Tax Invoice.';
+        if (! $same && $toGstin !== null) {
+            // Both sides GST-registered, different GSTINs: a taxable supply.
+            $document = $purpose === 'transfer' ? 'transfer_order' : 'tax_invoice';
+            $steps[] = "No - different GSTINs ({$fromGstin} -> {$toGstin}), both GST-registered -> "
+                .($purpose === 'transfer' ? 'Transfer Order with GST (taxable stock transfer between GSTINs).' : 'treated as a B2B supply: generate a Tax Invoice.');
             $steps[] = $einvoice ? 'B2B supply -> e-Invoice IRN required (from the IRP portal).' : 'e-Invoicing is switched off in settings -> no IRN.';
             $steps[] = 'Then E-Way Bill required (NIC portal).';
 
-            return $this->result('tax_invoice', true, $einvoice, true, $steps);
+            return $this->result($document, true, $einvoice, true, $steps);
         }
 
-        $steps[] = "Yes - same GSTIN ({$fromGstin}) / non-taxable movement -> generate a Delivery Challan.";
-        $interstate = $this->interstate($fromGstin, $toGstin, $fromState, $toState);
+        $steps[] = $same
+            ? "Yes - same GSTIN ({$fromGstin}) / non-taxable movement -> generate a Delivery Challan (no GST)."
+            : 'Receiver has no GSTIN yet (GST applied for, not received) -> generate a Delivery Challan (no GST).';
         $overThreshold = $value > $threshold;
-        $interstateJobWork = $purpose === 'job_work' && $interstate;
-        $needsEwb = $overThreshold || $interstateJobWork;
+        $needsEwb = $overThreshold || ($purpose === 'job_work' && $interstate);
         $steps[] = "Consignment {$money} ".($overThreshold ? "is above {$limit}" : "is not above {$limit}")
             .($purpose === 'job_work' ? ($interstate ? '; this is inter-state job work' : '; job work within the state') : '')
             .($needsEwb ? ' -> E-Way Bill required.' : ' -> print the challan only, no E-Way Bill.');

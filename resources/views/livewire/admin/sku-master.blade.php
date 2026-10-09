@@ -23,7 +23,6 @@ new #[Layout('layouts.app')] class extends Component
     public string $description = '';
 
     public array $categories = ['PCM — Raw Material', 'PCM — Trial', 'Packaging & Structural', 'Safety & PPE', 'Equipment & Rental', 'Consumable', 'Other'];
-    public array $units = ['KG', 'LTR', 'MT', 'NOS', 'BOX'];
 
     public function addSku(): void
     {
@@ -62,7 +61,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        return ['skus' => SkuMaster::orderByDesc('created_at')->get()];
+        return ['skus' => SkuMaster::orderByDesc('created_at')->get(), 'units' => \App\Support\Units::options()];
     }
 }; ?>
 

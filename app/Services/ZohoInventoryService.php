@@ -973,14 +973,47 @@ class ZohoInventoryService
         ];
     }
 
-    private function syncVendors(int $limit): int
+    /**
+     * One-off backfill: the scheduled sync only reads the newest page (200),
+     * so this walks every page of vendors and customers. GET-only.
+     *
+     * @return array{vendors: int, customers: int}
+     */
+    public function pullAllContacts(?callable $progress = null): array
+    {
+        $totals = ['vendors' => 0, 'customers' => 0];
+        if (! $this->isActive()) {
+            return $totals;
+        }
+        foreach (['vendors' => 'syncVendors', 'customers' => 'syncCustomers'] as $key => $method) {
+            for ($page = 1; $page <= 100; $page++) {
+                $count = $this->{$method}(200, $page);
+                $totals[$key] += $count;
+                if ($progress) {
+                    $progress($key, $page, $count);
+                }
+                if ($count === 0 || ! $this->lastPageHadMore) {
+                    break;
+                }
+            }
+        }
+
+        return $totals;
+    }
+
+    private bool $lastPageHadMore = false;
+
+    private function syncVendors(int $limit, int $page = 1): int
     {
         $response = $this->inventoryRequest()->get($this->invUrl('/contacts', [
             'contact_type' => 'vendor',
+            'page' => $page,
             'per_page' => min(max($limit, 1), 200),
             'sort_column' => 'last_modified_time',
             'sort_order' => 'D',
         ]));
+
+        $this->lastPageHadMore = (bool) $response->json('page_context.has_more_page', false);
 
         if (! $response->successful()) {
             return 0;
@@ -1167,14 +1200,17 @@ class ZohoInventoryService
         }
     }
 
-    private function syncCustomers(int $limit): int
+    private function syncCustomers(int $limit, int $page = 1): int
     {
         $response = $this->inventoryRequest()->get($this->invUrl('/contacts', [
             'contact_type' => 'customer',
+            'page' => $page,
             'per_page' => min(max($limit, 1), 200),
             'sort_column' => 'last_modified_time',
             'sort_order' => 'D',
         ]));
+
+        $this->lastPageHadMore = (bool) $response->json('page_context.has_more_page', false);
 
         if (! $response->successful()) {
             return 0;

@@ -122,10 +122,16 @@ class ZohoItemPullService
         $u = mb_strtolower(trim($unit));
 
         return match (true) {
-            $u === '' || in_array($u, ['pcs', 'pc', 'piece', 'pieces', 'numbers', 'number', 'nos', 'no', 'qty', 'units', 'unit'], true) => 'PCS',
-            in_array($u, ['kg', 'kgs', 'kilogram', 'kilograms'], true) => 'KG',
+            $u === '' || in_array($u, ['pcs', 'pc', 'piece', 'pieces', 'numbers', 'number', 'nos', 'no', 'no.', 'nos.', 'qty', 'quantity', 'units', 'unit'], true) => 'PCS',
+            in_array($u, ['kg', 'kgs', 'kg.', 'kilogram', 'kilograms'], true) => 'KG',
+            in_array($u, ['g', 'gm', 'gms', 'gram', 'grams'], true) => 'GM',
             in_array($u, ['box', 'boxes'], true) => 'BOX',
             in_array($u, ['l', 'ltr', 'ltrs', 'litre', 'litres', 'liter', 'liters'], true) => 'LTR',
+            in_array($u, ['m', 'mtr', 'mtrs', 'meter', 'meters', 'metre', 'metres'], true) => 'MTR',
+            in_array($u, ['ft', 'feet', 'foot'], true) => 'FT',
+            in_array($u, ['roll', 'rolls'], true) => 'ROLL',
+            in_array($u, ['set', 'sets'], true) => 'SET',
+            in_array($u, ['oth', 'others', 'other'], true) => 'OTH',
             default => mb_strtoupper(trim($unit)),
         };
     }

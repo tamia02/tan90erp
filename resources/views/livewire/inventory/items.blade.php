@@ -41,11 +41,13 @@ new #[Layout('layouts.app')] class extends Component
     }
     public function save(): void
     {
+        $this->unit = strtoupper(trim($this->unit));
         $data = $this->validate([
             'sku' => ['required', 'string', 'max:255', Rule::unique('inventory_items', 'sku')->ignore($this->editingId)],
             'name' => ['nullable', 'string', 'max:255'],
             'itemType' => ['required', Rule::in(array_keys(InventoryItem::TYPES))],
-            'unit' => ['required', 'string', 'max:20'],
+            // From the Units master; an existing item may keep its old unit.
+            'unit' => ['required', 'string', 'max:20', Rule::in(array_merge(\App\Support\Units::options(), [(string) InventoryItem::find($this->editingId)?->unit]))],
             'openingQty' => ['required', 'numeric', 'min:0'],
         ], ['sku.unique' => 'This SKU is already added.']);
 
@@ -133,6 +135,7 @@ new #[Layout('layouts.app')] class extends Component
             'total' => $total,
             'balances' => app(InventoryService::class)->balances($items),
             'types' => InventoryItem::TYPES,
+            'units' => \App\Support\Units::options(),
             'knownSkus' => $known,
             // Where each item came from: Zoho, the ERP's own Items list, or only GRN.
             'zohoSkus' => SkuMaster::whereIn('sku', $items->pluck('sku'))->whereNotNull('zoho_item_id')->pluck('sku')->map(fn ($v) => mb_strtolower($v))->flip(),
@@ -165,7 +168,10 @@ new #[Layout('layouts.app')] class extends Component
                 </select>
             </label>
             <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Unit</span>
-                <input wire:model="unit" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="KG / NOS / BOX">
+                <select wire:model="unit" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                    @foreach ($units as $u)<option value="{{ $u }}">{{ $u }}</option>@endforeach
+                    @if ($unit !== '' && ! in_array($unit, $units, true))<option value="{{ $unit }}">{{ $unit }} (not in Units master)</option>@endif
+                </select>
                 @error('unit') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Current stock</span>

@@ -19,6 +19,7 @@ class OutwardShipment extends Model
 
     public const DOCUMENT_TYPES = [
         'tax_invoice' => 'Tax Invoice',
+        'transfer_order' => 'Transfer Order (with GST)',
         'delivery_challan' => 'Delivery Challan',
     ];
 
@@ -81,11 +82,17 @@ class OutwardShipment extends Model
      *
      * @return array<int, string>
      */
+    // Tax Invoice and GST Transfer Order both carry a numbered, uploaded document.
+    public function needsInvoice(): bool
+    {
+        return in_array($this->document_type, ['tax_invoice', 'transfer_order'], true);
+    }
+
     public function missingDocuments(): array
     {
         $missing = [];
-        if ($this->document_type === 'tax_invoice' && (blank($this->invoice_number) || ! $this->invoice_date || blank($this->invoice_file))) {
-            $missing[] = 'Tax Invoice (number, date and file)';
+        if ($this->needsInvoice() && (blank($this->invoice_number) || ! $this->invoice_date || blank($this->invoice_file))) {
+            $missing[] = $this->documentLabel().' (number, date and file)';
         }
         if ($this->requires_irn && (blank($this->irn) || blank($this->irn_ack_number))) {
             $missing[] = 'e-Invoice IRN and Ack No.';

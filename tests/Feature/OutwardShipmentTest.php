@@ -66,8 +66,16 @@ class OutwardShipmentTest extends TestCase
 
     public function test_transfer_between_different_gstins_is_a_taxable_supply(): void
     {
-        $this->assertSame(['tax_invoice', true, true, true], $this->flags($this->decide('transfer', self::CHENNAI, self::DELHI, 1000)));
-        $this->assertSame(['tax_invoice', true, true, true], $this->flags($this->decide('job_work', self::CHENNAI, null, 1000)));
+        // Meeting 2026-10-08: GST-registered branches -> Transfer Order with GST.
+        $this->assertSame(['transfer_order', true, true, true], $this->flags($this->decide('transfer', self::CHENNAI, self::DELHI, 1000)));
+        $this->assertSame(['tax_invoice', true, true, true], $this->flags($this->decide('job_work', self::CHENNAI, self::DELHI, 1000)));
+    }
+
+    public function test_receiver_without_gst_yet_gets_a_delivery_challan(): void
+    {
+        $this->assertSame(['delivery_challan', false, false, false], $this->flags($this->decide('transfer', self::CHENNAI, null, 1000)));
+        $this->assertSame(['delivery_challan', false, false, true], $this->flags($this->decide('transfer', self::CHENNAI, '', 75000)));
+        $this->assertSame(['delivery_challan', false, false, true], $this->flags($this->decide('job_work', self::CHENNAI, null, 100, 'Tamil Nadu', 'Karnataka')));
     }
 
     public function test_same_gstin_is_a_delivery_challan_with_ewb_over_threshold(): void

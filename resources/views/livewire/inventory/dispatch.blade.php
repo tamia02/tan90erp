@@ -347,11 +347,11 @@ new #[Layout('layouts.app')] class extends Component
                 @if ($docsFor === $s->id)
                     <div class="mt-3 border-t pt-3 space-y-3" style="border-color: var(--border);">
                         <ol class="list-decimal pl-5 text-xs space-y-0.5" style="color: var(--text-secondary);">@foreach ($s->decision_steps ?? [] as $step)<li>{{ $step }}</li>@endforeach</ol>
-                        @if ($s->document_type === 'tax_invoice')
+                        @if ($s->needsInvoice())
                             <div class="grid sm:grid-cols-3 gap-2">
-                                <label class="flex flex-col gap-1 text-xs"><span class="font-semibold">Tax Invoice no. *</span><input wire:model="doc.invoice_number" class="{{ $input }}" style="border-color: var(--border);"></label>
-                                <label class="flex flex-col gap-1 text-xs"><span class="font-semibold">Invoice date *</span><input wire:model="doc.invoice_date" type="date" class="{{ $input }}" style="border-color: var(--border);"></label>
-                                <label class="flex flex-col gap-1 text-xs"><span class="font-semibold">Invoice file (PDF/JPG) *</span><input wire:model="invoiceFile" type="file" accept=".pdf,image/*" class="text-xs">
+                                <label class="flex flex-col gap-1 text-xs"><span class="font-semibold">{{ $s->documentLabel() }} no. *</span><input wire:model="doc.invoice_number" class="{{ $input }}" style="border-color: var(--border);"></label>
+                                <label class="flex flex-col gap-1 text-xs"><span class="font-semibold">Date *</span><input wire:model="doc.invoice_date" type="date" class="{{ $input }}" style="border-color: var(--border);"></label>
+                                <label class="flex flex-col gap-1 text-xs"><span class="font-semibold">{{ $s->documentLabel() }} file (PDF/JPG) *</span><input wire:model="invoiceFile" type="file" accept=".pdf,image/*" class="text-xs">
                                     @if ($s->invoice_file)<a href="{{ route('inventory.outward.file', [$s, 'invoice']) }}" target="_blank" class="underline" style="color: var(--brand);">uploaded - view</a>@endif
                                     @error('invoiceFile') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror</label>
                             </div>
