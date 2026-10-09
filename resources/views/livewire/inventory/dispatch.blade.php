@@ -43,7 +43,7 @@ new #[Layout('layouts.app')] class extends Component
     public $invoiceFile;
     public $irnFile;
     public $ewbFile;
-    public string $statusFilter = 'open';
+    public string $statusFilter = '';
 
     public function updatedPurpose(): void
     {
@@ -121,7 +121,7 @@ new #[Layout('layouts.app')] class extends Component
         ], $lines, auth()->user());
         AuditLogger::log('Outward shipment created', "{$shipment->number} · {$shipment->purposeLabel()} · {$shipment->documentLabel()} → {$shipment->to_name}", $shipment);
 
-        session()->flash('success', "{$shipment->number} created ({$shipment->documentLabel()}). ".($shipment->status === 'ready' ? 'Ready to dispatch.' : 'Add the documents below, then mark it dispatched.'));
+        session()->flash('success', "{$shipment->number} created ({$shipment->documentLabel()}). ".($shipment->status === 'ready' ? 'Documents complete - waiting for the truck.' : 'Add the documents below. The Guard dispatches it when the truck leaves.'));
         $this->reset(['customerId', 'toLocationId', 'toName', 'toGstin', 'toState', 'toAddress', 'salesOrderNumber', 'notes', 'lines']);
         $this->openDocs($shipment->id);
     }
@@ -154,22 +154,8 @@ new #[Layout('layouts.app')] class extends Component
         ]);
         $service->saveDocuments($shipment, $this->doc, ['invoice_file' => $this->invoiceFile, 'irn_file' => $this->irnFile, 'ewb_file' => $this->ewbFile]);
         AuditLogger::log('Outward documents saved', "{$shipment->number} · ".($shipment->status === 'ready' ? 'ready to dispatch' : 'still missing: '.implode(', ', $shipment->missingDocuments())), $shipment);
-        session()->flash('success', $shipment->status === 'ready' ? "{$shipment->number}: all documents in - ready to dispatch." : "{$shipment->number}: saved. Still missing: ".implode(', ', $shipment->missingDocuments()).'.');
+        session()->flash('success', $shipment->status === 'ready' ? "{$shipment->number}: all documents in - the Guard can dispatch it when the truck leaves." : "{$shipment->number}: saved. Still missing: ".implode(', ', $shipment->missingDocuments()).'.');
         $this->openDocs($shipment->id);
-    }
-
-    public function dispatchShipment(int $id, OutwardShipmentService $service): void
-    {
-        $shipment = OutwardShipment::findOrFail($id);
-        if ($shipment->gate_entry_id) {
-            $this->addError('dispatch', "{$shipment->number} is on gate pass {$shipment->gateEntry?->gate_no} - it is dispatched when the Guard confirms the truck's exit.");
-
-            return;
-        }
-        $service->markDispatched($shipment, auth()->user());
-        AuditLogger::log('Outward shipment dispatched', "{$shipment->number} → {$shipment->to_name}", $shipment);
-        session()->flash('success', "{$shipment->number} dispatched - stock has been deducted.");
-        $this->docsFor = null;
     }
 
     public function cancelShipment(int $id, OutwardShipmentService $service): void
@@ -223,7 +209,7 @@ new #[Layout('layouts.app')] class extends Component
 
 @php
     $badge = fn ($status) => match ($status) {
-        'ready' => ['Ready to dispatch', 'var(--status-good)', 'var(--status-good-bg)'],
+        'ready' => ['Documents complete', 'var(--status-good)', 'var(--status-good-bg)'],
         'dispatched' => ['Dispatched', 'var(--text-secondary)', 'var(--surface-2)'],
         'cancelled' => ['Cancelled', 'var(--text-muted)', 'var(--surface-2)'],
         default => ['Documents pending', 'var(--status-warning)', 'var(--status-warning-bg)'],
@@ -231,7 +217,7 @@ new #[Layout('layouts.app')] class extends Component
     $input = 'rounded-lg border px-3 py-2 text-sm';
 @endphp
 <div>
-    @include('partials.inventory-tabs', ['current' => 'inventory.dispatch', 'title' => 'Outward Shipment', 'subtitle' => 'Send goods out the GST way: the system decides Tax Invoice or Delivery Challan, e-Invoice IRN and E-Way Bill. Create them on the portals, upload them here, then mark the shipment dispatched - stock goes down only then.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.dispatch', 'title' => 'Outward Shipment', 'subtitle' => 'Send goods out the GST way: the system decides Tax Invoice or Delivery Challan, e-Invoice IRN and E-Way Bill. Create them on the portals and upload them here. When the truck comes: Guard makes the outward gate pass, Store Manager assigns the dock, goods are loaded, and the Guard dispatches it at exit - stock goes down only then.'])
     @error('dispatch') <div role="alert" class="rounded-xl border px-4 py-3 mb-4 text-sm" style="background: var(--status-critical-bg); border-color: var(--status-critical); color: var(--status-critical);">{{ $message }}</div> @enderror
     @error('cancel') <div role="alert" class="rounded-xl border px-4 py-3 mb-4 text-sm" style="background: var(--status-critical-bg); border-color: var(--status-critical); color: var(--status-critical);">{{ $message }}</div> @enderror
 
@@ -341,12 +327,12 @@ new #[Layout('layouts.app')] class extends Component
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h2 class="text-lg font-semibold" style="color: var(--text-primary);">Outward shipments</h2>
             <select wire:model.live="statusFilter" class="{{ $input }}" style="border-color: var(--border);">
-                <option value="open">Open (documents pending / ready)</option>
+                <option value="">All (latest first)</option>
+                <option value="open">Open (not dispatched yet)</option>
                 <option value="documents_pending">Documents pending</option>
-                <option value="ready">Ready to dispatch</option>
+                <option value="ready">Documents complete</option>
                 <option value="dispatched">Dispatched</option>
                 <option value="cancelled">Cancelled</option>
-                <option value="">All</option>
             </select>
         </div>
         @forelse ($shipments as $s)
@@ -370,13 +356,12 @@ new #[Layout('layouts.app')] class extends Component
                         @if (! in_array($s->status, ['dispatched', 'cancelled'], true))
                             <button type="button" wire:click="openDocs({{ $s->id }})" class="text-xs font-semibold" style="color: var(--brand);">Documents</button>
                         @endif
-                        @if ($s->gateEntry)
-                            <span class="text-xs font-semibold" style="color: var(--brand);" title="Stock goes down when the Guard confirms the truck's exit">At gate: {{ $s->gateEntry->gate_no }} · {{ \App\Support\GateStatusLabels::label($s->gateEntry->status) }}</span>
-                        @elseif ($s->status === 'ready')
-                            <span class="text-xs" style="color: var(--text-muted);">Guard can now make the outward gate pass</span>
-                        @endif
-                        @if ($s->status === 'ready' && ! $s->gateEntry)
-                            <button type="button" wire:click="dispatchShipment({{ $s->id }})" wire:confirm="Dispatch {{ $s->number }}? Stock will be deducted now." class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style="background: var(--brand);">Mark dispatched</button>
+                        @if ($s->status === 'dispatched')
+                            <span class="text-xs" style="color: var(--text-muted);">Truck left {{ $s->dispatched_at?->format('d M, H:i') }}{{ $s->gateEntry ? ' · '.$s->gateEntry->gate_no : '' }}</span>
+                        @elseif ($s->gateEntry)
+                            <span class="text-xs font-semibold" style="color: var(--brand);" title="Stock goes down when the Guard confirms the truck's exit">Truck {{ $s->gateEntry->vehicle_number }} · {{ $s->gateEntry->gate_no }} · {{ \App\Support\GateStatusLabels::label($s->gateEntry->status) }}</span>
+                        @elseif ($s->status !== 'cancelled')
+                            <span class="text-xs" style="color: var(--text-muted);">Waiting for the truck - Guard makes the outward gate pass when it arrives</span>
                         @endif
                     </div>
                 </div>

@@ -147,8 +147,11 @@ class InventoryFlowTest extends TestCase
         $shipment = OutwardShipment::sole();
         $this->assertSame(['delivery_challan', 'ready'], [$shipment->document_type, $shipment->status]);
         $this->assertSame(10.0, $this->balance($this->fg)['final']);
-        $page->call('dispatchShipment', $shipment->id)->assertHasNoErrors();
+        // Dispatch happens at the Guard's exit (see OutwardGateLinkTest); here straight through the service.
+        $page->assertDontSee('Mark dispatched')->assertSee('Waiting for the truck');
+        app(\App\Services\Outward\OutwardShipmentService::class)->markDispatched($shipment, $this->admin);
         $this->assertSame(6.0, $this->balance($this->fg)['final']);
+        Volt::test('inventory.dispatch')->assertSee($shipment->number)->assertSee('Truck left'); // dispatched ones stay in the list
         $page->set('purpose', 'transfer')->set('fromLocationId', (string) $chennai->id)->set('toLocationId', (string) $chennai->id)
             ->set('lines', [['item' => 'PCM Pouch 500g Blue', 'qty' => '999', 'rate' => '0']])
             ->assertSee('free 6')->assertSee('not enough stock')      // shown while typing

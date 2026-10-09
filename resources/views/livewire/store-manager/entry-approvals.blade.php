@@ -18,6 +18,9 @@ use Livewire\Volt\Component;
 new #[Layout('layouts.app')] class extends Component
 {
     public ?int $assigningOutward = null;
+
+    // Outward Shipment this truck carries, if the Guard didn't pick one.
+    public string $linkShipmentId = '';
     public string $outwardDock = '';
     public string $loadingWindowStart = '';
     public string $loadingWindowEnd = '';
@@ -196,6 +199,7 @@ new #[Layout('layouts.app')] class extends Component
     {
         $gate = GateEntry::findOrFail($gateId);
         $this->assigningOutward = $gateId;
+        $this->linkShipmentId = (string) ($gate->outward_shipment_id ?? '');
         $this->outwardDock = app(DockAssignmentService::class)->choose($gate, $this->outwardDocks) ?? '';
         $this->loadingWindowStart = '';
         $this->loadingWindowEnd = '';
@@ -204,7 +208,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function cancelOutwardApproval(): void
     {
-        $this->reset(['assigningOutward', 'outwardDock', 'loadingWindowStart', 'loadingWindowEnd', 'expectedDeliveryDate']);
+        $this->reset(['assigningOutward', 'linkShipmentId', 'outwardDock', 'loadingWindowStart', 'loadingWindowEnd', 'expectedDeliveryDate']);
     }
 
         // Store Manager owns approval and dock assignment for outward.
@@ -246,6 +250,10 @@ new #[Layout('layouts.app')] class extends Component
             $this->addError('blocked', "No outward dock is available for {$gate->gate_no}. The entry stays pending until a dock is released.");
 
             return;
+        }
+
+        if (! $gate->outward_shipment_id && $this->linkShipmentId !== '') {
+            app(\App\Services\Outward\OutwardShipmentService::class)->linkGate(\App\Models\Outward\OutwardShipment::findOrFail((int) $this->linkShipmentId), $gate);
         }
 
         $gate->update([
@@ -295,9 +303,10 @@ new #[Layout('layouts.app')] class extends Component
                 ->with('validationIssues')
                 ->orderByDesc('approved_at')
                 ->get(),
+            'openShipments' => $this->assigningOutward ? app(\App\Services\Outward\OutwardShipmentService::class)->openForGate() : collect(),
             'pendingOutward' => GateEntry::where('entry_type', 'outward')
                 ->where('status', 'pending_validation')
-                ->with('validationIssues')
+                ->with(['validationIssues', 'outwardShipment'])
                 ->orderByDesc('created_at')
                 ->get(),
             'availableOutwardDocks' => $this->availableOutwardDocks(),
@@ -412,6 +421,9 @@ new #[Layout('layouts.app')] class extends Component
                     <a href="{{ route('gate-entries.show', $gate) }}" wire:navigate class="hover:opacity-80">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $gate->gate_no }} · {{ $gate->vendor_name }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $gate->material }} · {{ $gate->vehicle_number }} · Arrived {{ $gate->created_at->format('d M, H:i') }}</div>
+                        @if ($gate->outwardShipment)
+                            <div class="text-xs mt-0.5 font-semibold" style="color: var(--brand);">Outward Shipment {{ $gate->outwardShipment->number }} · {{ $gate->outwardShipment->documentLabel() }}{{ $gate->outwardShipment->status === 'documents_pending' ? ' · documents pending' : ' · documents complete' }}</div>
+                        @endif
                     </a>
                     @if ($assigningOutward !== $gate->id)
                         <button wire:click="openOutwardApproval({{ $gate->id }})" class="rounded-lg px-3.5 py-2 text-sm font-medium text-white shrink-0" style="background: var(--brand);">Approve &amp; assign dock</button>
@@ -420,6 +432,16 @@ new #[Layout('layouts.app')] class extends Component
 
                 @if ($assigningOutward === $gate->id)
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                        @unless ($gate->outward_shipment_id)
+                            <label class="flex flex-col gap-1.5 text-sm sm:col-span-2">
+                                <span class="font-medium" style="color: var(--text-primary);">Outward Shipment for this truck</span>
+                                <select wire:model="linkShipmentId" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                                    <option value="">None (old-style outward pass)</option>
+                                    @foreach ($openShipments as $shipment)<option value="{{ $shipment->id }}">{{ $shipment->number }} · {{ $shipment->documentLabel() }} → {{ $shipment->to_name }}{{ $shipment->status === 'documents_pending' ? ' (documents pending)' : '' }}</option>@endforeach
+                                </select>
+                                <span class="text-xs" style="color: var(--text-muted);">Stock goes down when the Guard confirms this truck's exit.</span>
+                            </label>
+                        @endunless
                         <label class="flex flex-col gap-1.5 text-sm">
                             <span class="font-medium" style="color: var(--text-primary);">Dispatch bay</span>
                             <select wire:model="outwardDock" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">

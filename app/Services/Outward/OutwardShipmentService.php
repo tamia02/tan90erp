@@ -185,11 +185,29 @@ class OutwardShipmentService
         return rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.') ?: '0';
     }
 
-    // Shipments the Guard can make an outward gate pass for: documents
-    // complete, not dispatched, no gate pass yet.
-    public function readyForGate()
+    // Shipments a truck can be linked to: not dispatched or cancelled, no gate
+    // pass yet. Documents may still be pending - the E-Way Bill usually needs
+    // the truck number - but the truck can't leave until they are complete.
+    public function openForGate()
     {
-        return OutwardShipment::with('lines.item')->where('status', 'ready')->whereNull('gate_entry_id')->latest('id')->get();
+        return OutwardShipment::with('lines.item')->whereIn('status', ['documents_pending', 'ready'])->whereNull('gate_entry_id')->latest('id')->get();
+    }
+
+    // Truck <-> shipment. The truck's number and transporter fill the
+    // shipment's (needed for the E-Way Bill) when empty.
+    public function linkGate(OutwardShipment $shipment, \App\Models\GateEntry $gate): void
+    {
+        if (! in_array($shipment->status, ['documents_pending', 'ready'], true) || ($shipment->gate_entry_id && $shipment->gate_entry_id !== $gate->id)) {
+            throw ValidationException::withMessages(['outwardShipmentId' => "{$shipment->number} already has a truck or is no longer open."]);
+        }
+        DB::transaction(function () use ($shipment, $gate) {
+            $gate->update(['outward_shipment_id' => $shipment->id]);
+            $shipment->update([
+                'gate_entry_id' => $gate->id,
+                'vehicle_number' => $shipment->vehicle_number ?: ($gate->vehicle_number !== 'WALK-IN' ? $gate->vehicle_number : null),
+                'transporter' => $shipment->transporter ?: $gate->transporter,
+            ]);
+        });
     }
 
     public function cancel(OutwardShipment $shipment): void

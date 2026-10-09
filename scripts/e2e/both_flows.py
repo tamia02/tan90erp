@@ -17,6 +17,7 @@ Never point this at the live site: it creates real POs, gate entries, GRNs, prod
 and dispatches. Screenshots of every step land in scripts/e2e/output/.
 """
 import argparse
+import re
 import os
 import sys
 import time
@@ -230,20 +231,19 @@ def check_received(page):
 
 # ---------------- Flow 2 ----------------
 def pm_stock(page):
+    """Test data: +60 packaging panels (Items no longer has an opening-stock box - real
+    stock comes from GRN), then check the item's stock history panel in the browser."""
+    import subprocess
+    php = os.environ.get("PHP_BIN", r"C:\php84\php.exe")
+    out = subprocess.run([php, "artisan", "tinker", "--execute",
+                          f"$i=App\\Models\\Inventory\\InventoryItem::where('sku', {PM!r})->firstOrFail(); $i->increment('opening_qty', 60); echo (int) $i->fresh()->opening_qty;"],
+                         capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     login(page, "storeManager")
     page.goto(f"{BASE}/inventory/items"); settle(page)
-    page.get_by_placeholder("Search by item name or code…").fill(PM); settle(page, 1500)
-    page.locator("tr", has_text=PM).first.get_by_role("button", name="Edit").click(); settle(page)
-    for _ in range(60):  # wait until the edit form has loaded this item
-        if page.locator("[wire\\:model='sku']").input_value() == PM:
-            break
-        page.wait_for_timeout(500)
-    current = float(page.locator("[wire\\:model='openingQty']").input_value() or 0)
-    page.fill("[wire\\:model='openingQty']", str(int(current + 60)))  # +60 panels every run
-    page.get_by_role("button", name="Save changes").click()
-    wait_for_text(page, "Saved")
-    return f"opening stock {int(current)} -> {int(current + 60)}"
-
+    page.get_by_placeholder("Search by item name or code…").fill("SP-2124"); settle(page, 1500)
+    page.locator("tr", has_text="SP-2124").first.locator("button").first.click()
+    wait_for_text(page, "Stock history:")
+    return f"test stock now {out.stdout.strip().splitlines()[-1] if out.stdout.strip() else '?'} | history panel opens"
 
 def bundle(page):
     page.goto(f"{BASE}/inventory/production"); settle(page)
@@ -275,13 +275,12 @@ def outward_form(page, purpose, qty, rate, expect=" created ("):
 
 
 def dispatch(page):
-    page.on("dialog", lambda d: d.accept())  # "Dispatch ...? Stock will be deducted now."
-    # B2B sale: Tax Invoice + IRN + E-Way Bill must be uploaded before dispatch.
+    """Store Manager makes the B2B shipment + documents; the truck then goes through
+    Guard pass -> dock -> loading -> Guard exit, which dispatches it and deducts stock."""
+    page.on("dialog", lambda d: d.accept())
+    login(page, "storeManager")
     outward_form(page, "sales", 20, 100)
-    wait_for_text(page, "Add the documents below")
-    newest = page.locator("[wire\\:key^='outward-shipment-']").first  # list is newest first
-    if newest.get_by_role("button", name="Mark dispatched").count():
-        raise AssertionError("Mark dispatched shown before documents were uploaded")
+    shipment = re.search(r"(OUT-\d+) created", page.inner_text("body")).group(1)
     today, later = date.today().isoformat(), (date.today() + timedelta(days=2)).isoformat()
     for field, value in [("invoice_number", f"INV-{TS}"), ("invoice_date", today), ("irn", f"IRN{TS}abc"), ("irn_ack_number", f"ACK{TS}"),
                          ("ewb_number", f"33{TS}0000"), ("ewb_valid_until", later)]:
@@ -289,14 +288,54 @@ def dispatch(page):
     upload(page, "invoiceFile", POD)
     upload(page, "ewbFile", POD)
     page.get_by_role("button", name="Save documents").click()
-    wait_for_text(page, "ready to dispatch")
-    page.locator("[wire\\:key^='outward-shipment-']").first.get_by_role("button", name="Mark dispatched").click()
+    wait_for_text(page, "the Guard can dispatch it")
+    if page.get_by_role("button", name="Mark dispatched").count():
+        raise AssertionError("Outward page must not dispatch by hand any more")
+
+    # 1. Truck arrives: Guard makes the outward pass for this shipment.
+    login(page, "guard")
+    page.goto(f"{BASE}/guard/scan"); settle(page)
+    page.get_by_role("button", name="Outward", exact=True).first.click(); settle(page, 1200)
+    page.locator("[wire\\:key^='ready-shipment-']", has_text=shipment).first.click(); settle(page, 1200)
+    page.fill("#driverName", "E2E Driver"); page.fill("#vehicleNumber", f"MH 04 E2E {TS[-4:]}")
+    page.get_by_role("button", name="Save Outward Entry").click()
+    wait_for_text(page, "Gate Pass Created Successfully")
+    gate = re.search(r"(GP-OUT-\d{4}-\d+)", page.inner_text("body")).group(1)
+    entry_url = page.get_by_role("link", name="View Entry").get_attribute("href")
+
+    # 2. Store Manager approves and assigns the dock.
+    login(page, "storeManager")
+    page.goto(f"{BASE}/entry-approvals"); settle(page)
+    card = page.locator(f"xpath=//*[contains(normalize-space(.), '{gate}')][.//button[normalize-space()='Approve & assign dock']]").last
+    card.get_by_role("button", name="Approve & assign dock").click(); settle(page, 1200)
+    page.get_by_role("button", name="Confirm approval").click()
+    wait_for_text(page, f"{gate} approved and assigned")
+
+    # 3. Store Executive loads the truck.
+    login(page, "storeExec")
+    page.goto(f"{BASE}/unloading/desk"); settle(page)
+    card = page.locator(f"xpath=//*[contains(normalize-space(.), '{gate}')][.//button[normalize-space()='Start loading']]").last
+    card.get_by_role("button", name="Start loading").click()
+    wait_for_text(page, f"{gate} loading started")
+    card = page.locator(f"xpath=//*[contains(normalize-space(.), '{gate}')][.//button[normalize-space()='Open completion checklist']]").last
+    card.get_by_role("button", name="Open completion checklist").click(); settle(page, 1200)
+    for box in page.locator("input[type=checkbox][wire\\:model^='documents']").all():
+        if box.is_visible() and not box.is_checked():
+            box.check()
+    page.get_by_role("button", name="ready for exit").click()
+    wait_for_text(page, f"{gate} loaded and documents shared")
+
+    # 4. Truck leaves: Guard confirms exit = dispatch.
+    login(page, "guard")
+    page.goto(entry_url if entry_url.startswith("http") else BASE + entry_url); settle(page)
+    page.get_by_role("button", name="Confirm exit").click()
     wait_for_text(page, "stock has been deducted")
-    ok = messages(page)
-    # Same-GSTIN transfer under Rs 50,000 = Delivery Challan, ready at once; too much qty must be blocked.
+    ok = f"{shipment} -> {gate}: " + messages(page)[:70]
+
     # More than is in stock: shown while typing and blocked at Create, before any document is made.
+    login(page, "storeManager")
     outward_form(page, "transfer", 99999, 0, expect="make or receive more first")
-    return ok[:90] + " | over-stock shipment blocked at create"
+    return ok + " | over-stock blocked at create"
 
 
 def final(page):
@@ -307,8 +346,8 @@ FLOW1 = [("1. Store Manager creates PO (Zoho required fields)", create_po), ("2.
          ("3. Guard gate entry", gate_entry), ("4. Store Manager approves entry", approve),
          ("5. Store Executive unloads with POD", unload), ("6. QC accepts 100", qc), ("7. Store Manager posts GRN", grn),
          ("8. Store Executive putaway", putaway), ("9. Stock shows in Stock Balance + Inventory", check_received)]
-FLOW2 = [("10. Top up packaging stock", pm_stock), ("11. Create Bundle from Zoho recipe", bundle),
-         ("12. Outward: B2B sale with Invoice/IRN/E-Way Bill + over-stock blocked at create", dispatch), ("13. Stock Summary", final)]
+FLOW2 = [("10. Packaging stock + item history panel", pm_stock), ("11. Create Bundle from Zoho recipe", bundle),
+         ("12. Outward: shipment + documents -> Guard pass -> dock -> loading -> Guard exit dispatches", dispatch), ("13. Stock Summary", final)]
 steps = (FLOW1 if not args.flow2 else []) + (FLOW2 if not args.flow1 else [])
 
 with sync_playwright() as p:
