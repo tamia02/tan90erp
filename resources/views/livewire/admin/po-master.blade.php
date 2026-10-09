@@ -377,11 +377,33 @@ new #[Layout('layouts.app')] class extends Component
         $this->persistPo(true, false);
     }
 
+    // Blank PO Number = next number from the PO category's series (Master Data >
+    // Number Series, restarts each April). A typed number is used as before.
+    private function fillPoNumberFromSeries(): void
+    {
+        if (trim($this->poNumber) !== '' || $this->purchaseNature === '') {
+            return;
+        }
+        $series = app(\App\Services\Tan90\MasterData\NumberSeriesService::class);
+        for ($try = 0; $try < 50; $try++) {
+            $number = $series->next('Purchase Order: '.$this->purchaseNature);
+            if ($number === null) {
+                return;
+            }
+            if (! PurchaseOrder::where('po_number', $number)->exists()) {
+                $this->poNumber = $number;
+
+                return;
+            }
+        }
+    }
+
     private function persistPo(bool $submit, bool $releaseToVendor = false): void
     {
         // Never trust a separately submitted category/term. Nature of PO is
         // the source of truth for the PO classification.
         $this->applyNatureDefaults();
+        $this->fillPoNumberFromSeries();
 
         $this->validate([
             'poNumber' => ['required', 'string', 'max:255', 'unique:purchase_orders,po_number'],
@@ -863,7 +885,7 @@ new #[Layout('layouts.app')] class extends Component
             </div>
             <label class="flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">PO Number</span>
-                <input wire:model="poNumber" class="rounded-lg border px-3 py-2 text-sm" style="border-color: {{ $errors->has('poNumber') ? 'var(--status-critical)' : 'var(--border)' }};" aria-invalid="{{ $errors->has('poNumber') ? 'true' : 'false' }}" placeholder="PO RM 2627 0099" />
+                <input wire:model="poNumber" class="rounded-lg border px-3 py-2 text-sm" style="border-color: {{ $errors->has('poNumber') ? 'var(--status-critical)' : 'var(--border)' }};" aria-invalid="{{ $errors->has('poNumber') ? 'true' : 'false' }}" placeholder="{{ ($purchaseNature && ($nextPo = app(\App\Services\Tan90\MasterData\NumberSeriesService::class)->peek('Purchase Order: '.$purchaseNature))) ? 'Leave blank for next: '.$nextPo : 'PO RM 2627 0099' }}" />
                 @error('poNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             <label class="flex flex-col gap-1.5 text-sm">
