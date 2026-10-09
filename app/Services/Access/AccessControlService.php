@@ -302,6 +302,20 @@ class AccessControlService
         return $routeName ? AccessPermission::where('route_name', $routeName)->first() : null;
     }
 
+    // A page can carry several permissions (e.g. GRN Register: "View GRN
+    // records", "View GRN register", "Post", "Export"). Ticking ANY of them
+    // in a role opens the page - checking only the first one silently ignored
+    // the others.
+    public function canOpenRoute(User $user, ?string $routeName): bool
+    {
+        if (! $routeName || ! $this->hasNewAccess($user)) {
+            return false;
+        }
+
+        return AccessPermission::where('route_name', $routeName)->pluck('key')
+            ->contains(fn ($key) => $this->can($user, $key));
+    }
+
     public function audit(?User $actor, string $action, mixed $target = null, ?array $before = null, ?array $after = null): void
     {
         AccessAuditLog::create([

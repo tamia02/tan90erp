@@ -72,26 +72,51 @@ new class extends Component
         // modules.
         $navigationRole = $user->role;
         if ($navigationRole) {
-            return ['navItems' => [...RoleNavigation::forRole($navigationRole), ...$this->extraRoleItems($user), ...$accessItems]];
+            return ['navItems' => $this->withGrantedPages($user, $access, [...RoleNavigation::forRole($navigationRole), ...$this->extraRoleItems($user), ...$accessItems])];
         }
 
         if (request()->routeIs('tan90.brc.*')) {
-            return ['navItems' => [...Tan90ModuleNavigation::forBom(), ...$accessItems]];
+            return ['navItems' => $this->withGrantedPages($user, $access, [...Tan90ModuleNavigation::forBom(), ...$accessItems])];
         }
 
         if (request()->routeIs('tan90.master-data.*')) {
-            return ['navItems' => [...Tan90ModuleNavigation::forMasterData(), ...$accessItems]];
+            return ['navItems' => $this->withGrantedPages($user, $access, [...Tan90ModuleNavigation::forMasterData(), ...$accessItems])];
         }
 
         if (request()->routeIs('forge.*')) {
-            return ['navItems' => [...$this->forgeItems($user, $access), ...$accessItems]];
+            return ['navItems' => $this->withGrantedPages($user, $access, [...$this->forgeItems($user, $access), ...$accessItems])];
         }
 
         if (request()->routeIs('flow.*')) {
-            return ['navItems' => [...$this->flowItems($user, $access), ...$accessItems]];
+            return ['navItems' => $this->withGrantedPages($user, $access, [...$this->flowItems($user, $access), ...$accessItems])];
         }
 
-        return ['navItems' => $accessItems];
+        return ['navItems' => $this->withGrantedPages($user, $access, $accessItems)];
+    }
+
+    // Pages a Super Admin unlocked for this person through an Access Control
+    // role or extra access (e.g. "View QC queue" for an Inward Executive).
+    // The menus above come from job roles only, so without this the page
+    // would open but never be listed.
+    private function withGrantedPages($user, AccessControlService $access, array $items): array
+    {
+        if (! $access->hasNewAccess($user)) {
+            return $items;
+        }
+        $shown = collect($items)->pluck('route')->filter()->all();
+        $extra = \App\Models\Access\AccessPermission::where('category', 'page')->whereNotNull('route_name')
+            ->where('status', 'active')->orderBy('module')->orderBy('sort_order')->get()
+            ->filter(function ($permission) use ($user, $access, $shown) {
+                $route = \Illuminate\Support\Facades\Route::getRoutes()->getByName($permission->route_name);
+
+                return $route && in_array('GET', $route->methods(), true) && ! $route->parameterNames()
+                    && ! in_array($permission->route_name, $shown, true) && $access->can($user, $permission->key);
+            })
+            ->unique('route_name')
+            ->map(fn ($permission) => ['label' => str_starts_with($permission->screen, $permission->module) ? $permission->screen : $permission->module.' '.$permission->screen, 'route' => $permission->route_name, 'icon' => 'shield'])
+            ->values()->all();
+
+        return $extra ? [...$items, ['heading' => 'More access'], ...$extra] : $items;
     }
 
     private function superAdminItems($user, AccessControlService $access): array
@@ -119,7 +144,7 @@ new class extends Component
         }
 
         $modules = $this->permitted($user, $access, [
-            ['label' => 'Inventory (RM → FG → Dispatch)', 'route' => 'inventory.stock', 'icon' => 'boxes'],
+            ['label' => 'Inventory', 'route' => 'inventory.stock', 'icon' => 'boxes'],
             ['label' => 'BOM, Recipe & Costing', 'route' => 'tan90.brc.dashboard', 'icon' => 'flask'],
             ['label' => 'Forge (Manufacturing)', 'route' => 'forge.dashboard', 'icon' => 'factory', 'permission' => 'forge.dashboard.view'],
             ['label' => 'Flow (Warehouse & Delivery)', 'route' => 'flow.dashboard', 'icon' => 'truck', 'permission' => 'flow.dashboard.view'],

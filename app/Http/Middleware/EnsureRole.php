@@ -27,10 +27,7 @@ class EnsureRole
             return $next($request);
         }
 
-        $access = app(AccessControlService::class);
-        $permission = $access->permissionForRoute($request->route()?->getName());
-
-        if ($user && $permission && $access->hasNewAccess($user) && $access->can($user, $permission->key)) {
+        if ($user && app(AccessControlService::class)->canOpenRoute($user, $request->route()?->getName())) {
             return $next($request);
         }
 
