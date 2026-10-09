@@ -43,7 +43,7 @@ class AccessControlHierarchyTest extends TestCase
 
         $this->assertTrue($user->isAdmin());
         $this->actingAs($user)->get(route('admin.dashboard'))->assertOk();
-        $this->actingAs($user)->get(route('admin.po'))->assertOk()->assertSee('PO Master');
+        $this->actingAs($user)->get(route('admin.po'))->assertOk()->assertSee('Purchase Orders');
     }
 
     public function test_operational_users_do_not_inherit_super_admin_legacy_routes(): void

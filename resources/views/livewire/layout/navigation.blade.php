@@ -103,10 +103,10 @@ new class extends Component
             'flow.*' => ['Flow (Warehouse & Delivery)', fn () => $this->flowItems($user, $access)],
             'inventory.*' => ['Inventory', fn () => [
                 ['label' => 'Items', 'route' => 'inventory.items', 'icon' => 'list'],
-                ['label' => 'Recipes', 'route' => 'inventory.recipes', 'icon' => 'clipboard-list'],
+                ['label' => 'Composite Items (Recipes)', 'route' => 'inventory.recipes', 'icon' => 'clipboard-list'],
                 ['label' => 'Create Bundle', 'route' => 'inventory.production', 'icon' => 'factory'],
                 ['label' => 'Outward Shipment', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
-                ['label' => 'Stock Summary', 'route' => 'inventory.stock', 'icon' => 'boxes'],
+                ['label' => 'Inventory Summary', 'route' => 'inventory.stock', 'icon' => 'boxes'],
             ]],
         ];
 

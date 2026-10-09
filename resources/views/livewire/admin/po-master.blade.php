@@ -763,7 +763,7 @@ new #[Layout('layouts.app')] class extends Component
         <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
                 <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Store Manager / Procurement</div>
-                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">PO Master</h1>
+                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Purchase Orders</h1>
                 <p class="text-sm mt-1" style="color: var(--text-secondary);">Save a draft for later, or save and release a complete PO directly to the selected vendor portal.</p>
             </div>
             <div class="flex items-center gap-2">

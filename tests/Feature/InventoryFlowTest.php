@@ -234,7 +234,7 @@ class InventoryFlowTest extends TestCase
         $this->assertSame($count, InventoryItem::count());
 
         // Store Manager sees the Inventory section in their own sidebar.
-        $this->actingAs($manager)->get(route('grn.dashboard'))->assertOk()->assertSeeInOrder(['Validation Issues', 'Inventory', 'Stock Summary', 'Create Bundle']);
+        $this->actingAs($manager)->get(route('grn.dashboard'))->assertOk()->assertSeeInOrder(['Validation Issues', 'Inventory', 'Inventory Summary', 'Create Bundle']);
     }
 
     public function test_store_manager_adds_sku_raises_and_releases_po_then_grn_stock_shows_in_inventory(): void

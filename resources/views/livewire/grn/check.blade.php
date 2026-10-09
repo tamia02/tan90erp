@@ -100,7 +100,7 @@ new #[Layout('layouts.app')] class extends Component
     @enderror
     <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
         <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Store Manager Module</div>
-        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">GRN Check</h1>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Purchase Receive (GRN)</h1>
         <p class="text-sm mt-1" style="color: var(--text-secondary);">Post the QC-checked split to stock and send the receipt to Store Executive Putaway for final bin confirmation.</p>
     </section>
 

@@ -72,7 +72,7 @@ new #[Layout('layouts.app')] class extends Component
 
 <div>
     @php $fmt = fn ($n) => rtrim(rtrim(number_format((float) $n, 3, '.', ''), '0'), '.') ?: '0'; @endphp
-    @include('partials.inventory-tabs', ['current' => 'inventory.stock', 'title' => 'Stock Summary', 'subtitle' => 'Final Inventory = Current + Received − (Converted + Wastage) − Dispatched. Finished Goods also add what was Produced.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.stock', 'title' => 'Inventory Summary', 'subtitle' => 'Final Inventory = Current + Received − (Converted + Wastage) − Dispatched. Finished Goods also add what was Produced.'])
 
     <div class="flex flex-wrap items-center gap-2 mb-4">
         <select wire:model.live="type" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">

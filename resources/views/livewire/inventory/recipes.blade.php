@@ -82,7 +82,7 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    @include('partials.inventory-tabs', ['current' => 'inventory.recipes', 'title' => 'Recipes', 'subtitle' => 'One recipe per Finished Good: which Raw Material (RM) and Packaging Material (PM) make 1 unit, and how much. Recipes from Zoho bundles are filled in automatically; you can add or change lines here.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.recipes', 'title' => 'Composite Items (Recipes)', 'subtitle' => 'One recipe per Finished Good: which Raw Material (RM) and Packaging Material (PM) make 1 unit, and how much. Recipes from Zoho bundles are filled in automatically; you can add or change lines here.'])
 
     <div class="flex flex-wrap items-center gap-2 mb-3">
         <input wire:model.live.debounce.400ms="search" type="search" placeholder="Search finished goods…" class="rounded-lg border px-3 py-2 text-sm flex-1 min-w-[200px]" style="border-color: var(--border);">
