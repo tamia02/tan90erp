@@ -149,7 +149,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function addCustomField(): void
     {
-        abort_unless(auth()->user()?->isAdmin(), 403);
+        abort_unless(ItemCustomField::canManage(auth()->user()), 403);
         $this->validate([
             'newFieldLabel' => ['required', 'string', 'max:60'],
             'newFieldType' => ['required', Rule::in(array_keys(ItemCustomField::TYPES))],
@@ -173,7 +173,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function toggleCustomField(int $id): void
     {
-        abort_unless(auth()->user()?->isAdmin(), 403);
+        abort_unless(ItemCustomField::canManage(auth()->user()), 403);
         $field = ItemCustomField::findOrFail($id);
         $field->update(['active' => ! $field->active]);
         AuditLogger::log($field->active ? 'Item custom field turned on' : 'Item custom field turned off', $field->label, $field);
@@ -205,7 +205,8 @@ new #[Layout('layouts.app')] class extends Component
             'types' => InventoryItem::TYPES,
             'units' => \App\Support\Units::options(),
             'customFields' => ItemCustomField::activeFields(),
-            'allCustomFields' => auth()->user()?->isAdmin() ? ItemCustomField::orderBy('sort_order')->get() : collect(),
+            'canManageFields' => $canManage = ItemCustomField::canManage(auth()->user()),
+            'allCustomFields' => $canManage ? ItemCustomField::orderBy('sort_order')->get() : collect(),
             'knownSkus' => $known,
             // Where each item came from: Zoho, the ERP's own Items list, or only GRN.
             'zohoSkus' => SkuMaster::whereIn('sku', $items->pluck('sku'))->whereNotNull('zoho_item_id')->pluck('sku')->map(fn ($v) => mb_strtolower($v))->flip(),
@@ -218,9 +219,9 @@ new #[Layout('layouts.app')] class extends Component
 <div>
     @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'All items in one list - every item from Items (Zoho) and anything received through GRN appears here automatically. Check the type (RM / PM / FG / Trading) and current stock. Recipes for Finished Goods are on the next tab.'])
 
-    @if (auth()->user()?->isAdmin())
+    @if ($canManageFields)
         <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);" @if ($errors->hasAny(['newFieldLabel', 'newFieldOptions'])) open @endif>
-            <summary class="text-base font-semibold cursor-pointer" style="color: var(--text-primary);">Custom item fields (Admin) - {{ $allCustomFields->where('active', true)->count() }} active</summary>
+            <summary class="text-base font-semibold cursor-pointer" style="color: var(--text-primary);">Custom item fields - {{ $allCustomFields->where('active', true)->count() }} active</summary>
             <p class="text-xs mt-1 mb-3" style="color: var(--text-muted);">Add a field once (e.g. Cost Price) and it appears on every item's form and in the list below. Turn a field off to hide it; values already filled are kept.</p>
             <div class="flex flex-wrap gap-2 mb-3">
                 @forelse ($allCustomFields as $field)

@@ -119,6 +119,8 @@ class PermissionRegistry
             ['forge.deviation.manage', 'Forge', 'Deviation, Rework & CAPA', 'action', 'manage', 'Open, disposition and close deviations/CAPA', 'forge.deviations.store'],
             ['forge.batch.trace', 'Forge', 'Batch Genealogy', 'page', 'view', 'Trace batch genealogy', 'forge.batches.index'],
 
+            ['inventory.custom_fields.manage', 'Inventory', 'Items', 'action', 'manage', 'Add / turn off custom item fields (e.g. Cost Price)', null],
+
             ['flow.dashboard.view', 'Flow', 'Command Centre', 'page', 'view', 'View Fulfilment Command Centre', 'flow.dashboard'],
             ['flow.inventory.view', 'Flow', 'FG Inventory', 'page', 'view', 'View FG inventory and ledger', 'flow.inventory.index'],
             ['flow.inventory.receive', 'Flow', 'FG Inventory', 'action', 'receive', 'Receive finished goods from Forge', 'flow.inventory.receive'],
