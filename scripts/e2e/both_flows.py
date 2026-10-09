@@ -156,7 +156,9 @@ def approve(page):
     # The smallest block that holds both this run's PO number and an Approve button.
     card = page.locator(f"xpath=//*[contains(normalize-space(.), '{PO}')][.//button[normalize-space()='Approve entry']]").last
     card.get_by_role("button", name="Approve entry").click()
-    wait_for_text(page, "approved")
+    page.wait_for_function("() => /approved|No inward dock/.test(document.body.innerText)")
+    if "No inward dock" in page.inner_text("body"):  # docks still held by unfinished earlier entries
+        raise AssertionError("no free inward dock - finish or close earlier in-progress unloading entries")
     return messages(page)[:90]
 
 
@@ -230,7 +232,7 @@ def check_received(page):
 def pm_stock(page):
     login(page, "storeManager")
     page.goto(f"{BASE}/inventory/items"); settle(page)
-    page.get_by_placeholder("Search items…").fill(PM); settle(page, 1500)
+    page.get_by_placeholder("Search by item name or code…").fill(PM); settle(page, 1500)
     page.locator("tr", has_text=PM).first.get_by_role("button", name="Edit").click(); settle(page)
     for _ in range(60):  # wait until the edit form has loaded this item
         if page.locator("[wire\\:model='sku']").input_value() == PM:
@@ -250,7 +252,7 @@ def bundle(page):
     page.locator("tr", has_text=RM).locator("input").fill("1")
     page.wait_for_timeout(1000)
     page.get_by_role("button", name="Create Bundle & update stock").click()
-    wait_for_text(page, "PRD-")
+    wait_for_text(page, ": made 50 ")  # the success message, not an older PRD- row
     return messages(page)[:110]
 
 

@@ -243,7 +243,8 @@ class InventoryFlowTest extends TestCase
         $vendor = \App\Models\VendorMaster::create(['vendor_name' => 'PORM Test Vendor', 'gst_number' => '27AABCP1234Q1Z5', 'contact_phone' => '+91 22 0000 0000', 'category' => 'Raw Material', 'active' => true]);
         $this->actingAs($manager);
 
-        $this->get(route('grn.dashboard'))->assertOk()->assertSee('Items (Zoho)');
+        // One item list: Inventory > Items (the old Items (Zoho) page stays reachable by link only).
+        $this->get(route('grn.dashboard'))->assertOk()->assertSee(route('inventory.items'))->assertDontSee('Items (Zoho)');
         $this->get(route('admin.sku'))->assertOk();
         Volt::test('admin.sku-master')
             ->set('sku', 'PORM666')->set('category', 'PCM — Raw Material')->set('unit', 'KG')
@@ -303,5 +304,14 @@ class InventoryFlowTest extends TestCase
 
         $bare = InventoryItem::create(['sku' => 'FG Without Recipe', 'item_type' => 'fg', 'unit' => 'NOS']);
         Volt::test('inventory.recipes')->set('recipeFilter', 'missing')->assertSee($bare->sku)->assertDontSee('PCM Pouch 500g Blue');
+    }
+
+    public function test_items_list_shows_and_searches_the_zoho_code(): void
+    {
+        $this->actingAs($this->admin);
+        \App\Models\SkuMaster::create(['sku' => 'Pouch 500g', 'category' => 'Packaging', 'unit' => 'PCS', 'product_code' => 'SP-2124']);
+
+        Volt::test('inventory.items')->assertSee('SP-2124')
+            ->set('search', 'SP-2124')->assertSee('Pouch 500g')->assertDontSee('PCM Compound');
     }
 }

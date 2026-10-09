@@ -184,7 +184,9 @@ new #[Layout('layouts.app')] class extends Component
         // 2,000+ Zoho items: search/filter and show them 100 at a time so every
         // click doesn't re-render the whole catalogue.
         $query = InventoryItem::query()
-            ->when(trim($this->search) !== '', fn ($q) => $q->where('sku', 'like', '%'.trim($this->search).'%'))
+            ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($w) => $w
+                ->where('sku', 'like', '%'.trim($this->search).'%')
+                ->orWhereIn('sku', SkuMaster::where('product_code', 'like', '%'.trim($this->search).'%')->select('sku'))))
             ->when($this->typeFilter !== '', fn ($q) => $q->where('item_type', $this->typeFilter));
         $total = (clone $query)->count();
         $items = $query
@@ -211,13 +213,14 @@ new #[Layout('layouts.app')] class extends Component
             // Where each item came from: Zoho, the ERP's own Items list, or only GRN.
             'zohoSkus' => SkuMaster::whereIn('sku', $items->pluck('sku'))->whereNotNull('zoho_item_id')->pluck('sku')->map(fn ($v) => mb_strtolower($v))->flip(),
             'erpSkus' => SkuMaster::whereIn('sku', $items->pluck('sku'))->pluck('sku')->map(fn ($v) => mb_strtolower($v))->flip(),
+            'codes' => SkuMaster::whereIn('sku', $items->pluck('sku'))->whereNotNull('product_code')->pluck('product_code', 'sku')->mapWithKeys(fn ($code, $sku) => [mb_strtolower($sku) => $code]),
             'typeCounts' => InventoryItem::where('active', true)->groupBy('item_type')->selectRaw('item_type, COUNT(*) as c')->pluck('c', 'item_type'),
         ];
     }
 }; ?>
 
 <div>
-    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'All items in one list - every item from Items (Zoho) and anything received through GRN appears here automatically. Check the type (RM / PM / FG / Trading) and current stock. Recipes for Finished Goods are on the next tab.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'The one list of all items - every Zoho item (name and Zoho code) plus anything received through GRN appears here automatically. Check the type (RM / PM / FG / Trading) and current stock. Recipes for Finished Goods are on the next tab.'])
 
     @if ($canManageFields)
         <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);" @if ($errors->hasAny(['newFieldLabel', 'newFieldOptions'])) open @endif>
@@ -310,7 +313,7 @@ new #[Layout('layouts.app')] class extends Component
                 @endforeach
             </div>
             <div class="flex flex-wrap items-center gap-2">
-                <input wire:model.live.debounce.400ms="search" type="search" placeholder="Search items…" class="rounded-lg border px-3 py-2 text-sm flex-1 min-w-[200px]" style="border-color: var(--border);">
+                <input wire:model.live.debounce.400ms="search" type="search" placeholder="Search by item name or code…" class="rounded-lg border px-3 py-2 text-sm flex-1 min-w-[200px]" style="border-color: var(--border);">
                 <select wire:model.live="typeFilter" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
                     <option value="">All types</option>
                     @foreach ($types as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
@@ -319,11 +322,12 @@ new #[Layout('layouts.app')] class extends Component
             </div>
             <div class="rounded-2xl border overflow-x-auto" style="background: var(--surface-3); border-color: var(--border);">
                 <table class="w-full text-sm min-w-[760px]">
-                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">Opening stock</th><th class="px-4 py-3 text-right">In stock now</th>@foreach ($customFields as $field)<th class="px-4 py-3">{{ $field->label }}</th>@endforeach<th class="px-4 py-3"></th></tr></thead>
+                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Code</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">Opening stock</th><th class="px-4 py-3 text-right">In stock now</th>@foreach ($customFields as $field)<th class="px-4 py-3">{{ $field->label }}</th>@endforeach<th class="px-4 py-3"></th></tr></thead>
                     <tbody>
                         @forelse ($items as $item)
                             <tr wire:key="inv-item-{{ $item->id }}" style="border-top: 1px solid var(--border);{{ $item->active ? "" : " opacity: .55;" }}">
                                 <td class="px-4 py-3"><div class="font-medium" style="color: var(--text-primary);">{{ $item->displayName() }}</div>@if ($item->name)<div class="text-xs" style="color: var(--text-muted);">{{ $item->sku }}</div>@endif</td>
+                                <td class="px-4 py-3 text-xs font-mono" style="color: var(--text-secondary);">{{ $codes[mb_strtolower($item->sku)] ?? '' }}</td>
                                 <td class="px-4 py-3">{{ $item->typeLabel() }}</td>
                                 <td class="px-4 py-3">{{ $item->unit }}</td>
                                 <td class="px-4 py-3 text-xs">{{ $zohoSkus->has(mb_strtolower($item->sku)) ? 'Zoho' : ($erpSkus->has(mb_strtolower($item->sku)) ? 'ERP Items' : 'GRN / added here') }}</td>
@@ -341,7 +345,7 @@ new #[Layout('layouts.app')] class extends Component
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="{{ 7 + $customFields->count() }}" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
+                            <tr><td colspan="{{ 8 + $customFields->count() }}" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
