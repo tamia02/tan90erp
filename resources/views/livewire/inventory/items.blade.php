@@ -88,7 +88,7 @@ new #[Layout('layouts.app')] class extends Component
         $this->name = (string) $item->name;
         $this->itemType = $item->item_type;
         $this->unit = $item->unit;
-        $this->customValues = array_map('strval', $item->custom_fields ?? []);
+        $this->customValues = array_map(fn ($v) => is_bool($v) ? ($v ? '1' : '0') : (string) $v, $item->custom_fields ?? []);
         $this->resetValidation(); // don't carry an earlier "already added" error onto the edit form
     }
 
@@ -130,29 +130,15 @@ new #[Layout('layouts.app')] class extends Component
         $this->resetValidation();
     }
 
-    /** @return array<string, string|float> */
+    /** @return array<string, mixed> */
     private function validatedCustomValues(): array
     {
         $fields = ItemCustomField::activeFields();
-        $rules = [];
-        $values = [];
-        foreach ($fields as $field) {
-            $rules["customValues.{$field->field_key}"] = array_values(array_filter([
-                $field->required ? 'required' : 'nullable',
-                $field->input_type === 'number' ? 'numeric' : 'string',
-                $field->input_type === 'dropdown' ? Rule::in($field->options ?? []) : null,
-                $field->input_type === 'text' ? 'max:255' : null,
-            ]));
-            $value = trim((string) ($this->customValues[$field->field_key] ?? ''));
-            if ($value !== '') {
-                $values[$field->field_key] = $field->input_type === 'number' ? (float) $value : $value;
-            }
-        }
-        if ($rules) {
-            $this->validate($rules, [], $fields->mapWithKeys(fn ($f) => ["customValues.{$f->field_key}" => $f->label])->all());
+        if ($fields->isNotEmpty()) {
+            $this->validate(\App\Support\CustomFields::rules($fields, 'customValues'), [], \App\Support\CustomFields::attributeNames($fields, 'customValues'));
         }
 
-        return $values;
+        return \App\Support\CustomFields::clean($fields, $this->customValues);
     }
 
     public function addCustomField(): void
@@ -243,7 +229,7 @@ new #[Layout('layouts.app')] class extends Component
     @if ($canManageFields)
         <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);" @if ($errors->hasAny(['newFieldLabel', 'newFieldOptions'])) open @endif>
             <summary class="text-base font-semibold cursor-pointer" style="color: var(--text-primary);">Custom item fields - {{ $allCustomFields->where('active', true)->count() }} active</summary>
-            <p class="text-xs mt-1 mb-3" style="color: var(--text-muted);">Add a field once (e.g. Cost Price) and it appears on every item's form and in the list below. Turn a field off to hide it; values already filled are kept.</p>
+            <p class="text-xs mt-1 mb-3" style="color: var(--text-muted);">Add a field once (e.g. Cost Price) and it appears on every item's form and in the list below. Turn a field off to hide it; values already filled are kept. Fields for other tables (Vendors, Customers, ...): <a href="{{ route('custom-fields.index') }}" wire:navigate class="underline" style="color: var(--brand);">Master Data &gt; Custom Fields</a>.</p>
             <div class="flex flex-wrap gap-2 mb-3">
                 @forelse ($allCustomFields as $field)
                     <span wire:key="cf-{{ $field->id }}" class="rounded-full border px-3 py-1 text-xs" style="border-color: var(--border); {{ $field->active ? '' : 'opacity: .55;' }}">
@@ -317,14 +303,7 @@ new #[Layout('layouts.app')] class extends Component
             </label>
             @foreach ($customFields as $field)
                 <label wire:key="cf-input-{{ $field->id }}" class="flex flex-col gap-1 text-xs"><span class="font-medium">{{ $field->label }}{{ $field->required ? ' *' : '' }}</span>
-                    @if ($field->input_type === 'dropdown')
-                        <select wire:model="customValues.{{ $field->field_key }}" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
-                            <option value="">-</option>
-                            @foreach ($field->options ?? [] as $option)<option value="{{ $option }}">{{ $option }}</option>@endforeach
-                        </select>
-                    @else
-                        <input wire:model="customValues.{{ $field->field_key }}" type="{{ $field->input_type === 'number' ? 'number' : 'text' }}" step="any" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
-                    @endif
+                    @include('partials.custom-field-input', ['field' => $field, 'wire' => 'customValues.'.$field->field_key])
                     @error('customValues.'.$field->field_key) <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
                 </label>
             @endforeach
@@ -387,7 +366,7 @@ new #[Layout('layouts.app')] class extends Component
                                 <td class="px-4 py-3">{{ $item->unit }}</td>
                                 <td class="px-4 py-3 text-xs">{{ $zohoSkus->has(mb_strtolower($item->sku)) ? 'Zoho' : ($erpSkus->has(mb_strtolower($item->sku)) ? 'ERP Items' : 'GRN / added here') }}</td>
                                 <td class="px-4 py-3 text-right font-semibold">{{ rtrim(rtrim(number_format($balances[$item->id]['final'], 3, '.', ''), '0'), '.') }} {{ $item->unit }}</td>
-                                @foreach ($customFields as $field)<td class="px-4 py-3 text-xs">{{ $item->custom_fields[$field->field_key] ?? '' }}</td>@endforeach
+                                @foreach ($customFields as $field)<td class="px-4 py-3 text-xs">{{ \App\Support\CustomFields::display($field, $item->custom_fields[$field->field_key] ?? null) }}</td>@endforeach
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
                                     @if (! $item->active)
                                         <span class="text-xs font-semibold mr-2" style="color: var(--text-muted);">Archived</span>

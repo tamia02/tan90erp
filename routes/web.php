@@ -190,6 +190,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->whereIn('document', ['bill', 'pod'])->name('gate-entries.document');
     Volt::route('gate-entries/{entry}', 'shared.gate-entry-detail')->name('gate-entries.show');
     Volt::route('settings', 'shared.settings')->name('settings');
+    // Master Data > Custom Fields: Super Admin, or anyone given 'custom_fields.manage' (checked in the page).
+    Volt::route('custom-fields', 'admin.custom-fields')->name('custom-fields.index');
     Volt::route('help', 'shared.help-support')->name('help');
 
     Route::middleware('role:guard')->prefix('guard')->name('guard.')->group(function () {

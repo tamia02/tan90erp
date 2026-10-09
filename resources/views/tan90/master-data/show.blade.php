@@ -116,6 +116,12 @@
               <div class="font-medium mt-0.5" style="color: var(--text-primary);">{{ is_bool($value) ? ($value ? 'Yes' : 'No') : ($value ?? '—') }}</div>
             </div>
           @endforeach
+          @foreach ($customFields ?? [] as $customField)
+            <div>
+              <div class="text-xs" style="color: var(--text-muted);">{{ $customField->label }}</div>
+              <div class="font-medium mt-0.5" style="color: var(--text-primary);">{{ \App\Support\CustomFields::display($customField, $customValues[$customField->field_key] ?? null) ?: '—' }}</div>
+            </div>
+          @endforeach
         </div>
       </div>
       <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">

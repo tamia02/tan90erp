@@ -49,6 +49,18 @@
             </label>
           @endforeach
 
+          {{-- Fields the team added themselves (Master Data > Custom Fields) --}}
+          @foreach ($customFields ?? [] as $customField)
+            <label class="flex flex-col gap-1.5 text-sm {{ $customField->input_type === 'long_text' ? 'sm:col-span-2' : '' }}">
+              <span class="font-medium" style="color: var(--text-primary);">{{ $customField->label }}{{ $customField->required ? '' : ' (Optional)' }}</span>
+              @include('partials.custom-field-input', ['field' => $customField, 'name' => 'custom['.$customField->field_key.']', 'value' => old('custom.'.$customField->field_key, $customValues[$customField->field_key] ?? null)])
+              @error('custom.'.$customField->field_key)<span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span>@enderror
+            </label>
+          @endforeach
+          @if (\App\Support\CustomFields::canManage(auth()->user()))
+            <div class="sm:col-span-2 text-xs" style="color: var(--text-muted);">Need another field here? <a href="{{ route('custom-fields.index', ['table' => \App\Support\CustomFields::masterEntity($entity)]) }}" class="underline" style="color: var(--brand);">Add it in Custom Fields</a>.</div>
+          @endif
+
           @if ($mode === 'edit')
             <label class="flex flex-col gap-1.5 text-sm sm:col-span-2">
               <span class="font-medium" style="color: var(--text-primary);">Change Reason <span class="text-xs" style="color: var(--text-muted);">— Required only if a critical field changed</span></span>

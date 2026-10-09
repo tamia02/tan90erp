@@ -114,6 +114,7 @@ class RoleNavigation
                 ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Users', 'route' => 'admin.users', 'icon' => 'users'],
                 ['label' => 'Master Data', 'route' => 'tan90.master-data.dashboard', 'icon' => 'boxes'],
+                ['label' => 'Custom Fields', 'route' => 'custom-fields.index', 'icon' => 'settings'],
                 ['label' => 'Vendors', 'route' => 'admin.vendors', 'icon' => 'truck'],
                 ['label' => 'Supplier Scorecards', 'route' => 'admin.vendor-scorecard', 'icon' => 'bar-chart-2'],
                 ['label' => 'Supplier Claims', 'route' => 'admin.supplier-claims', 'icon' => 'receipt'],

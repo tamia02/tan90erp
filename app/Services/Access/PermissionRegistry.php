@@ -120,6 +120,7 @@ class PermissionRegistry
             ['forge.batch.trace', 'Forge', 'Batch Genealogy', 'page', 'view', 'Trace batch genealogy', 'forge.batches.index'],
 
             ['inventory.custom_fields.manage', 'Inventory', 'Items', 'action', 'manage', 'Add / turn off custom item fields (e.g. Cost Price)', null],
+            ['custom_fields.manage', 'Master Data', 'Custom Fields', 'page', 'manage', 'Add custom fields to any table (Items, Vendors, Customers, ...) and choose their data type', 'custom-fields.index'],
             ['inventory.chemical_names.view', 'Inventory', 'Items', 'field', 'view', 'See real chemical names (SKU Name) - otherwise only Display Name / Code', null],
 
             ['flow.dashboard.view', 'Flow', 'Command Centre', 'page', 'view', 'View Fulfilment Command Centre', 'flow.dashboard'],
