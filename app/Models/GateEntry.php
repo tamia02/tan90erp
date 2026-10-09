@@ -5,13 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'created_by', 'approved_by', 'approved_at', 'store_exec_verified_by', 'store_exec_verified_at', 'visitor_host_id', 'gate_no', 'entry_type', 'po_number', 'po_bill_date', 'vendor_name', 'vendor_gst',
     'invoice_number', 'invoice_qty', 'invoice_amount', 'rate', 'material',
-    'product_lines',
+    'product_lines', 'outward_shipment_id',
     'vehicle_number', 'driver_name', 'transporter', 'location', 'gps',
     'bill_scanned', 'bill_document_path', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
     'loading_window_start', 'loading_window_end', 'expected_delivery_date', 'loading_started_at', 'dispatch_documents_shared', 'loaded_at', 'exited_at',
@@ -20,6 +21,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class GateEntry extends Model
 {
     use HasFactory;
+
+    // Outward gate pass made from an Outward Shipment (GST documents + stock).
+    public function outwardShipment(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Outward\OutwardShipment::class);
+    }
 
     protected function casts(): array
     {

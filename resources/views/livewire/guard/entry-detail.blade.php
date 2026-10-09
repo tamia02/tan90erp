@@ -35,10 +35,24 @@ new #[Layout('layouts.app')] class extends Component
             return;
         }
 
-        $this->entry->update(['status' => 'dispatched', 'exited_at' => now()]);
+        // Pass made from an Outward Shipment: the truck leaving IS the dispatch,
+        // so stock goes down now - all lines or none. Short stock blocks the exit.
+        $shipment = $this->entry->outwardShipment;
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($shipment) {
+                if ($shipment && $shipment->status !== 'dispatched') {
+                    app(\App\Services\Outward\OutwardShipmentService::class)->markDispatched($shipment, auth()->user());
+                }
+                $this->entry->update(['status' => 'dispatched', 'exited_at' => now()]);
+            });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->addError('exit', collect($e->errors())->flatten()->implode(' '));
 
-        \App\Services\AuditLogger::log('Outward vehicle exited premises', $this->entry->gate_no, $this->entry);
-        session()->flash('success', "Vehicle exit confirmed for {$this->entry->gate_no}. Outward dispatch is complete.");
+            return;
+        }
+
+        \App\Services\AuditLogger::log('Outward vehicle exited premises', $this->entry->gate_no.($shipment ? " · {$shipment->number} dispatched" : ''), $this->entry);
+        session()->flash('success', "Vehicle exit confirmed for {$this->entry->gate_no}. Outward dispatch is complete.".($shipment ? " {$shipment->number}: stock has been deducted." : ''));
     }
 
     // Mirrors confirmExit() for the visitor journey: the host has approved
@@ -256,6 +270,7 @@ new #[Layout('layouts.app')] class extends Component
                 </nav>
             </div>
             <div class="flex gap-2 shrink-0">
+                @error('exit') <div role="alert" class="text-xs rounded-lg border px-3 py-2 max-w-md" style="border-color: var(--status-critical); color: var(--status-critical); background: var(--status-critical-bg);">{{ $message }}</div> @enderror
                 @if ($entry->entry_type === 'outward' && $entry->status === 'loaded')
                     <button wire:click="confirmExit" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--status-good);">
                         <x-icon name="check-circle" class="w-4 h-4" /> Confirm exit

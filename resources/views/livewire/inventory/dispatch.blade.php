@@ -161,6 +161,11 @@ new #[Layout('layouts.app')] class extends Component
     public function dispatchShipment(int $id, OutwardShipmentService $service): void
     {
         $shipment = OutwardShipment::findOrFail($id);
+        if ($shipment->gate_entry_id) {
+            $this->addError('dispatch', "{$shipment->number} is on gate pass {$shipment->gateEntry?->gate_no} - it is dispatched when the Guard confirms the truck's exit.");
+
+            return;
+        }
         $service->markDispatched($shipment, auth()->user());
         AuditLogger::log('Outward shipment dispatched', "{$shipment->number} → {$shipment->to_name}", $shipment);
         session()->flash('success', "{$shipment->number} dispatched - stock has been deducted.");
@@ -190,7 +195,7 @@ new #[Layout('layouts.app')] class extends Component
             'preview' => ($from && trim($this->toName) !== '')
                 ? app(OutwardComplianceService::class)->decide($this->purpose, $from->gstin, $this->toGstin ?: null, $from->state, $this->toState ?: null, $total)
                 : null,
-            'shipments' => OutwardShipment::with('lines.item')
+            'shipments' => OutwardShipment::with(['lines.item', 'gateEntry'])
                 ->when($this->statusFilter === 'open', fn ($q) => $q->whereIn('status', ['documents_pending', 'ready']))
                 ->when(! in_array($this->statusFilter, ['open', ''], true), fn ($q) => $q->where('status', $this->statusFilter))
                 ->latest('id')->limit(25)->get(),
@@ -338,7 +343,12 @@ new #[Layout('layouts.app')] class extends Component
                         @if (! in_array($s->status, ['dispatched', 'cancelled'], true))
                             <button type="button" wire:click="openDocs({{ $s->id }})" class="text-xs font-semibold" style="color: var(--brand);">Documents</button>
                         @endif
-                        @if ($s->status === 'ready')
+                        @if ($s->gateEntry)
+                            <span class="text-xs font-semibold" style="color: var(--brand);" title="Stock goes down when the Guard confirms the truck's exit">At gate: {{ $s->gateEntry->gate_no }} · {{ \App\Support\GateStatusLabels::label($s->gateEntry->status) }}</span>
+                        @elseif ($s->status === 'ready')
+                            <span class="text-xs" style="color: var(--text-muted);">Guard can now make the outward gate pass</span>
+                        @endif
+                        @if ($s->status === 'ready' && ! $s->gateEntry)
                             <button type="button" wire:click="dispatchShipment({{ $s->id }})" wire:confirm="Dispatch {{ $s->number }}? Stock will be deducted now." class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style="background: var(--brand);">Mark dispatched</button>
                         @endif
                     </div>

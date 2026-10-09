@@ -30,7 +30,7 @@ class OutwardShipment extends Model
         'invoice_number', 'invoice_date', 'invoice_file', 'challan_number',
         'irn', 'irn_ack_number', 'irn_ack_date', 'irn_file',
         'ewb_number', 'ewb_date', 'ewb_valid_until', 'ewb_file',
-        'vehicle_number', 'transporter', 'notes', 'status', 'dispatched_at', 'dispatched_by', 'created_by',
+        'vehicle_number', 'transporter', 'notes', 'status', 'gate_entry_id', 'dispatched_at', 'dispatched_by', 'created_by',
     ];
 
     protected function casts(): array
@@ -40,6 +40,12 @@ class OutwardShipment extends Model
             'decision_steps' => 'array', 'invoice_date' => 'date', 'irn_ack_date' => 'date', 'ewb_date' => 'date',
             'ewb_valid_until' => 'date', 'dispatched_at' => 'datetime',
         ];
+    }
+
+    // The Guard's outward gate pass for the truck carrying this shipment.
+    public function gateEntry(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\GateEntry::class);
     }
 
     public function lines(): HasMany

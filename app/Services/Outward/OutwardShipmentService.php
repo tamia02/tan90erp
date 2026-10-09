@@ -136,10 +136,20 @@ class OutwardShipmentService
         }
     }
 
+    // Shipments the Guard can make an outward gate pass for: documents
+    // complete, not dispatched, no gate pass yet.
+    public function readyForGate()
+    {
+        return OutwardShipment::with('lines.item')->where('status', 'ready')->whereNull('gate_entry_id')->latest('id')->get();
+    }
+
     public function cancel(OutwardShipment $shipment): void
     {
         if ($shipment->status === 'dispatched') {
             throw ValidationException::withMessages(['cancel' => 'A dispatched shipment cannot be cancelled.']);
+        }
+        if ($shipment->gate_entry_id) {
+            throw ValidationException::withMessages(['cancel' => "{$shipment->number} is on gate pass {$shipment->gateEntry?->gate_no} - the truck is already at the gate."]);
         }
         $shipment->update(['status' => 'cancelled']);
     }

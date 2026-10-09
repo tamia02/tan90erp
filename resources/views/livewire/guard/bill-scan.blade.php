@@ -22,6 +22,10 @@ new #[Layout('layouts.app')] class extends Component
 
     public string $entryType = 'inward';
 
+    // Outward gate pass made from an Outward Shipment (Inventory > Outward
+    // Shipment, documents complete). Null = the old free outward pass.
+    public ?int $outwardShipmentId = null;
+
     public bool $billScanned = false;
 
     public bool $ocrReady = false;
@@ -118,9 +122,58 @@ new #[Layout('layouts.app')] class extends Component
         return $needle.str_pad((string) ($last + 1), 6, '0', STR_PAD_LEFT);
     }
 
+    public function selectOutwardShipment(int $id): void
+    {
+        $shipment = \App\Models\Outward\OutwardShipment::with('lines.item')->whereKey($id)->where('status', 'ready')->whereNull('gate_entry_id')->first();
+        if (! $shipment) {
+            $this->addError('outwardShipmentId', 'That shipment is no longer ready for a gate pass - refresh the list.');
+
+            return;
+        }
+        $this->outwardShipmentId = $shipment->id;
+        $this->fetched = false; // not a PO fetch - skip the PO line checks
+        $this->poNumber = $shipment->number;
+        $this->vendorName = $shipment->to_name;
+        $this->vendorGst = (string) $shipment->to_gstin;
+        $this->invoiceNumber = (string) ($shipment->invoice_number ?: $shipment->challan_number);
+        $this->invoiceAmount = (string) $shipment->total_value;
+        $this->invoiceQty = (string) max(1, (int) ceil((float) $shipment->lines->sum('qty')));
+        $this->material = $shipment->lines->map(fn ($line) => $line->item?->displayName())->filter()->implode(' + ');
+        $this->productLines = $shipment->lines->map(fn ($line) => [
+            'po_line_id' => null, 'sku' => (string) $line->item?->sku, 'name' => (string) $line->item?->displayName(),
+            'qty' => (float) $line->qty, 'uom' => (string) $line->item?->unit, 'unit_price' => (float) $line->rate,
+            'remarks' => "Outward Shipment {$shipment->number}",
+        ])->values()->all();
+        if ($shipment->vehicle_number) {
+            $this->vehicleNumber = $shipment->vehicle_number;
+        }
+        if ($shipment->transporter) {
+            $this->transporter = $shipment->transporter;
+        }
+        foreach (self::LOCATIONS as $key => $location) {
+            if (str_contains(mb_strtolower((string) $shipment->from_name), $key)) {
+                $this->location = $key;
+            }
+        }
+        $this->resetValidation();
+    }
+
+    public function clearOutwardShipment(): void
+    {
+        $this->outwardShipmentId = null;
+        foreach (['poNumber', 'vendorName', 'vendorGst', 'invoiceNumber', 'invoiceAmount', 'invoiceQty', 'material'] as $field) {
+            $this->{$field} = '';
+        }
+        $this->productLines = [];
+    }
+
     public function with(): array
     {
         return [
+            'readyShipments' => $this->entryType === 'outward' && ! $this->outwardShipmentId
+                ? app(\App\Services\Outward\OutwardShipmentService::class)->readyForGate()
+                : collect(),
+            'linkedShipment' => $this->outwardShipmentId ? \App\Models\Outward\OutwardShipment::find($this->outwardShipmentId) : null,
             'isVisitor' => $this->entryType === 'visitor',
             'modeLabel' => $this->modeLabel(),
             'selectedLocation' => self::LOCATIONS[$this->location] ?? self::LOCATIONS['bhiwandi'],
@@ -656,6 +709,7 @@ new #[Layout('layouts.app')] class extends Component
                     'unit_price' => is_numeric($line['unit_price'] ?? null) ? (float) $line['unit_price'] : null,
                     'remarks' => trim((string) ($line['remarks'] ?? '')),
                 ])->values()->all(),
+            'outward_shipment_id' => $this->entryType === 'outward' ? $this->outwardShipmentId : null,
             'vehicle_number' => $this->vehicleNumber ?: 'WALK-IN',
             'driver_name' => $driverName,
             'transporter' => $this->transporter ?: null,
@@ -674,6 +728,11 @@ new #[Layout('layouts.app')] class extends Component
         // that meant anyone typing any name got waved straight in.
         $needsApproval = in_array($this->entryType, ['inward', 'outward', 'visitor'], true);
         $vendorUser = $form['vendor_name'] ? User::where('role', Role::Vendor)->where('name', $form['vendor_name'])->first() : null;
+        if ($form['outward_shipment_id'] && ! \App\Models\Outward\OutwardShipment::whereKey($form['outward_shipment_id'])->where('status', 'ready')->whereNull('gate_entry_id')->exists()) {
+            $this->addError('outwardShipmentId', 'That shipment already has a gate pass or is no longer ready.');
+
+            return;
+        }
         $documentPath = $this->billFile ? $this->billFile->store('gate-bills') : null;
         $gate = GateEntry::create([
             ...$form,
@@ -690,6 +749,9 @@ new #[Layout('layouts.app')] class extends Component
         foreach ($issues as $issue) {
             ValidationIssue::create([...$issue, 'gate_entry_id' => $gate->id, 'status' => 'open']);
         }
+        if ($gate->outward_shipment_id) {
+            \App\Models\Outward\OutwardShipment::whereKey($gate->outward_shipment_id)->update(['gate_entry_id' => $gate->id]);
+        }
 
         AuditLogger::log($this->modeLabel().' entry created', "{$gate->gate_no} - {$selected['code']} - {$gate->vendor_name}", $gate);
         $this->saved = ['gate' => $gate, 'issues' => $issues, 'location' => $selected];
@@ -705,6 +767,7 @@ new #[Layout('layouts.app')] class extends Component
         $this->gps = '';
         $this->saved = null;
         $this->fetched = false;
+        $this->outwardShipmentId = null;
         $this->fetchedSource = '';
         $this->availableInvoices = [];
         $this->selectedInvoiceNumber = '';
@@ -1043,6 +1106,26 @@ new #[Layout('layouts.app')] class extends Component
                             @error('material') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
                     @else
+                        <div class="md:col-span-2 rounded-xl border p-3 text-sm" style="border-color: var(--brand); background: var(--brand-bg);">
+                            <div class="font-semibold" style="color: var(--brand);">Outward Shipment (from Inventory)</div>
+                            @if ($linkedShipment)
+                                <div class="mt-1" style="color: var(--text-primary);">{{ $linkedShipment->number }} · {{ $linkedShipment->documentLabel() }} {{ $linkedShipment->invoice_number ?: $linkedShipment->challan_number }} → {{ $linkedShipment->to_name }}. Stock goes down when you confirm this truck's exit.</div>
+                                <button type="button" wire:click="clearOutwardShipment" class="mt-1 text-xs font-semibold underline" style="color: var(--text-muted);">Not this one</button>
+                            @elseif ($readyShipments->isNotEmpty())
+                                <div class="text-xs mb-2" style="color: var(--text-secondary);">Pick the shipment this truck carries - customer, items and documents fill in automatically.</div>
+                                <div class="flex flex-col gap-1.5">
+                                    @foreach ($readyShipments as $shipment)
+                                        <button type="button" wire:key="ready-shipment-{{ $shipment->id }}" wire:click="selectOutwardShipment({{ $shipment->id }})" class="text-left rounded-lg border px-3 py-2 text-xs" style="border-color: var(--border); background: var(--surface-1);">
+                                            <b>{{ $shipment->number }}</b> · {{ $shipment->documentLabel() }} {{ $shipment->invoice_number ?: $shipment->challan_number }} · {{ $shipment->from_name }} → {{ $shipment->to_name }}
+                                            · {{ $shipment->lines->map(fn ($l) => rtrim(rtrim((string) $l->qty, '0'), '.').' '.$l->item?->unit.' '.$l->item?->displayName())->implode(', ') }}
+                                        </button>
+                                    @endforeach
+                                </div>
+                            @else
+                                <div class="text-xs" style="color: var(--text-secondary);">No outward shipment is ready yet (Inventory > Outward Shipment). You can still fill the pass by hand below.</div>
+                            @endif
+                            @error('outwardShipmentId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </div>
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Package Number</span>
                             <div class="flex gap-2">
