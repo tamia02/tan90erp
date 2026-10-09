@@ -30,7 +30,8 @@ new #[Layout('layouts.app')] class extends Component
     {
         $all = InventoryItem::when($this->type, fn ($q) => $q->where('item_type', $this->type))
             ->when(! $this->showArchived, fn ($q) => $q->where('active', true))
-            ->when(trim($this->search) !== '', fn ($q) => $q->where('sku', 'like', '%'.trim($this->search).'%'))
+            ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', '%'.trim($this->search).'%')->orWhere('code', 'like', '%'.trim($this->search).'%')
+                ->when(InventoryItem::canSeeSkuName(auth()->user()), fn ($w) => $w->orWhere('sku', 'like', '%'.trim($this->search).'%'), fn ($w) => $w->orWhere(fn ($n) => $n->whereNull('name')->where('sku', 'like', '%'.trim($this->search).'%')))))
             ->orderByRaw("CASE item_type WHEN 'rm' THEN 1 WHEN 'pm' THEN 2 WHEN 'fg' THEN 3 ELSE 4 END")->orderBy('sku')->get();
 
         // 2,000+ Zoho items: items with any stock or movement first, 100 at a time.
@@ -40,24 +41,7 @@ new #[Layout('layouts.app')] class extends Component
         $items = $all->sortBy(fn ($item) => $active($item) ? 0 : 1)->values()->take($this->perPage);
 
         $historyItem = $this->historyItemId ? InventoryItem::find($this->historyItemId) : null;
-        $history = collect();
-        if ($historyItem) {
-            $grn = LedgerEntry::with('gateEntry')->where('sku', $historyItem->sku)->where('bucket', 'available')->get()
-                ->map(fn ($entry) => ['at' => $entry->created_at, 'label' => 'Received (GRN) · '.($entry->gateEntry?->gate_no ?? '').' '.($entry->gateEntry?->po_number ?? ''), 'qty' => (float) $entry->qty]);
-            $moves = InventoryMovement::with(['production', 'dispatch'])->where('item_id', $historyItem->id)->get()
-                ->map(fn ($m) => [
-                    'at' => $m->created_at,
-                    'label' => match ($m->type) {
-                        'produced' => 'Produced · '.$m->production?->number,
-                        'consumed' => 'Converted (used in production) · '.$m->production?->number,
-                        'wastage' => 'Wastage · '.$m->production?->number,
-                        'dispatched' => 'Dispatched · '.$m->dispatch?->number.' → '.$m->dispatch?->customer_name,
-                        default => ucfirst($m->type),
-                    },
-                    'qty' => in_array($m->type, InventoryMovement::IN_TYPES, true) ? (float) $m->qty : -(float) $m->qty,
-                ]);
-            $history = $grn->concat($moves)->sortByDesc('at')->values();
-        }
+        $history = $historyItem ? app(InventoryService::class)->history($historyItem) : collect();
 
         return [
             'items' => $items,

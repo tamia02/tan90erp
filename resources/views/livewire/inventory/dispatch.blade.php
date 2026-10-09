@@ -95,7 +95,7 @@ new #[Layout('layouts.app')] class extends Component
             'toGstin.size' => 'A GSTIN has 15 characters.',
         ]);
 
-        $items = InventoryItem::whereIn('sku', array_filter(array_column($this->lines, 'item')))->get()->keyBy(fn ($i) => mb_strtolower($i->sku));
+        $items = InventoryItem::matchLabels(array_column($this->lines, 'item'));
         $lines = [];
         foreach ($this->lines as $i => $line) {
             if (trim($line['item']) === '' && trim((string) $line['qty']) === '') {
@@ -187,7 +187,7 @@ new #[Layout('layouts.app')] class extends Component
         $from = $this->fromLocationId ? Location::find($this->fromLocationId) : null;
 
         // Stock for the items being typed in, so a shortage shows before Create.
-        $lineItems = InventoryItem::whereIn('sku', array_filter(array_map(fn ($l) => trim((string) $l['item']), $this->lines)))->get()->keyBy(fn ($i) => mb_strtolower($i->sku));
+        $lineItems = InventoryItem::matchLabels(array_column($this->lines, 'item'));
         $service = app(OutwardShipmentService::class);
         $lineStock = $service->stockPicture($lineItems->pluck('id')->all());
 
@@ -210,7 +210,8 @@ new #[Layout('layouts.app')] class extends Component
             'purposes' => OutwardShipment::PURPOSES,
             'locations' => Location::orderBy('name')->get(),
             'customers' => Customer::orderBy('name')->get(['id', 'name', 'gstin', 'state']),
-            'itemOptions' => InventoryItem::whereIn('item_type', $itemTypes)->where('active', true)->orderBy('sku')->pluck('sku'),
+            'itemOptions' => InventoryItem::whereIn('item_type', $itemTypes)->where('active', true)->get(['sku', 'name', 'code'])
+                ->map(fn ($i) => InventoryItem::canSeeSkuName(auth()->user()) ? $i->sku : $i->displayName())->unique()->sort()->values(),
             'lineTotal' => $total,
             'preview' => ($from && trim($this->toName) !== '')
                 ? app(OutwardComplianceService::class)->decide($this->purpose, $from->gstin, $this->toGstin ?: null, $from->state, $this->toState ?: null, $total)

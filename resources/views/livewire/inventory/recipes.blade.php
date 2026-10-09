@@ -64,7 +64,8 @@ new #[Layout('layouts.app')] class extends Component
     public function with(): array
     {
         $query = InventoryItem::query()->where('item_type', 'fg')->where('active', true)
-            ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($w) => $w->where('sku', 'like', '%'.trim($this->search).'%')->orWhere('name', 'like', '%'.trim($this->search).'%')))
+            ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', '%'.trim($this->search).'%')->orWhere('code', 'like', '%'.trim($this->search).'%')
+                ->when(InventoryItem::canSeeSkuName(auth()->user()), fn ($w) => $w->orWhere('sku', 'like', '%'.trim($this->search).'%'), fn ($w) => $w->orWhere(fn ($n) => $n->whereNull('name')->where('sku', 'like', '%'.trim($this->search).'%')))))
             ->when($this->recipeFilter === 'with', fn ($q) => $q->has('bomLines'))
             ->when($this->recipeFilter === 'missing', fn ($q) => $q->doesntHave('bomLines'));
         $total = (clone $query)->count();
@@ -102,7 +103,7 @@ new #[Layout('layouts.app')] class extends Component
                     <tbody>
                         @forelse ($fgs as $fg)
                             <tr wire:key="recipe-fg-{{ $fg->id }}" style="border-top: 1px solid var(--border);{{ $recipeFgId === $fg->id ? ' background: var(--brand-bg);' : '' }}">
-                                <td class="px-4 py-3"><div class="font-medium" style="color: var(--text-primary);">{{ $fg->displayName() }}</div>@if ($fg->name)<div class="text-xs" style="color: var(--text-muted);">{{ $fg->sku }}</div>@endif</td>
+                                <td class="px-4 py-3"><div class="font-medium" style="color: var(--text-primary);">{{ $fg->displayName() }}</div>@if ($fg->name && \App\Models\Inventory\InventoryItem::canSeeSkuName(auth()->user()))<div class="text-xs" style="color: var(--text-muted);">SKU Name: {{ $fg->sku }}</div>@endif</td>
                                 <td class="px-4 py-3">{{ $fg->unit }}</td>
                                 <td class="px-4 py-3 text-right">{{ $fg->bom_lines_count }}</td>
                                 <td class="px-4 py-3 text-xs">

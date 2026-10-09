@@ -21,11 +21,12 @@ new #[Layout('layouts.app')] class extends Component
     }
 
     public ?int $editingId = null;
-    public string $sku = '';
-    public string $name = '';
+    public string $code = '';    // SKU Code
+    public string $sku = '';     // SKU Name = exact chemical name (masked)
+    public string $name = '';    // Display Name, chosen by the team
     public string $itemType = 'rm';
     public string $unit = 'NOS';
-    public string $openingQty = '0';
+    public ?int $historyItemId = null;
     public array $customValues = [];
 
     // Admin: custom item fields (Number / Text / Drop-down).
@@ -50,22 +51,29 @@ new #[Layout('layouts.app')] class extends Component
     public function save(): void
     {
         $this->unit = strtoupper(trim($this->unit));
+        $existing = $this->editingId ? InventoryItem::findOrFail($this->editingId) : null;
+        // The SKU Name links the item to POs, GRN and Zoho, so it can't be
+        // changed on an existing item - and is never shown to people who may
+        // not see chemical names.
+        if ($existing) {
+            $this->sku = $existing->sku;
+        }
         $data = $this->validate([
+            'code' => ['nullable', 'string', 'max:80'],
             'sku' => ['required', 'string', 'max:255', Rule::unique('inventory_items', 'sku')->ignore($this->editingId)],
             'name' => ['nullable', 'string', 'max:255'],
             'itemType' => ['required', Rule::in(array_keys(InventoryItem::TYPES))],
             // From the Units master; an existing item may keep its old unit.
-            'unit' => ['required', 'string', 'max:20', Rule::in(array_merge(\App\Support\Units::options(), [(string) InventoryItem::find($this->editingId)?->unit]))],
-            'openingQty' => ['required', 'numeric', 'min:0'],
-        ], ['sku.unique' => 'This SKU is already added.']);
+            'unit' => ['required', 'string', 'max:20', Rule::in(array_merge(\App\Support\Units::options(), [(string) $existing?->unit]))],
+        ], ['sku.unique' => 'An item with this SKU Name already exists.', 'sku.required' => 'Enter the SKU Name (exact chemical / item name).'], ['sku' => 'SKU Name', 'code' => 'SKU Code', 'name' => 'Display Name']);
         $custom = $this->validatedCustomValues();
 
         $item = InventoryItem::updateOrCreate(['id' => $this->editingId], [
-            'sku' => trim($data['sku']), 'name' => $data['name'] ?: null, 'item_type' => $data['itemType'],
-            'unit' => strtoupper(trim($data['unit'])), 'opening_qty' => $data['openingQty'],
+            'code' => trim($data['code'] ?? '') ?: null, 'sku' => trim($data['sku']), 'name' => trim($data['name'] ?? '') ?: null,
+            'item_type' => $data['itemType'], 'unit' => strtoupper(trim($data['unit'])),
             'custom_fields' => $custom ?: null,
         ]);
-        AuditLogger::log($this->editingId ? 'Inventory item updated' : 'Inventory item added', "{$item->sku} · {$item->typeLabel()} · opening {$item->opening_qty}", $item);
+        AuditLogger::log($this->editingId ? 'Inventory item updated' : 'Inventory item added', ($item->code ? "{$item->code} · " : '').$item->displayName()." · {$item->typeLabel()}", $item);
 
         session()->flash('success', "Saved {$item->displayName()}.");
         $this->resetForm();
@@ -75,11 +83,11 @@ new #[Layout('layouts.app')] class extends Component
     {
         $item = InventoryItem::findOrFail($id);
         $this->editingId = $item->id;
+        $this->code = (string) $item->code;
         $this->sku = $item->sku;
         $this->name = (string) $item->name;
         $this->itemType = $item->item_type;
         $this->unit = $item->unit;
-        $this->openingQty = rtrim(rtrim((string) $item->opening_qty, '0'), '.') ?: '0';
         $this->customValues = array_map('strval', $item->custom_fields ?? []);
         $this->resetValidation(); // don't carry an earlier "already added" error onto the edit form
     }
@@ -118,7 +126,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function resetForm(): void
     {
-        $this->reset(['editingId', 'sku', 'name', 'itemType', 'unit', 'openingQty', 'customValues']);
+        $this->reset(['editingId', 'code', 'sku', 'name', 'itemType', 'unit', 'customValues']);
         $this->resetValidation();
     }
 
@@ -183,10 +191,13 @@ new #[Layout('layouts.app')] class extends Component
     {
         // 2,000+ Zoho items: search/filter and show them 100 at a time so every
         // click doesn't re-render the whole catalogue.
+        $canSeeSku = InventoryItem::canSeeSkuName(auth()->user());
+        $term = '%'.trim($this->search).'%';
         $query = InventoryItem::query()
             ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($w) => $w
-                ->where('sku', 'like', '%'.trim($this->search).'%')
-                ->orWhereIn('sku', SkuMaster::where('product_code', 'like', '%'.trim($this->search).'%')->select('sku'))))
+                ->where('name', 'like', $term)->orWhere('code', 'like', $term)
+                ->when($canSeeSku, fn ($w) => $w->orWhere('sku', 'like', $term), fn ($w) => $w->orWhere(fn ($n) => $n->whereNull('name')->where('sku', 'like', $term)))
+                ->orWhereIn('sku', SkuMaster::where('product_code', 'like', $term)->select('sku'))))
             ->when($this->typeFilter !== '', fn ($q) => $q->where('item_type', $this->typeFilter));
         $total = (clone $query)->count();
         $items = $query
@@ -200,7 +211,14 @@ new #[Layout('layouts.app')] class extends Component
             ->merge(PurchaseOrderLine::distinct()->pluck('product'))
             ->filter()->unique()->diff(InventoryItem::pluck('sku'))->sort()->values();
 
+        $historyItem = $this->historyItemId ? InventoryItem::find($this->historyItemId) : null;
+
         return [
+            'canSeeSku' => $canSeeSku,
+            'historyItem' => $historyItem,
+            'history' => $historyItem ? app(InventoryService::class)->history($historyItem) : collect(),
+            'historyStock' => $historyItem ? app(InventoryService::class)->balances(collect([$historyItem]))[$historyItem->id] : null,
+            'editingIsZoho' => $this->editingId && SkuMaster::where('sku', $this->sku)->whereNotNull('zoho_item_id')->exists(),
             'items' => $items,
             'total' => $total,
             'balances' => app(InventoryService::class)->balances($items),
@@ -220,7 +238,7 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'The one list of all items - every Zoho item (name and Zoho code) plus anything received through GRN appears here automatically. Check the type (RM / PM / FG / Trading) and current stock. Recipes for Finished Goods are under Recipes.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'The one list of all items - every Zoho item (name and Zoho code) plus anything received through GRN appears here automatically. Click an item to see its stock history. Stock comes in through GRN and Create Bundle. Recipes for Finished Goods are under Composite Items (Recipes).'])
 
     @if ($canManageFields)
         <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);" @if ($errors->hasAny(['newFieldLabel', 'newFieldOptions'])) open @endif>
@@ -258,16 +276,32 @@ new #[Layout('layouts.app')] class extends Component
     <form wire:submit="save" class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
             <h2 class="text-base font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add an item that is not in Zoho' }}</h2>
-            <span class="text-xs" style="color: var(--text-muted);">"Current stock" = what you had before this module. GRN receipts are added automatically.</span>
+            <span class="text-xs" style="color: var(--text-muted);">SKU Name = exact chemical / item name, seen only by people allowed to. Everyone else sees the Display Name and Code.</span>
         </div>
         <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 items-start">
-            <label class="flex flex-col gap-1 text-xs lg:col-span-2"><span class="font-medium">SKU / item name (same as on the PO)</span>
-                <input wire:model="sku" list="known-skus" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="e.g. PCM Raw Compound (TN-1 Grade)">
-                <datalist id="known-skus">@foreach ($knownSkus as $known)<option value="{{ $known }}"></option>@endforeach</datalist>
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium">SKU Code</span>
+                <input wire:model="code" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="e.g. RM-PCM-018">
+                @error('code') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
+            </label>
+            <label class="flex flex-col gap-1 text-xs lg:col-span-2"><span class="font-medium">SKU Name (exact chemical name)</span>
+                @if ($editingId && ! $canSeeSku)
+                    <input value="Hidden - you can't see chemical names" disabled class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border); background: var(--surface-2);">
+                @elseif ($editingId)
+                    <input wire:model="sku" disabled class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border); background: var(--surface-2);">
+                    <span style="color: var(--text-muted);">{{ $editingIsZoho ? 'Comes from Zoho - change it in Zoho.' : 'Fixed once saved - it links the item to POs and GRN.' }}</span>
+                @else
+                    <input wire:model="sku" list="known-skus" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="Same as on the PO, e.g. N-Tetradecane">
+                    <datalist id="known-skus">
+                        @if ($canSeeSku)
+                            @foreach ($knownSkus as $known)<option value="{{ $known }}"></option>@endforeach
+                        @endif
+                    </datalist>
+                @endif
                 @error('sku') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
-            <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Display name (optional)</span>
-                <input wire:model="name" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Display Name</span>
+                <input wire:model="name" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="What the team sees">
+                @error('name') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Type</span>
                 <select wire:model="itemType" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
@@ -280,10 +314,6 @@ new #[Layout('layouts.app')] class extends Component
                     @if ($unit !== '' && ! in_array($unit, $units, true))<option value="{{ $unit }}">{{ $unit }} (not in Units master)</option>@endif
                 </select>
                 @error('unit') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
-            </label>
-            <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Current stock</span>
-                <input wire:model="openingQty" type="number" step="0.001" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
-                @error('openingQty') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             @foreach ($customFields as $field)
                 <label wire:key="cf-input-{{ $field->id }}" class="flex flex-col gap-1 text-xs"><span class="font-medium">{{ $field->label }}{{ $field->required ? ' *' : '' }}</span>
@@ -307,6 +337,31 @@ new #[Layout('layouts.app')] class extends Component
 
     <div>
         <div class="space-y-5">
+            @if ($historyItem)
+                <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--brand);">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <h2 class="text-base font-semibold" style="color: var(--text-primary);">Stock history: {{ $historyItem->displayName() }}{{ ($historyItem->code ?: ($codes[mb_strtolower($historyItem->sku)] ?? '')) ? ' · '.($historyItem->code ?: $codes[mb_strtolower($historyItem->sku)]) : '' }}</h2>
+                        <button type="button" wire:click="$set('historyItemId', null)" class="text-xs" style="color: var(--text-muted);">Close</button>
+                    </div>
+                    @php $f = fn ($n) => rtrim(rtrim(number_format((float) $n, 3, '.', ''), '0'), '.') ?: '0'; @endphp
+                    <p class="text-xs mb-2" style="color: var(--text-secondary);">In stock now: <b>{{ $f($historyStock['final']) }} {{ $historyItem->unit }}</b> = received {{ $f($historyStock['received']) }} + produced {{ $f($historyStock['produced']) }} − used {{ $f($historyStock['consumed']) }} − wastage {{ $f($historyStock['wastage']) }} − dispatched {{ $f($historyStock['dispatched']) }}{{ (float) $historyStock['opening'] ? ' + earlier stock '.$f($historyStock['opening']) : '' }}</p>
+                    <table class="w-full text-xs">
+                        <thead><tr class="text-left uppercase" style="color: var(--text-muted);"><th class="py-1.5">When</th><th class="py-1.5">What happened</th><th class="py-1.5 text-right">Qty</th></tr></thead>
+                        <tbody>
+                            @forelse ($history as $row)
+                                <tr style="border-top: 1px solid var(--border);">
+                                    <td class="py-1.5 whitespace-nowrap">{{ \Illuminate\Support\Carbon::parse($row['at'])->format('d M Y, H:i') }}</td>
+                                    <td class="py-1.5">{{ $row['label'] }}</td>
+                                    <td class="py-1.5 text-right font-semibold" style="color: {{ $row['qty'] >= 0 ? 'var(--status-good)' : 'var(--status-critical)' }};">{{ $row['qty'] >= 0 ? '+' : '−' }}{{ $f(abs($row['qty'])) }} {{ $historyItem->unit }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="3" class="py-3" style="color: var(--text-muted);">No stock movement yet.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+
             <div class="flex flex-wrap gap-2 text-xs">
                 @foreach ($types as $value => $label)
                     <button type="button" wire:click="$set('typeFilter', '{{ $typeFilter === $value ? '' : $value }}')" class="rounded-full border px-3 py-1 font-semibold" style="{{ $typeFilter === $value ? 'background: var(--brand); color: #fff; border-color: var(--brand);' : 'border-color: var(--border); color: var(--text-secondary);' }}">{{ $label }}: {{ $typeCounts[$value] ?? 0 }}</button>
@@ -322,16 +377,15 @@ new #[Layout('layouts.app')] class extends Component
             </div>
             <div class="rounded-2xl border overflow-x-auto" style="background: var(--surface-3); border-color: var(--border);">
                 <table class="w-full text-sm min-w-[760px]">
-                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Code</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">Opening stock</th><th class="px-4 py-3 text-right">In stock now</th>@foreach ($customFields as $field)<th class="px-4 py-3">{{ $field->label }}</th>@endforeach<th class="px-4 py-3"></th></tr></thead>
+                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Code</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">In stock now</th>@foreach ($customFields as $field)<th class="px-4 py-3">{{ $field->label }}</th>@endforeach<th class="px-4 py-3"></th></tr></thead>
                     <tbody>
                         @forelse ($items as $item)
                             <tr wire:key="inv-item-{{ $item->id }}" style="border-top: 1px solid var(--border);{{ $item->active ? "" : " opacity: .55;" }}">
-                                <td class="px-4 py-3"><div class="font-medium" style="color: var(--text-primary);">{{ $item->displayName() }}</div>@if ($item->name)<div class="text-xs" style="color: var(--text-muted);">{{ $item->sku }}</div>@endif</td>
-                                <td class="px-4 py-3 text-xs font-mono" style="color: var(--text-secondary);">{{ $codes[mb_strtolower($item->sku)] ?? '' }}</td>
+                                <td class="px-4 py-3"><button type="button" wire:click="$set('historyItemId', {{ $item->id }})" class="text-left font-medium hover:underline" style="color: var(--text-primary);" title="See stock history">{{ $item->displayName() }}</button>@if ($item->name && $canSeeSku)<div class="text-xs" style="color: var(--text-muted);">SKU Name: {{ $item->sku }}</div>@endif</td>
+                                <td class="px-4 py-3 text-xs font-mono" style="color: var(--text-secondary);">{{ $item->code ?: ($codes[mb_strtolower($item->sku)] ?? '') }}</td>
                                 <td class="px-4 py-3">{{ $item->typeLabel() }}</td>
                                 <td class="px-4 py-3">{{ $item->unit }}</td>
                                 <td class="px-4 py-3 text-xs">{{ $zohoSkus->has(mb_strtolower($item->sku)) ? 'Zoho' : ($erpSkus->has(mb_strtolower($item->sku)) ? 'ERP Items' : 'GRN / added here') }}</td>
-                                <td class="px-4 py-3 text-right">{{ rtrim(rtrim((string) $item->opening_qty, '0'), '.') ?: '0' }}</td>
                                 <td class="px-4 py-3 text-right font-semibold">{{ rtrim(rtrim(number_format($balances[$item->id]['final'], 3, '.', ''), '0'), '.') }} {{ $item->unit }}</td>
                                 @foreach ($customFields as $field)<td class="px-4 py-3 text-xs">{{ $item->custom_fields[$field->field_key] ?? '' }}</td>@endforeach
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
@@ -345,7 +399,7 @@ new #[Layout('layouts.app')] class extends Component
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="{{ 8 + $customFields->count() }}" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
+                            <tr><td colspan="{{ 7 + $customFields->count() }}" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

@@ -115,6 +115,32 @@ class InventoryService
         };
     }
 
+    /**
+     * Every stock movement of one item, newest first: received through GRN,
+     * produced, used in production, wasted, dispatched.
+     *
+     * @return Collection<int, array{at: mixed, label: string, qty: float}>
+     */
+    public function history(InventoryItem $item): Collection
+    {
+        $grn = LedgerEntry::with('gateEntry')->where('sku', $item->sku)->where('bucket', 'available')->get()
+            ->map(fn ($entry) => ['at' => $entry->created_at, 'label' => trim('Received (GRN) · '.($entry->gateEntry?->gate_no ?? '').' '.($entry->gateEntry?->po_number ?? '')), 'qty' => (float) $entry->qty]);
+        $moves = InventoryMovement::with(['production', 'dispatch'])->where('item_id', $item->id)->get()
+            ->map(fn ($m) => [
+                'at' => $m->created_at,
+                'label' => match ($m->type) {
+                    'produced' => 'Produced (Create Bundle) · '.$m->production?->number,
+                    'consumed' => 'Used in production · '.$m->production?->number,
+                    'wastage' => 'Wastage · '.$m->production?->number,
+                    'dispatched' => 'Dispatched · '.trim(($m->dispatch?->reference ? $m->dispatch->reference.' · ' : '').$m->dispatch?->number).' → '.$m->dispatch?->customer_name,
+                    default => ucfirst($m->type),
+                },
+                'qty' => in_array($m->type, InventoryMovement::IN_TYPES, true) ? (float) $m->qty : -(float) $m->qty,
+            ]);
+
+        return $grn->concat($moves)->sortByDesc('at')->values();
+    }
+
     public function available(InventoryItem $item): float
     {
         return $this->balances(collect([$item]))[$item->id]['final'];
