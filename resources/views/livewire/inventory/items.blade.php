@@ -220,7 +220,7 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'The one list of all items - every Zoho item (name and Zoho code) plus anything received through GRN appears here automatically. Check the type (RM / PM / FG / Trading) and current stock. Recipes for Finished Goods are on the next tab.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'The one list of all items - every Zoho item (name and Zoho code) plus anything received through GRN appears here automatically. Check the type (RM / PM / FG / Trading) and current stock. Recipes for Finished Goods are under Recipes.'])
 
     @if ($canManageFields)
         <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);" @if ($errors->hasAny(['newFieldLabel', 'newFieldOptions'])) open @endif>

@@ -9,7 +9,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
 // Recipes only: which RM / PM (and how much) makes 1 unit of each Finished
-// Good. Items themselves are managed on the Items tab.
+// Good. Items themselves are managed on the Items page.
 new #[Layout('layouts.app')] class extends Component
 {
     public function mount(): void
@@ -111,7 +111,7 @@ new #[Layout('layouts.app')] class extends Component
                                 <td class="px-4 py-3 text-right"><button type="button" wire:click="openRecipe({{ $fg->id }})" class="text-xs font-semibold" style="color: var(--brand);">{{ $fg->bom_lines_count ? 'Edit recipe' : 'Add recipe' }}</button></td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="px-4 py-8 text-center" style="color: var(--text-muted);">No Finished Goods here. Mark an item as Finished Good (FG) on the Items tab first.</td></tr>
+                            <tr><td colspan="5" class="px-4 py-8 text-center" style="color: var(--text-muted);">No Finished Goods here. Mark an item as Finished Good (FG) on the Items page first.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
