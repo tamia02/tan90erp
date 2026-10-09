@@ -36,7 +36,7 @@ class InventoryResetDemoCommand extends Command
         }
         Schema::enableForeignKeyConstraints();
 
-        $this->info("Inventory data cleared in [{$database}]. Start again at Inventory > 1. Items & Recipes.");
+        $this->info("Inventory data cleared in [{$database}]. Start again at Inventory > 1. Items.");
 
         return self::SUCCESS;
     }

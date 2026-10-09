@@ -273,10 +273,35 @@ class InventoryFlowTest extends TestCase
 
     public function test_only_admin_and_store_manager_can_open_inventory(): void
     {
-        foreach (['inventory.stock', 'inventory.items', 'inventory.production', 'inventory.dispatch'] as $route) {
+        foreach (['inventory.stock', 'inventory.items', 'inventory.recipes', 'inventory.production', 'inventory.dispatch'] as $route) {
             $this->actingAs($this->admin)->get(route($route))->assertOk();
             $this->actingAs(User::factory()->create(['role' => Role::StoreManager]))->get(route($route))->assertOk();
             $this->actingAs(User::factory()->create(['role' => Role::Qc]))->get(route($route))->assertForbidden();
         }
+    }
+
+    public function test_items_and_recipes_are_separate_tabs(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Items tab: every item with type / unit / source, no recipe column.
+        Volt::test('inventory.items')
+            ->assertSee('PCM Compound')->assertSee('Pouch 500g')->assertSee('PCM Pouch 500g Blue')
+            ->assertSee('Source')->assertDontSee('No recipe yet');
+
+        // Recipes tab: only Finished Goods; add and remove a recipe line.
+        $page = Volt::test('inventory.recipes')
+            ->assertSee('recipe-fg-'.$this->fg->id)->assertDontSee('recipe-fg-'.$this->compound->id)
+            ->call('openRecipe', $this->fg->id)
+            ->set('componentId', (string) $this->compound->id)->set('componentQty', '0.75')
+            ->call('addComponent')->assertHasNoErrors();
+        $this->assertSame('0.7500', (string) $this->fg->bomLines()->where('component_item_id', $this->compound->id)->value('qty_per_unit'));
+
+        $page->set('componentId', (string) $this->fg->id)->set('componentQty', '1')->call('addComponent')->assertHasErrors('componentId');
+        $page->call('removeComponent', $this->fg->bomLines()->where('component_item_id', $this->pouch->id)->value('id'));
+        $this->assertSame(1, $this->fg->bomLines()->count());
+
+        $bare = InventoryItem::create(['sku' => 'FG Without Recipe', 'item_type' => 'fg', 'unit' => 'NOS']);
+        Volt::test('inventory.recipes')->set('recipeFilter', 'missing')->assertSee($bare->sku)->assertDontSee('PCM Pouch 500g Blue');
     }
 }

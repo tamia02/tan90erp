@@ -26,7 +26,6 @@ new #[Layout('layouts.app')] class extends Component
     public string $unit = 'NOS';
     public string $openingQty = '0';
 
-    public ?int $recipeFgId = null;
     public string $search = '';
     public string $typeFilter = '';
     public int $perPage = 100;
@@ -40,9 +39,6 @@ new #[Layout('layouts.app')] class extends Component
     {
         $this->perPage = 100;
     }
-    public string $componentId = '';
-    public string $componentQty = '';
-
     public function save(): void
     {
         $data = $this->validate([
@@ -98,9 +94,6 @@ new #[Layout('layouts.app')] class extends Component
         if ($this->editingId === $id) {
             $this->resetForm();
         }
-        if ($this->recipeFgId === $id) {
-            $this->recipeFgId = null;
-        }
     }
 
     public function restoreItem(int $id): void
@@ -116,31 +109,6 @@ new #[Layout('layouts.app')] class extends Component
         $this->resetValidation();
     }
 
-    public function openRecipe(int $fgId): void
-    {
-        $this->recipeFgId = $fgId;
-        $this->reset(['componentId', 'componentQty']);
-    }
-
-    public function addComponent(): void
-    {
-        $this->validate([
-            'componentId' => ['required', Rule::exists('inventory_items', 'id')->whereIn('item_type', ['rm', 'pm'])],
-            'componentQty' => ['required', 'numeric', 'gt:0'],
-        ], ['componentId.required' => 'Pick a Raw or Packaging material.', 'componentQty.gt' => 'Quantity must be more than 0.']);
-
-        InventoryBomLine::updateOrCreate(
-            ['fg_item_id' => $this->recipeFgId, 'component_item_id' => (int) $this->componentId],
-            ['qty_per_unit' => $this->componentQty],
-        );
-        $this->reset(['componentId', 'componentQty']);
-    }
-
-    public function removeComponent(int $lineId): void
-    {
-        InventoryBomLine::where('fg_item_id', $this->recipeFgId)->whereKey($lineId)->delete();
-    }
-
     public function with(): array
     {
         // 2,000+ Zoho items: search/filter and show them 100 at a time so every
@@ -149,7 +117,7 @@ new #[Layout('layouts.app')] class extends Component
             ->when(trim($this->search) !== '', fn ($q) => $q->where('sku', 'like', '%'.trim($this->search).'%'))
             ->when($this->typeFilter !== '', fn ($q) => $q->where('item_type', $this->typeFilter));
         $total = (clone $query)->count();
-        $items = $query->with('bomLines.component')
+        $items = $query
             ->orderByRaw("CASE item_type WHEN 'rm' THEN 1 WHEN 'pm' THEN 2 WHEN 'fg' THEN 3 ELSE 4 END")->orderBy('sku')
             ->limit($this->perPage)->get();
 
@@ -166,49 +134,58 @@ new #[Layout('layouts.app')] class extends Component
             'balances' => app(InventoryService::class)->balances($items),
             'types' => InventoryItem::TYPES,
             'knownSkus' => $known,
-            'recipeFg' => $this->recipeFgId ? InventoryItem::with('bomLines.component')->find($this->recipeFgId) : null,
-            'componentOptions' => InventoryItem::whereIn('item_type', ['rm', 'pm'])->where('active', true)->orderBy('sku')->get(),
+            // Where each item came from: Zoho, the ERP's own Items list, or only GRN.
+            'zohoSkus' => SkuMaster::whereIn('sku', $items->pluck('sku'))->whereNotNull('zoho_item_id')->pluck('sku')->map(fn ($v) => mb_strtolower($v))->flip(),
+            'erpSkus' => SkuMaster::whereIn('sku', $items->pluck('sku'))->pluck('sku')->map(fn ($v) => mb_strtolower($v))->flip(),
+            'typeCounts' => InventoryItem::where('active', true)->groupBy('item_type')->selectRaw('item_type, COUNT(*) as c')->pluck('c', 'item_type'),
         ];
     }
 }; ?>
 
 <div>
-    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items & Recipes', 'subtitle' => 'Every item from SKU Master (and anything received through GRN) is listed here automatically. Check its type (RM / PM / FG / Trading), and give each Finished Good its recipe. Use the form only for items not in SKU Master, e.g. a Finished Good you make yourself.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'All items in one list - every item from Items (Zoho) and anything received through GRN appears here automatically. Check the type (RM / PM / FG / Trading) and current stock. Recipes for Finished Goods are on the next tab.'])
 
-    <div class="grid lg:grid-cols-3 gap-5">
-        <form wire:submit="save" class="rounded-2xl border p-5 space-y-3 self-start" style="background: var(--surface-3); border-color: var(--border);">
-            <h2 class="text-lg font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add item not in SKU Master' }}</h2>
-            <label class="flex flex-col gap-1 text-sm"><span class="font-medium">SKU / item name (same as on the PO)</span>
-                <input wire:model="sku" list="known-skus" class="rounded-lg border px-3 py-2" style="border-color: var(--border);" placeholder="e.g. PCM Raw Compound (TN-1 Grade)">
+    <form wire:submit="save" class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h2 class="text-base font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add an item that is not in Items (Zoho)' }}</h2>
+            <span class="text-xs" style="color: var(--text-muted);">"Current stock" = what you had before this module. GRN receipts are added automatically.</span>
+        </div>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 items-start">
+            <label class="flex flex-col gap-1 text-xs lg:col-span-2"><span class="font-medium">SKU / item name (same as on the PO)</span>
+                <input wire:model="sku" list="known-skus" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="e.g. PCM Raw Compound (TN-1 Grade)">
                 <datalist id="known-skus">@foreach ($knownSkus as $known)<option value="{{ $known }}"></option>@endforeach</datalist>
-                @error('sku') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                @error('sku') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
-            <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Display name (optional)</span>
-                <input wire:model="name" class="rounded-lg border px-3 py-2" style="border-color: var(--border);">
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Display name (optional)</span>
+                <input wire:model="name" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
             </label>
-            <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Type</span>
-                <select wire:model="itemType" class="rounded-lg border px-3 py-2" style="border-color: var(--border);">
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Type</span>
+                <select wire:model="itemType" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
                     @foreach ($types as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
                 </select>
             </label>
-            <div class="grid grid-cols-2 gap-3">
-                <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Unit</span>
-                    <input wire:model="unit" class="rounded-lg border px-3 py-2" style="border-color: var(--border);" placeholder="KG / NOS / BOX">
-                    @error('unit') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                </label>
-                <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Current stock</span>
-                    <input wire:model="openingQty" type="number" step="0.001" min="0" class="rounded-lg border px-3 py-2" style="border-color: var(--border);">
-                    @error('openingQty') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                </label>
-            </div>
-            <p class="text-xs" style="color: var(--text-muted);">"Current stock" is what you already have before using this module. Goods received through GRN are added automatically - don't include them here.</p>
-            <div class="flex gap-2">
-                <button type="submit" class="rounded-lg px-4 py-2 text-sm font-medium text-white" style="background: var(--brand);">{{ $editingId ? 'Save changes' : 'Add item' }}</button>
-                @if ($editingId)<button type="button" wire:click="resetForm" class="rounded-lg border px-4 py-2 text-sm" style="border-color: var(--border);">Cancel</button>@endif
-            </div>
-        </form>
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Unit</span>
+                <input wire:model="unit" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="KG / NOS / BOX">
+                @error('unit') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
+            </label>
+            <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Current stock</span>
+                <input wire:model="openingQty" type="number" step="0.001" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                @error('openingQty') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
+            </label>
+        </div>
+        <div class="flex gap-2 mt-3">
+            <button type="submit" class="rounded-lg px-4 py-2 text-sm font-medium text-white" style="background: var(--brand);">{{ $editingId ? 'Save changes' : 'Add item' }}</button>
+            @if ($editingId)<button type="button" wire:click="resetForm" class="rounded-lg border px-4 py-2 text-sm" style="border-color: var(--border);">Cancel</button>@endif
+        </div>
+    </form>
 
-        <div class="lg:col-span-2 space-y-5">
+    <div>
+        <div class="space-y-5">
+            <div class="flex flex-wrap gap-2 text-xs">
+                @foreach ($types as $value => $label)
+                    <button type="button" wire:click="$set('typeFilter', '{{ $typeFilter === $value ? '' : $value }}')" class="rounded-full border px-3 py-1 font-semibold" style="{{ $typeFilter === $value ? 'background: var(--brand); color: #fff; border-color: var(--brand);' : 'border-color: var(--border); color: var(--text-secondary);' }}">{{ $label }}: {{ $typeCounts[$value] ?? 0 }}</button>
+                @endforeach
+            </div>
             <div class="flex flex-wrap items-center gap-2">
                 <input wire:model.live.debounce.400ms="search" type="search" placeholder="Search items…" class="rounded-lg border px-3 py-2 text-sm flex-1 min-w-[200px]" style="border-color: var(--border);">
                 <select wire:model.live="typeFilter" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
@@ -218,19 +195,17 @@ new #[Layout('layouts.app')] class extends Component
                 <span class="text-xs" style="color: var(--text-muted);">Showing {{ $items->count() }} of {{ $total }}</span>
             </div>
             <div class="rounded-2xl border overflow-x-auto" style="background: var(--surface-3); border-color: var(--border);">
-                <table class="w-full text-sm min-w-[640px]">
-                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Type</th><th class="px-4 py-3 text-right">In stock now</th><th class="px-4 py-3">Recipe</th><th class="px-4 py-3"></th></tr></thead>
+                <table class="w-full text-sm min-w-[760px]">
+                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">Opening stock</th><th class="px-4 py-3 text-right">In stock now</th><th class="px-4 py-3"></th></tr></thead>
                     <tbody>
                         @forelse ($items as $item)
                             <tr wire:key="inv-item-{{ $item->id }}" style="border-top: 1px solid var(--border);{{ $item->active ? "" : " opacity: .55;" }}">
                                 <td class="px-4 py-3"><div class="font-medium" style="color: var(--text-primary);">{{ $item->displayName() }}</div>@if ($item->name)<div class="text-xs" style="color: var(--text-muted);">{{ $item->sku }}</div>@endif</td>
                                 <td class="px-4 py-3">{{ $item->typeLabel() }}</td>
+                                <td class="px-4 py-3">{{ $item->unit }}</td>
+                                <td class="px-4 py-3 text-xs">{{ $zohoSkus->has(mb_strtolower($item->sku)) ? 'Zoho' : ($erpSkus->has(mb_strtolower($item->sku)) ? 'ERP Items' : 'GRN / added here') }}</td>
+                                <td class="px-4 py-3 text-right">{{ rtrim(rtrim((string) $item->opening_qty, '0'), '.') ?: '0' }}</td>
                                 <td class="px-4 py-3 text-right font-semibold">{{ rtrim(rtrim(number_format($balances[$item->id]['final'], 3, '.', ''), '0'), '.') }} {{ $item->unit }}</td>
-                                <td class="px-4 py-3 text-xs">
-                                    @if ($item->item_type === 'fg')
-                                        @forelse ($item->bomLines as $line){{ rtrim(rtrim((string) $line->qty_per_unit, '0'), '.') }} {{ $line->component?->unit }} {{ $line->component?->displayName() }}@if (! $loop->last), @endif @empty <span style="color: var(--status-warning);">No recipe yet</span> @endforelse
-                                    @else — @endif
-                                </td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
                                     @if (! $item->active)
                                         <span class="text-xs font-semibold mr-2" style="color: var(--text-muted);">Archived</span>
@@ -239,11 +214,10 @@ new #[Layout('layouts.app')] class extends Component
                                     <button type="button" wire:click="edit({{ $item->id }})" class="text-xs font-semibold" style="color: var(--brand);">Edit</button>
                                     <button type="button" wire:click="removeItem({{ $item->id }})" wire:confirm="Remove {{ $item->displayName() }}? If it already has stock history it will be archived instead of deleted." class="text-xs font-semibold ml-3" style="color: var(--status-critical);">Remove</button>
                                     @endif
-                                    @if ($item->item_type === 'fg' && $item->active)<button type="button" wire:click="openRecipe({{ $item->id }})" class="text-xs font-semibold ml-3" style="color: var(--brand);">Recipe</button>@endif
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
+                            <tr><td colspan="7" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -252,22 +226,6 @@ new #[Layout('layouts.app')] class extends Component
                 <button type="button" wire:click="$set('perPage', {{ $perPage + 100 }})" class="rounded-lg border px-4 py-2 text-sm font-semibold" style="border-color: var(--border); color: var(--brand);">Show more ({{ $total - $items->count() }} more)</button>
             @endif
 
-            @if ($recipeFg)
-                <div class="rounded-2xl border p-5 space-y-3" style="background: var(--surface-3); border-color: var(--border);">
-                    <div class="flex items-center justify-between"><h2 class="text-lg font-semibold" style="color: var(--text-primary);">Recipe: 1 {{ $recipeFg->unit }} of {{ $recipeFg->displayName() }} needs</h2><button type="button" wire:click="$set('recipeFgId', null)" class="text-xs" style="color: var(--text-muted);">Close</button></div>
-                    @foreach ($recipeFg->bomLines as $line)
-                        <div wire:key="bom-{{ $line->id }}" class="flex items-center justify-between rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
-                            <span>{{ rtrim(rtrim((string) $line->qty_per_unit, '0'), '.') }} {{ $line->component?->unit }} of {{ $line->component?->displayName() }} <span class="text-xs" style="color: var(--text-muted);">({{ $line->component?->typeLabel() }})</span></span>
-                            <button type="button" wire:click="removeComponent({{ $line->id }})" class="text-xs font-semibold" style="color: var(--status-critical);">Remove</button>
-                        </div>
-                    @endforeach
-                    <form wire:submit="addComponent" class="flex flex-wrap gap-2 items-start">
-                        <div class="flex flex-col"><select wire:model="componentId" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);"><option value="">Pick RM / PM…</option>@foreach ($componentOptions as $option)<option value="{{ $option->id }}">{{ $option->displayName() }} ({{ $option->unit }})</option>@endforeach</select>@error('componentId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror</div>
-                        <div class="flex flex-col"><input wire:model="componentQty" type="number" step="0.0001" min="0" placeholder="Qty per 1 {{ $recipeFg->unit }}" class="rounded-lg border px-3 py-2 text-sm w-44" style="border-color: var(--border);">@error('componentQty') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror</div>
-                        <button type="submit" class="rounded-lg px-4 py-2 text-sm font-medium text-white" style="background: var(--brand);">Add to recipe</button>
-                    </form>
-                </div>
-            @endif
         </div>
     </div>
 </div>

@@ -423,6 +423,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('role:admin,storeManager')->prefix('inventory')->name('inventory.')->group(function () {
         Volt::route('/', 'inventory.stock')->name('stock');
         Volt::route('items', 'inventory.items')->name('items');
+        Volt::route('recipes', 'inventory.recipes')->name('recipes');
         Volt::route('production', 'inventory.production')->name('production');
         Volt::route('dispatch', 'inventory.dispatch')->name('dispatch');
         Route::get('outward/{shipment}/challan', function (\App\Models\Outward\OutwardShipment $shipment) {

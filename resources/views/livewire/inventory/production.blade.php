@@ -120,12 +120,12 @@ new #[Layout('layouts.app')] class extends Component
         </div>
 
         @if ($fgItems->isEmpty())
-            <p class="text-sm" style="color: var(--status-warning);">No Finished Goods yet - add one in <a href="{{ route('inventory.items') }}" wire:navigate class="underline">Items &amp; Recipes</a>.</p>
+            <p class="text-sm" style="color: var(--status-warning);">No Finished Goods yet - add one in <a href="{{ route('inventory.items') }}" wire:navigate class="underline">Items</a>.</p>
         @endif
 
         @if ($selected)
             @if ($selected->bomLines->isEmpty())
-                <p class="text-sm" style="color: var(--status-warning);">{{ $selected->displayName() }} has no recipe. Add one in <a href="{{ route('inventory.items') }}" wire:navigate class="underline">Items &amp; Recipes</a>.</p>
+                <p class="text-sm" style="color: var(--status-warning);">{{ $selected->displayName() }} has no recipe. Add one in <a href="{{ route('inventory.recipes') }}" wire:navigate class="underline">Recipes</a>.</p>
             @else
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm min-w-[640px]">

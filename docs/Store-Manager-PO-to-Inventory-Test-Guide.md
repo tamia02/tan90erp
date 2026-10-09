@@ -85,7 +85,7 @@ Menu: **GRN Check**
 | Click the PORM666 row | History: "Received (GRN) … **+250**" |
 
 ## 9. (Optional) Use it in production
-1. **Inventory → Items & Recipes**: on a Finished Good, click **Recipe** and add PORM666 at `0.5` per unit.
+1. **Inventory → Recipes**: on a Finished Good, click **Edit recipe** and add PORM666 at `0.5` per unit.
 2. **Create Bundle**: pick that Finished Good, quantity `100`, then click **Create Bundle & update stock**.
 3. **Stock Summary**: PORM666 now shows Converted **50**, Final **200**.
 

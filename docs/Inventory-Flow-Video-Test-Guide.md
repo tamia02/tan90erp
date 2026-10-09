@@ -18,13 +18,13 @@ Total time: about 10 minutes. The numbers below match the local demo data, which
 2. Open http://127.0.0.1:8000 and log in as **Super Admin**: click the *Super Admin* card, or use `admin@tan90.test` / `demo123`.
 3. In the left menu, under **All Modules**, click **Inventory (RM → FG → Dispatch)**.
 
-*Say:* "The new Inventory module has 4 steps, shown as tabs at the top: Items & Recipes, Create Bundle, Outward Shipment and Stock Summary."
+*Say:* "The new Inventory module has 5 tabs at the top: Items, Recipes, Create Bundle, Outward Shipment and Stock Summary."
 
 ---
 
-## 1. Items & Recipes – tell the system what each item is
+## 1. Items (and 2. Recipes) – tell the system what each item is
 
-Click tab **1. Items & Recipes** and add these 4 items with the form on the left:
+Click tab **1. Items** and add these 4 items with the form on the left:
 
 | SKU / item name | Type | Unit | Current stock |
 |---|---|---|---|
@@ -40,7 +40,7 @@ Click tab **1. Items & Recipes** and add these 4 items with the form on the left
 
 *Say:* "Current stock is what we already had. Anything received through GRN is added automatically."
 
-**Add the recipe:** on the `500gm PCM Pouch - Blue` row, click **Recipe**, then add:
+**Add the recipe:** open tab **2. Recipes**, on the `500gm PCM Pouch - Blue` row click **Add recipe**, then add:
 - PCM Raw Compound (TN-1 Grade) → **0.5** (KG per 1 pouch)
 - Pouch 500gm → **1** (per 1 pouch)
 

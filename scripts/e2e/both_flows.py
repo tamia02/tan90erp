@@ -232,6 +232,10 @@ def pm_stock(page):
     page.goto(f"{BASE}/inventory/items"); settle(page)
     page.get_by_placeholder("Search items…").fill(PM); settle(page, 1500)
     page.locator("tr", has_text=PM).first.get_by_role("button", name="Edit").click(); settle(page)
+    for _ in range(60):  # wait until the edit form has loaded this item
+        if page.locator("[wire\\:model='sku']").input_value() == PM:
+            break
+        page.wait_for_timeout(500)
     current = float(page.locator("[wire\\:model='openingQty']").input_value() or 0)
     page.fill("[wire\\:model='openingQty']", str(int(current + 60)))  # +60 panels every run
     page.get_by_role("button", name="Save changes").click()

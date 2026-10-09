@@ -97,7 +97,8 @@ class RoleNavigation
                 // Inventory module: SKU Master / GRN stock -> production -> dispatch.
                 ['heading' => 'Inventory'],
                 ['label' => 'Stock Summary', 'route' => 'inventory.stock', 'icon' => 'boxes'],
-                ['label' => 'Items & Recipes', 'route' => 'inventory.items', 'icon' => 'list'],
+                ['label' => 'Items', 'route' => 'inventory.items', 'icon' => 'list'],
+                ['label' => 'Recipes', 'route' => 'inventory.recipes', 'icon' => 'clipboard-list'],
                 ['label' => 'Create Bundle', 'route' => 'inventory.production', 'icon' => 'factory'],
                 ['label' => 'Outward Shipment', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
             ],

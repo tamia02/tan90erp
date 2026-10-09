@@ -113,7 +113,7 @@ new #[Layout('layouts.app')] class extends Component
                         <td class="px-4 py-3 text-right font-bold" style="color: var(--text-primary);">{{ $fmt($b['final']) }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet - start at <a href="{{ route('inventory.items') }}" wire:navigate class="underline">1. Items &amp; Recipes</a>.</td></tr>
+                    <tr><td colspan="9" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet - start at <a href="{{ route('inventory.items') }}" wire:navigate class="underline">1. Items</a>.</td></tr>
                 @endforelse
             </tbody>
         </table>
