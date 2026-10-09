@@ -257,7 +257,7 @@ new #[Layout('layouts.app')] class extends Component
 
     <form wire:submit="save" class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h2 class="text-base font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add an item that is not in Items (Zoho)' }}</h2>
+            <h2 class="text-base font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add an item that is not in Zoho' }}</h2>
             <span class="text-xs" style="color: var(--text-muted);">"Current stock" = what you had before this module. GRN receipts are added automatically.</span>
         </div>
         <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 items-start">
