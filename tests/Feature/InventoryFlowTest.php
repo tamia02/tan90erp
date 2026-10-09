@@ -314,4 +314,10 @@ class InventoryFlowTest extends TestCase
         Volt::test('inventory.items')->assertSee('SP-2124')
             ->set('search', 'SP-2124')->assertSee('Pouch 500g')->assertDontSee('PCM Compound');
     }
+
+    public function test_master_data_items_list_sends_admin_to_the_one_item_list(): void
+    {
+        $this->actingAs($this->admin)->get(route('tan90.master-data.index', 'items'))->assertRedirect(route('inventory.items'));
+        $this->actingAs($this->admin)->get(route('tan90.master-data.index', 'vendors'))->assertOk();
+    }
 }

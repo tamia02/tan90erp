@@ -43,6 +43,13 @@ class MasterDataController extends Controller
 
     public function index(Request $request, string $entity)
     {
+        // One item list: Inventory > Items (all Zoho items + codes). This older
+        // tan90_items copy stays in the database but its list sends people there.
+        $user = $request->user();
+        if ($entity === 'items' && ($user->isAdmin() || $user->holdsRole(\App\Enums\Role::StoreManager))) {
+            return redirect()->route('inventory.items');
+        }
+
         $config = $this->registry->get($entity);
         $this->authorize('viewAny', $config['model']);
 
