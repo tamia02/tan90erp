@@ -83,7 +83,8 @@ new #[Layout('layouts.app')] class extends Component
     {
         $item = InventoryItem::findOrFail($id);
         $this->editingId = $item->id;
-        $this->code = (string) $item->code;
+        // Zoho items: start from the Zoho code if no ERP code is set yet.
+        $this->code = (string) ($item->code ?: SkuMaster::where('sku', $item->sku)->value('product_code'));
         $this->sku = $item->sku;
         $this->name = (string) $item->name;
         $this->itemType = $item->item_type;
@@ -259,7 +260,10 @@ new #[Layout('layouts.app')] class extends Component
         </details>
     @endif
 
-    <form wire:submit="save" class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+    @if ($editingId)
+        <div class="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style="background: rgba(15, 23, 42, .45);" role="dialog" aria-modal="true" wire:key="item-edit-popup" wire:click.self="resetForm" x-data x-on:keydown.escape.window="$wire.resetForm()">
+    @endif
+    <form wire:submit="save" class="rounded-2xl border {{ $editingId ? 'p-5 w-full max-w-4xl mt-16 shadow-2xl' : 'p-4 mb-5' }}" style="background: var(--surface-3); border-color: var(--border);">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
             <h2 class="text-base font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add an item that is not in Zoho' }}</h2>
             <span class="text-xs" style="color: var(--text-muted);">SKU Name = exact chemical / item name, seen only by people allowed to. Everyone else sees the Display Name and Code.</span>
@@ -313,11 +317,15 @@ new #[Layout('layouts.app')] class extends Component
             @if ($editingId)<button type="button" wire:click="resetForm" class="rounded-lg border px-4 py-2 text-sm" style="border-color: var(--border);">Cancel</button>@endif
         </div>
     </form>
+    @if ($editingId)
+        </div>
+    @endif
 
     <div>
         <div class="space-y-5">
             @if ($historyItem)
-                <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--brand);">
+                <div class="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style="background: rgba(15, 23, 42, .45);" role="dialog" aria-modal="true" wire:key="item-history-popup" wire:click.self="$set('historyItemId', null)" x-data x-on:keydown.escape.window="$wire.set('historyItemId', null)">
+                <div class="rounded-2xl border p-5 w-full max-w-3xl mt-16 shadow-2xl" style="background: var(--surface-3); border-color: var(--brand);">
                     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <h2 class="text-base font-semibold" style="color: var(--text-primary);">Stock history: {{ $historyItem->displayName() }}{{ ($historyItem->code ?: ($codes[mb_strtolower($historyItem->sku)] ?? '')) ? ' · '.($historyItem->code ?: $codes[mb_strtolower($historyItem->sku)]) : '' }}</h2>
                         <button type="button" wire:click="$set('historyItemId', null)" class="text-xs" style="color: var(--text-muted);">Close</button>
@@ -338,6 +346,7 @@ new #[Layout('layouts.app')] class extends Component
                             @endforelse
                         </tbody>
                     </table>
+                </div>
                 </div>
             @endif
 
