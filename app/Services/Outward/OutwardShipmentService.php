@@ -45,6 +45,23 @@ class OutwardShipmentService
             }
         }
 
+        // Check stock now, before anyone makes an invoice / IRN / E-Way Bill for
+        // goods we don't have. Stock already promised to other open shipments
+        // counts as used.
+        $stock = $this->stockPicture(array_column($lines, 'item_id'));
+        $wanted = [];
+        foreach ($lines as $i => $line) {
+            $wanted[$line['item_id']] = ($wanted[$line['item_id']] ?? 0) + (float) $line['qty'];
+            $free = $stock[$line['item_id']]['free'];
+            if ($wanted[$line['item_id']] > $free + 0.0005) {
+                $item = $items[$line['item_id']];
+                $reserved = $stock[$line['item_id']]['reserved'];
+                throw ValidationException::withMessages(["lines.{$i}.item_id" => "Only {$this->qty($free)} {$item->unit} of {$item->displayName()} free"
+                    .($reserved > 0 ? " ({$this->qty($stock[$line['item_id']]['in_stock'])} in stock, {$this->qty($reserved)} already on other open shipments)" : '')
+                    .' - make or receive more first.']);
+            }
+        }
+
         $total = round(array_sum(array_map(fn ($l) => (float) $l['qty'] * (float) ($l['rate'] ?? 0), $lines)), 2);
         $decision = $this->compliance->decide($header['purpose'], $header['from_gstin'] ?? null, $header['to_gstin'] ?? null,
             $header['from_state'] ?? null, $header['to_state'] ?? null, $total);
@@ -134,6 +151,38 @@ class OutwardShipmentService
             // Stock errors come back keyed 'qty'/'itemId'; show them on the shipment.
             throw ValidationException::withMessages(['dispatch' => "{$shipment->number} not dispatched - ".collect($e->errors())->flatten()->implode(' ')]);
         }
+    }
+
+    /**
+     * Stock per item: in stock now, already promised to open (not yet
+     * dispatched) shipments, and free = what a new shipment may still take.
+     *
+     * @param  array<int, int>  $itemIds
+     * @return array<int, array{in_stock: float, reserved: float, free: float}>
+     */
+    public function stockPicture(array $itemIds, ?int $exceptShipmentId = null): array
+    {
+        $items = InventoryItem::whereIn('id', array_unique($itemIds))->get();
+        $balances = $this->inventory->balances($items);
+        $reserved = \App\Models\Outward\OutwardShipmentLine::query()
+            ->whereIn('item_id', $items->pluck('id'))
+            ->whereHas('shipment', fn ($q) => $q->whereIn('status', ['documents_pending', 'ready'])
+                ->when($exceptShipmentId, fn ($q) => $q->whereKeyNot($exceptShipmentId)))
+            ->groupBy('item_id')->selectRaw('item_id, SUM(qty) as total')->pluck('total', 'item_id');
+
+        $picture = [];
+        foreach ($items as $item) {
+            $inStock = (float) ($balances[$item->id]['final'] ?? 0);
+            $held = round((float) ($reserved[$item->id] ?? 0), 3);
+            $picture[$item->id] = ['in_stock' => $inStock, 'reserved' => $held, 'free' => round(max(0, $inStock - $held), 3)];
+        }
+
+        return $picture;
+    }
+
+    private function qty(float $qty): string
+    {
+        return rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.') ?: '0';
     }
 
     // Shipments the Guard can make an outward gate pass for: documents

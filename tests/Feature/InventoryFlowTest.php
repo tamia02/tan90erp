@@ -150,8 +150,10 @@ class InventoryFlowTest extends TestCase
         $page->call('dispatchShipment', $shipment->id)->assertHasNoErrors();
         $this->assertSame(6.0, $this->balance($this->fg)['final']);
         $page->set('purpose', 'transfer')->set('fromLocationId', (string) $chennai->id)->set('toLocationId', (string) $chennai->id)
-            ->set('lines', [['item' => 'PCM Pouch 500g Blue', 'qty' => '999', 'rate' => '0']])->call('createShipment');
-        $page->call('dispatchShipment', OutwardShipment::latest('id')->value('id'))->assertHasErrors('dispatch')->assertSee('in stock.');
+            ->set('lines', [['item' => 'PCM Pouch 500g Blue', 'qty' => '999', 'rate' => '0']])
+            ->assertSee('free 6')->assertSee('not enough stock')      // shown while typing
+            ->call('createShipment')->assertHasErrors('lines.0.item_id'); // and blocked at Create
+        $this->assertSame(1, OutwardShipment::count());
         $this->assertSame(6.0, $this->balance($this->fg)['final']);
         $this->get(route('inventory.outward.challan', $shipment))->assertOk()->assertSee($shipment->challan_number)->assertSee('DELIVERY CHALLAN');
 

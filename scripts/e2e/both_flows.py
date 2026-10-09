@@ -256,7 +256,7 @@ def bundle(page):
     return messages(page)[:110]
 
 
-def outward_form(page, purpose, qty, rate):
+def outward_form(page, purpose, qty, rate, expect=" created ("):
     page.goto(f"{BASE}/inventory/dispatch"); settle(page)
     page.locator(f"input[type=radio][value='{purpose}']").check(); settle(page)
     page.locator("[wire\\:model\\.live='fromLocationId']").select_option(index=1); settle(page)
@@ -271,7 +271,7 @@ def outward_form(page, purpose, qty, rate):
     page.fill("[wire\\:model\\.live\\.debounce\\.500ms='lines.0.qty']", str(qty))
     page.fill("[wire\\:model\\.live\\.debounce\\.500ms='lines.0.rate']", str(rate)); settle(page, 1200)
     page.get_by_role("button", name="Create outward shipment").click()
-    wait_for_text(page, " created (")  # the flash, not an older shipment card
+    wait_for_text(page, expect)  # the flash (not an older shipment card) or the stock error
 
 
 def dispatch(page):
@@ -294,11 +294,9 @@ def dispatch(page):
     wait_for_text(page, "stock has been deducted")
     ok = messages(page)
     # Same-GSTIN transfer under Rs 50,000 = Delivery Challan, ready at once; too much qty must be blocked.
-    outward_form(page, "transfer", 99999, 0)
-    wait_for_text(page, "Ready to dispatch")
-    page.locator("[wire\\:key^='outward-shipment-']").first.get_by_role("button", name="Mark dispatched").click()
-    wait_for_text(page, "in stock.")
-    return ok[:90] + " | challan over-dispatch blocked"
+    # More than is in stock: shown while typing and blocked at Create, before any document is made.
+    outward_form(page, "transfer", 99999, 0, expect="make or receive more first")
+    return ok[:90] + " | over-stock shipment blocked at create"
 
 
 def final(page):
@@ -310,7 +308,7 @@ FLOW1 = [("1. Store Manager creates PO (Zoho required fields)", create_po), ("2.
          ("5. Store Executive unloads with POD", unload), ("6. QC accepts 100", qc), ("7. Store Manager posts GRN", grn),
          ("8. Store Executive putaway", putaway), ("9. Stock shows in Stock Balance + Inventory", check_received)]
 FLOW2 = [("10. Top up packaging stock", pm_stock), ("11. Create Bundle from Zoho recipe", bundle),
-         ("12. Outward: B2B sale with Invoice/IRN/E-Way Bill + challan over-dispatch blocked", dispatch), ("13. Stock Summary", final)]
+         ("12. Outward: B2B sale with Invoice/IRN/E-Way Bill + over-stock blocked at create", dispatch), ("13. Stock Summary", final)]
 steps = (FLOW1 if not args.flow2 else []) + (FLOW2 if not args.flow1 else [])
 
 with sync_playwright() as p:

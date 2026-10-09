@@ -89,8 +89,9 @@ class OutwardGateLinkTest extends TestCase
 
     public function test_short_stock_blocks_the_exit_and_nothing_changes(): void
     {
-        $fg = InventoryItem::create(['sku' => 'Short Panel', 'item_type' => 'fg', 'unit' => 'PCS', 'opening_qty' => 5]);
+        $fg = InventoryItem::create(['sku' => 'Short Panel', 'item_type' => 'fg', 'unit' => 'PCS', 'opening_qty' => 10]);
         $shipment = $this->shipment($fg, 8);
+        $fg->update(['opening_qty' => 5]); // stock used elsewhere after the shipment was made
         $gate = GateEntry::factory()->create(['entry_type' => 'outward', 'status' => 'loaded', 'outward_shipment_id' => $shipment->id]);
         $shipment->update(['gate_entry_id' => $gate->id]);
 

@@ -158,8 +158,10 @@ class OutwardShipmentTest extends TestCase
     {
         $s = $this->create('transfer', self::CHENNAI, [
             ['item_id' => $this->fg->id, 'qty' => 5, 'rate' => 1],
-            ['item_id' => $this->rm->id, 'qty' => 500, 'rate' => 1],
+            ['item_id' => $this->rm->id, 'qty' => 50, 'rate' => 1],
         ], 'Chennai store 2');
+        // Stock used up after the shipment was made (e.g. a production run).
+        $this->rm->update(['opening_qty' => 20]);
 
         try {
             app(OutwardShipmentService::class)->markDispatched($s, $this->admin);
@@ -167,7 +169,33 @@ class OutwardShipmentTest extends TestCase
         } catch (ValidationException $e) {
             $this->assertStringContainsString('in stock', $e->errors()['dispatch'][0]);
         }
-        $this->assertSame(['ready', 100.0, 100.0], [$s->fresh()->status, $this->stock($this->fg), $this->stock($this->rm)]);
+        $this->assertSame(['ready', 100.0, 20.0], [$s->fresh()->status, $this->stock($this->fg), $this->stock($this->rm)]);
+    }
+
+    public function test_shortage_shows_while_creating_and_open_shipments_hold_their_stock(): void
+    {
+        // More than in stock: blocked at Create, before any document is made.
+        try {
+            $this->create('sales', null, [['item_id' => $this->fg->id, 'qty' => 150, 'rate' => 1]]);
+            $this->fail('Creating a shipment for more than is in stock must be blocked.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('Only 100 NOS', $e->getMessage());
+        }
+
+        // 60 promised to an open shipment -> only 40 free for the next one.
+        $first = $this->create('sales', null, [['item_id' => $this->fg->id, 'qty' => 60, 'rate' => 1]]);
+        $picture = app(OutwardShipmentService::class)->stockPicture([$this->fg->id]);
+        $this->assertSame(['in_stock' => 100.0, 'reserved' => 60.0, 'free' => 40.0], $picture[$this->fg->id]);
+        try {
+            $this->create('sales', null, [['item_id' => $this->fg->id, 'qty' => 50, 'rate' => 1]]);
+            $this->fail('Stock already promised must not be promised again.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('60 already on other open shipments', $e->getMessage());
+        }
+
+        // Cancelling the first frees its stock again.
+        app(OutwardShipmentService::class)->cancel($first);
+        $this->assertSame(100.0, app(OutwardShipmentService::class)->stockPicture([$this->fg->id])[$this->fg->id]['free']);
     }
 
     public function test_cancel_and_store_manager_access(): void

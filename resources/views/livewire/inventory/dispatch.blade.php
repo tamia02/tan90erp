@@ -186,7 +186,27 @@ new #[Layout('layouts.app')] class extends Component
         $total = collect($this->lines)->sum(fn ($l) => (float) ($l['qty'] ?: 0) * (float) ($l['rate'] ?: 0));
         $from = $this->fromLocationId ? Location::find($this->fromLocationId) : null;
 
+        // Stock for the items being typed in, so a shortage shows before Create.
+        $lineItems = InventoryItem::whereIn('sku', array_filter(array_map(fn ($l) => trim((string) $l['item']), $this->lines)))->get()->keyBy(fn ($i) => mb_strtolower($i->sku));
+        $service = app(OutwardShipmentService::class);
+        $lineStock = $service->stockPicture($lineItems->pluck('id')->all());
+
+        $shipments = OutwardShipment::with(['lines.item', 'gateEntry'])
+            ->when($this->statusFilter === 'open', fn ($q) => $q->whereIn('status', ['documents_pending', 'ready']))
+            ->when(! in_array($this->statusFilter, ['open', ''], true), fn ($q) => $q->where('status', $this->statusFilter))
+            ->latest('id')->limit(25)->get();
+        // Open shipments whose goods are no longer all in stock.
+        $openLines = $shipments->whereIn('status', ['documents_pending', 'ready'])->flatMap->lines;
+        $inStock = $openLines->isNotEmpty() ? app(InventoryService::class)->balances($openLines->pluck('item')->filter()->unique('id')->values()) : [];
+        $short = $shipments->mapWithKeys(fn ($s) => [$s->id => in_array($s->status, ['documents_pending', 'ready'], true)
+            ? $s->lines->filter(fn ($l) => $l->item && (float) $l->qty > ($inStock[$l->item_id]['final'] ?? 0) + 0.0005)
+                ->map(fn ($l) => $l->item->displayName().': need '.rtrim(rtrim((string) $l->qty, '0'), '.').', in stock '.($inStock[$l->item_id]['final'] ?? 0))->values()->all()
+            : []]);
+
         return [
+            'lineItems' => $lineItems,
+            'lineStock' => $lineStock,
+            'short' => $short,
             'purposes' => OutwardShipment::PURPOSES,
             'locations' => Location::orderBy('name')->get(),
             'customers' => Customer::orderBy('name')->get(['id', 'name', 'gstin', 'state']),
@@ -195,10 +215,7 @@ new #[Layout('layouts.app')] class extends Component
             'preview' => ($from && trim($this->toName) !== '')
                 ? app(OutwardComplianceService::class)->decide($this->purpose, $from->gstin, $this->toGstin ?: null, $from->state, $this->toState ?: null, $total)
                 : null,
-            'shipments' => OutwardShipment::with(['lines.item', 'gateEntry'])
-                ->when($this->statusFilter === 'open', fn ($q) => $q->whereIn('status', ['documents_pending', 'ready']))
-                ->when(! in_array($this->statusFilter, ['open', ''], true), fn ($q) => $q->where('status', $this->statusFilter))
-                ->latest('id')->limit(25)->get(),
+            'shipments' => $shipments,
         ];
     }
 }; ?>
@@ -289,7 +306,13 @@ new #[Layout('layouts.app')] class extends Component
                 <div wire:key="outward-line-{{ $i }}" class="grid grid-cols-12 gap-2 items-start">
                     <div class="col-span-12 sm:col-span-6"><input wire:model.blur="lines.{{ $i }}.item" list="outward-items" placeholder="Item ({{ $purpose === 'sales' ? 'Finished / Trading goods' : 'any item' }})" class="{{ $input }} w-full" style="border-color: var(--border);">
                         @error('lines.'.$i.'.item') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                        @error('lines.'.$i.'.item_id') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror</div>
+                        @error('lines.'.$i.'.item_id') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        @if ($lineItem = $lineItems[mb_strtolower(trim((string) $line['item']))] ?? null)
+                            @php $st = $lineStock[$lineItem->id]; $want = (float) ($line['qty'] ?: 0); @endphp
+                            <span class="text-xs" style="color: {{ $want > $st['free'] + 0.0005 ? 'var(--status-critical)' : 'var(--text-muted)' }};">
+                                In stock {{ rtrim(rtrim(number_format($st['in_stock'], 3, '.', ''), '0'), '.') ?: '0' }} {{ $lineItem->unit }}{{ $st['reserved'] > 0 ? ' · on other open shipments '.rtrim(rtrim(number_format($st['reserved'], 3, '.', ''), '0'), '.') : '' }} · <b>free {{ rtrim(rtrim(number_format($st['free'], 3, '.', ''), '0'), '.') ?: '0' }}</b>{{ $want > $st['free'] + 0.0005 ? ' - not enough stock' : '' }}
+                            </span>
+                        @endif</div>
                     <input wire:model.live.debounce.500ms="lines.{{ $i }}.qty" type="number" step="0.001" min="0" placeholder="Qty" class="{{ $input }} col-span-4 sm:col-span-2" style="border-color: var(--border);">
                     <input wire:model.live.debounce.500ms="lines.{{ $i }}.rate" type="number" step="0.01" min="0" placeholder="Rate (Rs)" class="{{ $input }} col-span-5 sm:col-span-3" style="border-color: var(--border);">
                     <button type="button" wire:click="removeLine({{ $i }})" class="col-span-3 sm:col-span-1 text-xs font-semibold" style="color: var(--status-critical);">Remove</button>
@@ -339,6 +362,9 @@ new #[Layout('layouts.app')] class extends Component
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="rounded-full px-2.5 py-1 text-xs font-semibold" style="color: {{ $fg }}; background: {{ $bg }};">{{ $label }}</span>
+                        @if ($short[$s->id] ?? [])
+                            <span class="rounded-full px-2.5 py-1 text-xs font-semibold" style="color: var(--status-critical); background: var(--status-critical-bg);" title="{{ implode('; ', $short[$s->id]) }}">Short: {{ implode('; ', $short[$s->id]) }}</span>
+                        @endif
                         @if ($s->challan_number)<a href="{{ route('inventory.outward.challan', $s) }}" target="_blank" class="text-xs font-semibold" style="color: var(--brand);">Print challan</a>@endif
                         @if (! in_array($s->status, ['dispatched', 'cancelled'], true))
                             <button type="button" wire:click="openDocs({{ $s->id }})" class="text-xs font-semibold" style="color: var(--brand);">Documents</button>

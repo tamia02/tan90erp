@@ -15,6 +15,11 @@ class OutwardShipmentLine extends Model
         return ['qty' => 'decimal:3', 'rate' => 'decimal:2', 'value' => 'decimal:2'];
     }
 
+    public function shipment(): BelongsTo
+    {
+        return $this->belongsTo(OutwardShipment::class, 'outward_shipment_id');
+    }
+
     public function item(): BelongsTo
     {
         return $this->belongsTo(InventoryItem::class, 'item_id');
