@@ -2,6 +2,7 @@
 
 use App\Models\Inventory\InventoryBomLine;
 use App\Models\Inventory\InventoryItem;
+use App\Models\Inventory\ItemCustomField;
 use App\Models\LedgerEntry;
 use App\Models\PurchaseOrderLine;
 use App\Models\SkuMaster;
@@ -25,6 +26,13 @@ new #[Layout('layouts.app')] class extends Component
     public string $itemType = 'rm';
     public string $unit = 'NOS';
     public string $openingQty = '0';
+    public array $customValues = [];
+
+    // Admin: custom item fields (Number / Text / Drop-down).
+    public string $newFieldLabel = '';
+    public string $newFieldType = 'text';
+    public string $newFieldOptions = '';
+    public bool $newFieldRequired = false;
 
     public string $search = '';
     public string $typeFilter = '';
@@ -50,10 +58,12 @@ new #[Layout('layouts.app')] class extends Component
             'unit' => ['required', 'string', 'max:20', Rule::in(array_merge(\App\Support\Units::options(), [(string) InventoryItem::find($this->editingId)?->unit]))],
             'openingQty' => ['required', 'numeric', 'min:0'],
         ], ['sku.unique' => 'This SKU is already added.']);
+        $custom = $this->validatedCustomValues();
 
         $item = InventoryItem::updateOrCreate(['id' => $this->editingId], [
             'sku' => trim($data['sku']), 'name' => $data['name'] ?: null, 'item_type' => $data['itemType'],
             'unit' => strtoupper(trim($data['unit'])), 'opening_qty' => $data['openingQty'],
+            'custom_fields' => $custom ?: null,
         ]);
         AuditLogger::log($this->editingId ? 'Inventory item updated' : 'Inventory item added', "{$item->sku} · {$item->typeLabel()} · opening {$item->opening_qty}", $item);
 
@@ -70,6 +80,7 @@ new #[Layout('layouts.app')] class extends Component
         $this->itemType = $item->item_type;
         $this->unit = $item->unit;
         $this->openingQty = rtrim(rtrim((string) $item->opening_qty, '0'), '.') ?: '0';
+        $this->customValues = array_map('strval', $item->custom_fields ?? []);
         $this->resetValidation(); // don't carry an earlier "already added" error onto the edit form
     }
 
@@ -107,8 +118,65 @@ new #[Layout('layouts.app')] class extends Component
 
     public function resetForm(): void
     {
-        $this->reset(['editingId', 'sku', 'name', 'itemType', 'unit', 'openingQty']);
+        $this->reset(['editingId', 'sku', 'name', 'itemType', 'unit', 'openingQty', 'customValues']);
         $this->resetValidation();
+    }
+
+    /** @return array<string, string|float> */
+    private function validatedCustomValues(): array
+    {
+        $fields = ItemCustomField::activeFields();
+        $rules = [];
+        $values = [];
+        foreach ($fields as $field) {
+            $rules["customValues.{$field->field_key}"] = array_values(array_filter([
+                $field->required ? 'required' : 'nullable',
+                $field->input_type === 'number' ? 'numeric' : 'string',
+                $field->input_type === 'dropdown' ? Rule::in($field->options ?? []) : null,
+                $field->input_type === 'text' ? 'max:255' : null,
+            ]));
+            $value = trim((string) ($this->customValues[$field->field_key] ?? ''));
+            if ($value !== '') {
+                $values[$field->field_key] = $field->input_type === 'number' ? (float) $value : $value;
+            }
+        }
+        if ($rules) {
+            $this->validate($rules, [], $fields->mapWithKeys(fn ($f) => ["customValues.{$f->field_key}" => $f->label])->all());
+        }
+
+        return $values;
+    }
+
+    public function addCustomField(): void
+    {
+        abort_unless(auth()->user()?->isAdmin(), 403);
+        $this->validate([
+            'newFieldLabel' => ['required', 'string', 'max:60'],
+            'newFieldType' => ['required', Rule::in(array_keys(ItemCustomField::TYPES))],
+            'newFieldOptions' => [Rule::requiredIf($this->newFieldType === 'dropdown'), 'nullable', 'string', 'max:1000'],
+        ], ['newFieldOptions.required' => 'List the drop-down choices, separated by commas.']);
+
+        $key = str($this->newFieldLabel)->slug('_')->limit(50, '')->toString() ?: 'field';
+        $base = $key;
+        for ($n = 2; ItemCustomField::where('field_key', $key)->exists(); $n++) {
+            $key = "{$base}_{$n}";
+        }
+        $field = ItemCustomField::create([
+            'field_key' => $key, 'label' => trim($this->newFieldLabel), 'input_type' => $this->newFieldType,
+            'options' => $this->newFieldType === 'dropdown' ? array_values(array_unique(array_filter(array_map('trim', explode(',', $this->newFieldOptions))))) : null,
+            'required' => $this->newFieldRequired, 'sort_order' => (int) ItemCustomField::max('sort_order') + 1,
+        ]);
+        AuditLogger::log('Item custom field added', "{$field->label} ({$field->input_type})", $field);
+        session()->flash('success', "Custom field \"{$field->label}\" added - it now shows on every item.");
+        $this->reset(['newFieldLabel', 'newFieldType', 'newFieldOptions', 'newFieldRequired']);
+    }
+
+    public function toggleCustomField(int $id): void
+    {
+        abort_unless(auth()->user()?->isAdmin(), 403);
+        $field = ItemCustomField::findOrFail($id);
+        $field->update(['active' => ! $field->active]);
+        AuditLogger::log($field->active ? 'Item custom field turned on' : 'Item custom field turned off', $field->label, $field);
     }
 
     public function with(): array
@@ -136,6 +204,8 @@ new #[Layout('layouts.app')] class extends Component
             'balances' => app(InventoryService::class)->balances($items),
             'types' => InventoryItem::TYPES,
             'units' => \App\Support\Units::options(),
+            'customFields' => ItemCustomField::activeFields(),
+            'allCustomFields' => auth()->user()?->isAdmin() ? ItemCustomField::orderBy('sort_order')->get() : collect(),
             'knownSkus' => $known,
             // Where each item came from: Zoho, the ERP's own Items list, or only GRN.
             'zohoSkus' => SkuMaster::whereIn('sku', $items->pluck('sku'))->whereNotNull('zoho_item_id')->pluck('sku')->map(fn ($v) => mb_strtolower($v))->flip(),
@@ -147,6 +217,39 @@ new #[Layout('layouts.app')] class extends Component
 
 <div>
     @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'All items in one list - every item from Items (Zoho) and anything received through GRN appears here automatically. Check the type (RM / PM / FG / Trading) and current stock. Recipes for Finished Goods are on the next tab.'])
+
+    @if (auth()->user()?->isAdmin())
+        <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);" @if ($errors->hasAny(['newFieldLabel', 'newFieldOptions'])) open @endif>
+            <summary class="text-base font-semibold cursor-pointer" style="color: var(--text-primary);">Custom item fields (Admin) - {{ $allCustomFields->where('active', true)->count() }} active</summary>
+            <p class="text-xs mt-1 mb-3" style="color: var(--text-muted);">Add a field once (e.g. Cost Price) and it appears on every item's form and in the list below. Turn a field off to hide it; values already filled are kept.</p>
+            <div class="flex flex-wrap gap-2 mb-3">
+                @forelse ($allCustomFields as $field)
+                    <span wire:key="cf-{{ $field->id }}" class="rounded-full border px-3 py-1 text-xs" style="border-color: var(--border); {{ $field->active ? '' : 'opacity: .55;' }}">
+                        {{ $field->label }} · {{ \App\Models\Inventory\ItemCustomField::TYPES[$field->input_type] }}{{ $field->input_type === 'dropdown' ? ' ('.implode(', ', $field->options ?? []).')' : '' }}{{ $field->required ? ' · required' : '' }}
+                        <button type="button" wire:click="toggleCustomField({{ $field->id }})" class="font-semibold ml-1" style="color: var(--brand);">{{ $field->active ? 'Turn off' : 'Turn on' }}</button>
+                    </span>
+                @empty
+                    <span class="text-xs" style="color: var(--text-muted);">No custom fields yet.</span>
+                @endforelse
+            </div>
+            <form wire:submit="addCustomField" class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 items-start">
+                <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Field name</span>
+                    <input wire:model="newFieldLabel" placeholder="e.g. Cost Price" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                    @error('newFieldLabel') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror</label>
+                <label class="flex flex-col gap-1 text-xs"><span class="font-medium">Type</span>
+                    <select wire:model.live="newFieldType" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                        @foreach (\App\Models\Inventory\ItemCustomField::TYPES as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
+                    </select></label>
+                @if ($newFieldType === 'dropdown')
+                    <label class="flex flex-col gap-1 text-xs lg:col-span-2"><span class="font-medium">Choices (comma separated)</span>
+                        <input wire:model="newFieldOptions" placeholder="e.g. Grade A, Grade B, Grade C" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                        @error('newFieldOptions') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror</label>
+                @endif
+                <label class="flex items-center gap-2 text-xs mt-6"><input type="checkbox" wire:model="newFieldRequired"> Required</label>
+                <div class="lg:col-span-5"><button type="submit" class="rounded-lg px-4 py-2 text-sm font-medium text-white" style="background: var(--brand);">Add custom field</button></div>
+            </form>
+        </details>
+    @endif
 
     <form wire:submit="save" class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -178,6 +281,19 @@ new #[Layout('layouts.app')] class extends Component
                 <input wire:model="openingQty" type="number" step="0.001" min="0" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
                 @error('openingQty') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
+            @foreach ($customFields as $field)
+                <label wire:key="cf-input-{{ $field->id }}" class="flex flex-col gap-1 text-xs"><span class="font-medium">{{ $field->label }}{{ $field->required ? ' *' : '' }}</span>
+                    @if ($field->input_type === 'dropdown')
+                        <select wire:model="customValues.{{ $field->field_key }}" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                            <option value="">-</option>
+                            @foreach ($field->options ?? [] as $option)<option value="{{ $option }}">{{ $option }}</option>@endforeach
+                        </select>
+                    @else
+                        <input wire:model="customValues.{{ $field->field_key }}" type="{{ $field->input_type === 'number' ? 'number' : 'text' }}" step="any" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                    @endif
+                    @error('customValues.'.$field->field_key) <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                </label>
+            @endforeach
         </div>
         <div class="flex gap-2 mt-3">
             <button type="submit" class="rounded-lg px-4 py-2 text-sm font-medium text-white" style="background: var(--brand);">{{ $editingId ? 'Save changes' : 'Add item' }}</button>
@@ -202,7 +318,7 @@ new #[Layout('layouts.app')] class extends Component
             </div>
             <div class="rounded-2xl border overflow-x-auto" style="background: var(--surface-3); border-color: var(--border);">
                 <table class="w-full text-sm min-w-[760px]">
-                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">Opening stock</th><th class="px-4 py-3 text-right">In stock now</th><th class="px-4 py-3"></th></tr></thead>
+                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">Opening stock</th><th class="px-4 py-3 text-right">In stock now</th>@foreach ($customFields as $field)<th class="px-4 py-3">{{ $field->label }}</th>@endforeach<th class="px-4 py-3"></th></tr></thead>
                     <tbody>
                         @forelse ($items as $item)
                             <tr wire:key="inv-item-{{ $item->id }}" style="border-top: 1px solid var(--border);{{ $item->active ? "" : " opacity: .55;" }}">
@@ -212,6 +328,7 @@ new #[Layout('layouts.app')] class extends Component
                                 <td class="px-4 py-3 text-xs">{{ $zohoSkus->has(mb_strtolower($item->sku)) ? 'Zoho' : ($erpSkus->has(mb_strtolower($item->sku)) ? 'ERP Items' : 'GRN / added here') }}</td>
                                 <td class="px-4 py-3 text-right">{{ rtrim(rtrim((string) $item->opening_qty, '0'), '.') ?: '0' }}</td>
                                 <td class="px-4 py-3 text-right font-semibold">{{ rtrim(rtrim(number_format($balances[$item->id]['final'], 3, '.', ''), '0'), '.') }} {{ $item->unit }}</td>
+                                @foreach ($customFields as $field)<td class="px-4 py-3 text-xs">{{ $item->custom_fields[$field->field_key] ?? '' }}</td>@endforeach
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
                                     @if (! $item->active)
                                         <span class="text-xs font-semibold mr-2" style="color: var(--text-muted);">Archived</span>
@@ -223,7 +340,7 @@ new #[Layout('layouts.app')] class extends Component
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
+                            <tr><td colspan="{{ 7 + $customFields->count() }}" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

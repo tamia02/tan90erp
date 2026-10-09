@@ -17,11 +17,11 @@ class InventoryItem extends Model
     // Only these can be sold / dispatched; RM and PM are consumed in production.
     public const SELLABLE_TYPES = ['fg', 'trading'];
 
-    protected $fillable = ['sku', 'name', 'item_type', 'unit', 'opening_qty', 'active'];
+    protected $fillable = ['sku', 'name', 'item_type', 'unit', 'opening_qty', 'active', 'custom_fields'];
 
     protected function casts(): array
     {
-        return ['opening_qty' => 'decimal:3', 'active' => 'boolean'];
+        return ['opening_qty' => 'decimal:3', 'active' => 'boolean', 'custom_fields' => 'array'];
     }
 
     public function bomLines(): HasMany
