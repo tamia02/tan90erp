@@ -154,6 +154,11 @@ class AppServiceProvider extends ServiceProvider
                     ->command('zoho:pull-recipes')
                     ->hourlyAt(20)
                     ->withoutOverlapping();
+                // Old Zoho POs not in the ERP yet, a daily batch at night until all are in.
+                $this->app->make(Schedule::class)
+                    ->command('zoho:pull-all-pos --max=1500')
+                    ->dailyAt('01:30')
+                    ->withoutOverlapping();
             }
         });
     }

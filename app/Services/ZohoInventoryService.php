@@ -1317,6 +1317,28 @@ class ZohoInventoryService
         ], fn ($v) => $v !== null);
     }
 
+    // Zoho PO status -> ERP status: draft / pending approval = Created,
+    // cancelled = Cancelled, received / billed / closed = Delivered, anything
+    // still open (approved, issued, accepted, partially received) = Approved.
+    public static function zohoPoStatus(array $invPo): string
+    {
+        $status = strtolower((string) ($invPo['status'] ?? ''));
+        $received = strtolower((string) ($invPo['received_status'] ?? ''));
+
+        return match (true) {
+            $status === 'cancelled' => 'Cancelled',
+            in_array($status, ['draft', 'pending_approval'], true) => 'Created',
+            in_array($status, ['received', 'billed', 'closed'], true) || $received === 'received' => 'Delivered',
+            default => 'Approved',
+        };
+    }
+
+    // One full Zoho PO (with line_items) into the ERP.
+    public function importPurchaseOrder(array $invPo): ?PurchaseOrder
+    {
+        return $this->syncPurchaseOrderData($invPo);
+    }
+
     private function syncPurchaseOrderData(?array $invPo): ?PurchaseOrder
     {
         if (! $invPo || empty($invPo['purchaseorder_number'])) {
@@ -1339,7 +1361,7 @@ class ZohoInventoryService
                 'vendor_name' => ($invPo['vendor_name'] ?? null) ?: 'Zoho Vendor',
                 'po_date' => ($invPo['date'] ?? null) ?: null,
                 'due_date' => ($invPo['delivery_date'] ?? null) ?: null,
-                'status' => 'Approved',
+                'status' => self::zohoPoStatus($invPo),
                 // What the Zoho PO actually says, so the PDF matches it.
                 'description' => trim((string) ($invPo['notes'] ?? '')) ?: 'Synced from Zoho Inventory Purchase Orders.',
                 'terms_and_conditions' => trim((string) ($invPo['terms'] ?? '')) ?: null,

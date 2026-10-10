@@ -8,6 +8,9 @@ window.tan90ScanBillForPoNumber = (file) => import('./ocr').then((m) => m.scanFo
 // Shared local Search + Export controls for the app's rendered listings.
 import './listing-tools';
 
+// Every <select> gets a search box when opened.
+import './searchable-select';
+
 // Keep open role dashboards in sync when another device changes the same
 // workflow. This is deliberately a lightweight Livewire refresh instead of a
 // full browser reload: it preserves navigation state and skips refreshes while
