@@ -26,6 +26,21 @@ new #[Layout('layouts.app')] class extends Component
 
     public array $glAccounts = ['Raw Materials — COGS', 'Packaging — COGS', 'Consumables — Expense', 'Freight & Logistics', 'Other Purchases'];
 
+    // 3,000+ Zoho vendors: list 50 at a time with search (the full list was ~4 MB per click).
+    public string $vendorSearch = '';
+
+    public int $vendorLimit = 50;
+
+    public function updatedVendorSearch(): void
+    {
+        $this->vendorLimit = 50;
+    }
+
+    public function showMoreVendors(): void
+    {
+        $this->vendorLimit += 100;
+    }
+
     public function addVendor(): void
     {
         $this->validate([
@@ -64,10 +79,19 @@ new #[Layout('layouts.app')] class extends Component
         $entry->delete();
     }
 
+    private function vendorQuery()
+    {
+        $term = trim($this->vendorSearch);
+
+        return VendorMaster::when($term !== '', fn ($query) => $query->where(fn ($q) => $q
+            ->where('vendor_name', 'like', "%{$term}%")->orWhere('gst_number', 'like', "%{$term}%")->orWhere('address_city', 'like', "%{$term}%")));
+    }
+
     public function with(): array
     {
         return [
-            'vendors' => VendorMaster::orderByDesc('created_at')->get(),
+            'vendors' => $this->vendorQuery()->orderByDesc('created_at')->limit($this->vendorLimit)->get(),
+            'vendorsTotal' => $this->vendorQuery()->count(),
             'stockUpdates' => VendorStockUpdate::orderByDesc('created_at')->get(),
         ];
     }
@@ -150,6 +174,10 @@ new #[Layout('layouts.app')] class extends Component
         </div>
     @endif
 
+    <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+        <input wire:model.live.debounce.400ms="vendorSearch" type="search" placeholder="Search vendor name, GST or city" aria-label="Search vendors" class="rounded-lg border px-3 py-2 text-sm sm:w-80" style="border-color: var(--border); background: var(--surface-1);" />
+        <span class="text-xs" style="color: var(--text-muted);">Showing {{ $vendors->count() }} of {{ $vendorsTotal }} vendors</span>
+    </div>
     <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -203,6 +231,11 @@ new #[Layout('layouts.app')] class extends Component
             </table>
         </div>
     </div>
+    @if ($vendors->count() < $vendorsTotal)
+        <div class="mt-3 text-center">
+            <button type="button" wire:click="showMoreVendors" wire:loading.attr="disabled" class="rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50" style="border-color: var(--border); color: var(--brand);">Show 100 more</button>
+        </div>
+    @endif
 
     <h2 class="font-semibold text-sm mt-8 mb-3" style="color: var(--text-primary);">Vendor stock updates</h2>
     <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
