@@ -1299,6 +1299,24 @@ class ZohoInventoryService
      * (see DatabaseSeeder's real Zoho CRM test PO: po_number '898897889'
      * with a distinct requisition_number '86868689').
      */
+    // Zoho's "Deliver To" block -> the PO's shipping address (only when Zoho sends one).
+    private function zohoDeliveryAddress(array $invPo): array
+    {
+        $a = $invPo['delivery_address'] ?? [];
+        if (! is_array($a) || ! array_filter([$a['address'] ?? null, $a['city'] ?? null, $a['zip'] ?? null])) {
+            return [];
+        }
+
+        return array_filter([
+            'shipping_building' => ($a['attention'] ?? null) ?: null,
+            'shipping_street' => trim(($a['address'] ?? '').' '.($a['street2'] ?? '')) ?: null,
+            'shipping_city' => ($a['city'] ?? null) ?: null,
+            'shipping_state' => ($a['state'] ?? null) ?: null,
+            'shipping_zip' => ($a['zip'] ?? null) ?: null,
+            'shipping_country' => ($a['country'] ?? null) ?: null,
+        ], fn ($v) => $v !== null);
+    }
+
     private function syncPurchaseOrderData(?array $invPo): ?PurchaseOrder
     {
         if (! $invPo || empty($invPo['purchaseorder_number'])) {
@@ -1322,7 +1340,14 @@ class ZohoInventoryService
                 'po_date' => ($invPo['date'] ?? null) ?: null,
                 'due_date' => ($invPo['delivery_date'] ?? null) ?: null,
                 'status' => 'Approved',
-                'description' => 'Synced from Zoho Inventory Purchase Orders.',
+                // What the Zoho PO actually says, so the PDF matches it.
+                'description' => trim((string) ($invPo['notes'] ?? '')) ?: 'Synced from Zoho Inventory Purchase Orders.',
+                'terms_and_conditions' => trim((string) ($invPo['terms'] ?? '')) ?: null,
+                'reference_number' => $referenceNumber,
+                'payment_terms' => ($invPo['payment_terms_label'] ?? null) ?: null,
+                'shipment_preference' => ($invPo['delivery_method'] ?? null) ?: (($invPo['shipment_preference'] ?? null) ?: null),
+                'valid_upto' => (fn ($v) => is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) ? $v : null)(collect($invPo['custom_fields'] ?? [])->first(fn ($f) => ($f['label'] ?? '') === 'PO Valid Upto')['value'] ?? null),
+                ...$this->zohoDeliveryAddress($invPo),
             ],
         ));
 

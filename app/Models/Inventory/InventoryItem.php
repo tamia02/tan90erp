@@ -17,7 +17,33 @@ class InventoryItem extends Model
     // Only these can be sold / dispatched; RM and PM are consumed in production.
     public const SELLABLE_TYPES = ['fg', 'trading'];
 
-    protected $fillable = ['sku', 'code', 'name', 'item_type', 'unit', 'opening_qty', 'active', 'custom_fields'];
+    protected $fillable = ['sku', 'code', 'name', 'item_type', 'unit', 'opening_qty', 'active', 'custom_fields', 'created_by', 'updated_by'];
+
+    // Who added / last changed the item (left empty for Zoho sync / system).
+    protected static function booted(): void
+    {
+        static::creating(function (self $item) {
+            if (auth()->check()) {
+                $item->created_by ??= auth()->id();
+                $item->updated_by = auth()->id();
+            }
+        });
+        static::updating(function (self $item) {
+            if (auth()->check()) {
+                $item->updated_by = auth()->id();
+            }
+        });
+    }
+
+    public function createdBy(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'created_by');
+    }
+
+    public function updatedBy(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'updated_by');
+    }
 
     protected function casts(): array
     {

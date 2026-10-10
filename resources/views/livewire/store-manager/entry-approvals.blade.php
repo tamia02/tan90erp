@@ -357,6 +357,7 @@ new #[Layout('layouts.app')] class extends Component
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $gate->gate_no }} · {{ $gate->po_number }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $gate->vendor_name }} · {{ $gate->material }} · {{ $gate->vehicle_number }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">Arrived {{ $gate->created_at->format('d M, H:i') }}</div>
+                        @if ($gate->contactUser)<div class="text-xs mt-0.5" style="color: var(--text-secondary);">Meeting {{ $gate->contactUser->name }}{{ $gate->contactUser->phone ? ' · '.$gate->contactUser->phone : '' }}</div>@endif
                     </a>
                     @if ($blocked)
                         <a href="{{ route('validation.issues') }}" wire:navigate class="rounded-lg px-3 py-1.5 text-sm font-medium border shrink-0" style="border-color: var(--status-critical); color: var(--status-critical);">Resolve issues first →</a>
@@ -421,6 +422,7 @@ new #[Layout('layouts.app')] class extends Component
                     <a href="{{ route('gate-entries.show', $gate) }}" wire:navigate class="hover:opacity-80">
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $gate->gate_no }} · {{ $gate->vendor_name }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $gate->material }} · {{ $gate->vehicle_number }} · Arrived {{ $gate->created_at->format('d M, H:i') }}</div>
+                        @if ($gate->contactUser)<div class="text-xs mt-0.5" style="color: var(--text-secondary);">Meeting {{ $gate->contactUser->name }}{{ $gate->contactUser->phone ? ' · '.$gate->contactUser->phone : '' }}</div>@endif
                         @if ($gate->outwardShipment)
                             <div class="text-xs mt-0.5 font-semibold" style="color: var(--brand);">Outward Shipment {{ $gate->outwardShipment->number }} · {{ $gate->outwardShipment->documentLabel() }}{{ $gate->outwardShipment->status === 'documents_pending' ? ' · documents pending' : ' · documents complete' }}</div>
                         @endif

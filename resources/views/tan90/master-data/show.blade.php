@@ -127,8 +127,14 @@
       <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
         <h3 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">Control Information</h3>
         <div class="flex flex-col gap-3 text-sm">
-          <div><div class="text-xs" style="color: var(--text-muted);">Created</div><div style="color: var(--text-primary);">{{ $record->created_at?->format('d M Y, H:i') }}</div></div>
-          <div><div class="text-xs" style="color: var(--text-muted);">Last Updated</div><div style="color: var(--text-primary);">{{ $record->updated_at?->format('d M Y, H:i') }}</div><div class="text-xs" style="color: var(--text-muted);">Status: {{ Str::title($record->approval_status ?? $record->status) }}</div></div>
+          @php
+            // Who: the record's own created_by / updated_by, else the audit trail, else the Zoho sync.
+            $personName = fn ($id) => $id ? \App\Models\User::whereKey($id)->value('name') : null;
+            $createdByName = $personName($record->created_by ?? null) ?? $auditTrail->where('event', 'CREATE')->last()?->user?->name ?? 'Zoho sync / system';
+            $updatedByName = $personName($record->updated_by ?? null) ?? $auditTrail->first()?->user?->name ?? 'Zoho sync / system';
+          @endphp
+          <div><div class="text-xs" style="color: var(--text-muted);">Created</div><div style="color: var(--text-primary);">{{ $record->created_at?->format('d M Y, H:i') }}</div><div class="text-xs" style="color: var(--text-secondary);">by {{ $createdByName }}</div></div>
+          <div><div class="text-xs" style="color: var(--text-muted);">Last Updated</div><div style="color: var(--text-primary);">{{ $record->updated_at?->format('d M Y, H:i') }}</div><div class="text-xs" style="color: var(--text-secondary);">by {{ $updatedByName }}</div><div class="text-xs" style="color: var(--text-muted);">Status: {{ Str::title($record->approval_status ?? $record->status) }}</div></div>
           @if (isset($record->version))
             <div><div class="text-xs" style="color: var(--text-muted);">Version</div><div style="color: var(--text-primary);">v{{ $record->version }}</div></div>
           @endif
@@ -154,7 +160,7 @@
           <div class="flex flex-col divide-y" style="border-color: var(--border);">
             @foreach ($auditTrail as $log)
               <div class="py-2.5">
-                <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $log->event }} · {{ $log->user?->name ?? 'System' }}</div>
+                <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $log->event }} · by {{ $log->user?->name ?? 'Zoho sync / system' }}{{ $log->role_label ? ' ('.$log->role_label.')' : '' }}</div>
                 <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $log->occurred_at?->format('d M Y, H:i') }} — {{ $log->summary }}</div>
               </div>
             @endforeach

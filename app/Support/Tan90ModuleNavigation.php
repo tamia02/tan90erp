@@ -20,6 +20,7 @@ class Tan90ModuleNavigation
             ['label' => 'Vendors', 'route' => 'tan90.master-data.index', 'icon' => 'truck', 'params' => ['vendors']],
             ['label' => 'Customers', 'route' => 'tan90.master-data.index', 'icon' => 'users', 'params' => ['customers']],
             ['label' => 'Custom Fields', 'route' => 'custom-fields.index', 'icon' => 'settings'],
+            ['label' => 'Terms & Notes', 'route' => 'terms-templates.index', 'icon' => 'file-text'],
             ['label' => 'Plants', 'route' => 'tan90.master-data.index', 'icon' => 'building', 'params' => ['plants']],
             ['label' => 'Import / Export', 'route' => 'tan90.master-data.import.index', 'icon' => 'upload'],
             ['label' => 'Data Quality', 'route' => 'tan90.master-data.data-quality.index', 'icon' => 'shield'],

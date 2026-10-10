@@ -57,6 +57,12 @@ new #[Layout('layouts.app')] class extends Component
     public string $warehouseLocation = '';
     public string $warehouseSearch = '';
     public string $termsAndConditions = '';
+
+    // PO Notes (printed under "Notes" on the PO). T&C and Notes fill in from
+    // Terms & Notes (vendor's own > Purchase Nature > default) unless typed by hand.
+    public string $poNotes = '';
+    public string $autoTerms = '';
+    public string $autoNotes = '';
     public array $headerCustomFields = [];
     // Zoho Inventory PO custom fields (zoho_field_definitions), keyed by Zoho api_name.
     public array $zohoFields = [];
@@ -231,6 +237,7 @@ new #[Layout('layouts.app')] class extends Component
         if ($this->shippingAddressMode === 'existing') {
             $this->useVendorAddress();
         }
+        $this->applyTermsAndNotes();
     }
 
     public function clearVendor(): void
@@ -309,8 +316,27 @@ new #[Layout('layouts.app')] class extends Component
         $this->shippingZip = $this->billingZip;
     }
 
+    // Fill T&C / Notes from Terms & Notes; never overwrite what someone typed.
+    private function applyTermsAndNotes(): void
+    {
+        $vendor = $this->vendorName ? VendorMaster::where('vendor_name', $this->vendorName)->first() : null;
+        $template = \App\Models\TermsTemplate::resolve('vendor', $vendor?->terms_template_id, ($this->zohoFields['cf_purchase_nature'] ?? '') ?: null);
+        if (! $template) {
+            return;
+        }
+        if (trim($this->termsAndConditions) === '' || $this->termsAndConditions === $this->autoTerms) {
+            $this->termsAndConditions = $this->autoTerms = (string) $template->terms;
+        }
+        if (trim($this->poNotes) === '' || $this->poNotes === $this->autoNotes) {
+            $this->poNotes = $this->autoNotes = (string) $template->notes;
+        }
+    }
+
     public function updated($property, $value): void
     {
+        if ($property === 'zohoFields.cf_purchase_nature' || $property === 'zohoFields') {
+            $this->applyTermsAndNotes();
+        }
         if (! $this->sameAsBillingAddress || ! str_starts_with((string) $property, 'billing')) {
             return;
         }
@@ -497,6 +523,7 @@ new #[Layout('layouts.app')] class extends Component
             'shipping_zip' => $this->shippingZip ?: null,
             'warehouse_location' => $this->warehouseLocation ?: null,
             'terms_and_conditions' => $this->termsAndConditions ?: null,
+            'description' => $this->poNotes ?: null,
             'header_custom_fields' => $headerValues,
             'zoho_custom_fields' => array_filter($this->zohoFields, fn ($value) => $value !== '' && $value !== null) ?: null,
         ]);
@@ -542,7 +569,7 @@ new #[Layout('layouts.app')] class extends Component
 
         AuditLogger::log($releaseToVendor ? 'Purchase Order released to vendor' : ($submit ? 'Purchase Order submitted for release' : 'Purchase Order saved as draft'), "{$po->po_number} · {$po->vendor_name}", $po);
 
-        $this->reset(['poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'materialType', 'pdfTemplate', 'termsTemplateId', 'shipmentPreference', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'headerCustomFields', 'zohoFields', 'reverseCharge', 'attachments', 'vendorSearch', 'adding', 'shippingAddressMode', 'sameAsBillingAddress']);
+        $this->reset(['poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'materialType', 'pdfTemplate', 'termsTemplateId', 'shipmentPreference', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'poNotes', 'autoTerms', 'autoNotes', 'headerCustomFields', 'zohoFields', 'reverseCharge', 'attachments', 'vendorSearch', 'adding', 'shippingAddressMode', 'sameAsBillingAddress']);
         $this->billingCountry = $this->shippingCountry = 'India';
         $this->purchaseNature = '';
         $this->materialType = '';
@@ -558,7 +585,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function cancelPo(): void
     {
-        $this->reset(['adding', 'poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'headerCustomFields', 'zohoFields', 'attachments', 'vendorSearch', 'shippingAddressMode', 'sameAsBillingAddress']);
+        $this->reset(['adding', 'poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'poNotes', 'autoTerms', 'autoNotes', 'headerCustomFields', 'zohoFields', 'attachments', 'vendorSearch', 'shippingAddressMode', 'sameAsBillingAddress']);
         $this->items = [['product' => '', 'hsnSac' => '', 'quantity' => '', 'uom' => 'PCS', 'listPrice' => '', 'customFields' => []]];
         $this->billingCountry = $this->shippingCountry = 'India';
         $this->materialType = '';
@@ -1090,6 +1117,9 @@ new #[Layout('layouts.app')] class extends Component
                     <p class="text-xs" style="color: var(--text-muted);">No {{ strtolower($materialType) }} terms template configured; enter terms for this PO.</p>
                 @endif
                 <textarea wire:model="termsAndConditions" rows="2" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="Supply terms, quality and delivery conditions"></textarea>
+                <span class="font-medium mt-2" style="color: var(--text-primary);">Notes</span>
+                <textarea wire:model="poNotes" rows="2" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="e.g. Duration, GST, delivery notes"></textarea>
+                <span class="text-xs" style="color: var(--text-muted);">Filled from <a href="{{ route('terms-templates.index') }}" class="underline" style="color: var(--brand);">Terms &amp; Notes</a> when you pick the vendor and Purchase Nature - edit freely.</span>
             </label>
             <label class="sm:col-span-3 flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">PO attachments (optional, up to 10 files / 10 MB each)</span>

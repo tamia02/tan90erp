@@ -3,123 +3,143 @@
 <head>
     <meta charset="utf-8">
     <title>Purchase Order {{ $po->po_number }}</title>
+    {{-- Same layout as the client's Zoho Books PO (logo + company, green title, vendor / deliver-to, green item header, GST split, notes, T&C, signature) plus a scan-to-open QR. --}}
+    @php
+        $green = config('company.brand_color', '#34a853');
+        $money = fn ($n) => number_format((float) $n, 2);
+        $qty = fn ($n) => number_format((float) $n, 2);
+        // GST per rate, like Zoho: "SGST9 (9%)", "CGST9 (9%)", "IGST18 (18%)".
+        $taxRows = [];
+        foreach ($lineTaxes as $t) {
+            $rate = (float) ($t['rate'] ?? 0);
+            if (($t['igst'] ?? 0) > 0) {
+                $k = 'IGST'.rtrim(rtrim(number_format($rate, 2), '0'), '.');
+                $taxRows[$k] = ['label' => $k.' ('.rtrim(rtrim(number_format($rate, 2), '0'), '.').'%)', 'amount' => ($taxRows[$k]['amount'] ?? 0) + $t['igst']];
+            } elseif (($t['cgst'] ?? 0) > 0 || ($t['sgst'] ?? 0) > 0) {
+                $half = rtrim(rtrim(number_format($rate / 2, 2), '0'), '.');
+                $taxRows['SGST'.$half] = ['label' => "SGST{$half} ({$half}%)", 'amount' => ($taxRows['SGST'.$half]['amount'] ?? 0) + $t['sgst']];
+                $taxRows['CGST'.$half] = ['label' => "CGST{$half} ({$half}%)", 'amount' => ($taxRows['CGST'.$half]['amount'] ?? 0) + $t['cgst']];
+            }
+        }
+        $compact = ($po->pdf_template ?? 'standard') === 'compact';
+    @endphp
     <style>
-        body { font-family: DejaVu Sans, sans-serif; font-size: 9px; color: #172033; }
+        @page { margin: {{ $compact ? '22px 26px' : '34px 40px' }}; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: {{ $compact ? '8px' : '9px' }}; color: #333; }
         table { width: 100%; border-collapse: collapse; }
-        .header td { vertical-align: top; }
-        .brand { font-size: 19px; font-weight: bold; color: #172033; }
-        .muted { color: #64748b; }
-        .small { font-size: 8px; }
-        .title { font-size: 16px; font-weight: bold; color: #2563eb; text-transform: uppercase; letter-spacing: 1px; }
-        .section { margin-top: 18px; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; font-size: 11px; font-weight: bold; }
-        .box { border: 1px solid #cbd5e1; padding: 8px; }
-        th { background: #eff6ff; color: #1e3a8a; font-weight: bold; text-align: left; }
-        td, th { border: 1px solid #cbd5e1; padding: 7px; }
-        .right { text-align: right; }
-        .qr { width: 92px; height: 92px; }
-        .logo { width: 88px; height: 78px; }
-        .total { font-size: 13px; font-weight: bold; color: #172033; }
-        .footer { margin-top: 22px; padding-top: 8px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 8px; }
-        @if (($po->pdf_template ?? 'standard') === 'compact')
-        @page { margin: 20px; }
-        body { font-size: 8px; }
-        td, th { padding: 4px; }
-        .section { margin-top: 11px; padding-bottom: 3px; }
-        .box { padding: 5px; }
-        .footer { margin-top: 13px; }
-        @else
-        @page { margin: 30px; }
-        @endif
+        td { vertical-align: top; }
+        .company { font-size: 11px; font-weight: bold; color: #222; }
+        .title { font-size: 26px; color: {{ $green }}; text-align: right; }
+        .number { font-size: 10px; font-weight: bold; text-align: right; color: #222; }
+        .label { font-size: 10px; color: #444; }
+        .strong { font-weight: bold; color: #222; }
+        .meta td { padding: 4px 0; font-size: 9px; }
+        .meta .k { text-align: right; color: #555; padding-right: 10px; }
+        .meta .v { text-align: right; width: 110px; }
+        .items th { background: {{ $green }}; color: #fff; font-weight: normal; padding: 7px 8px; text-align: left; font-size: 9px; }
+        .items td { padding: 8px; border-bottom: 1px solid #ddd; }
+        .items th.r { text-align: right; }
+        .r { text-align: right; }
+        .muted { color: #777; font-size: 7.5px; }
+        .totals td { padding: 6px 8px; }
+        .grand { font-weight: bold; font-size: 10px; color: #222; }
+        .section { font-size: 10px; color: #333; margin: 16px 0 4px; }
+        .small { font-size: 7.5px; line-height: 1.45; }
     </style>
 </head>
 <body>
-    <table class="header">
+    <table>
         <tr>
-            <td style="width:68%; border:0; padding:0;">
-                <table style="width:auto; border:0;"><tr>
-                    <td style="border:0; padding:0 10px 0 0; vertical-align:middle;"><img class="logo" src="{{ public_path('images/tan90-logo.png') }}" alt="Tan90 logo"></td>
-                    <td style="border:0; padding:0; vertical-align:middle;"><div class="brand">TAN90</div>
-                    <div class="muted small">TAN90 ERP · Procurement &amp; Supply Chain</div></td>
-                </tr></table>
-                    <div class="small" style="margin-top:9px;">Procurement &amp; Supply Chain · Place of supply: {{ $po->shipping_state ?? '—' }} · Registered state: {{ $companyState ?? 'Not configured' }}</div>
+            <td style="width:58%;">
+                <img src="{{ public_path('images/tan90-logo.png') }}" style="height:62px;" alt="Tan90"><br>
+                <div class="company" style="margin-top:4px;">{{ config('company.name') }}</div>
+                @foreach (config('company.address_lines', []) as $line){{ $line }}<br>@endforeach
+                GSTIN {{ config('company.gstin') }}
             </td>
-            <td style="width:32%; border:0; padding:0; text-align:right;">
+            <td style="width:42%;">
                 <div class="title">Purchase Order</div>
-                <div class="small" style="margin-top:6px;"><strong>PO No:</strong> {{ $po->po_number }}<br><strong>PO Date:</strong> {{ $po->po_date?->format('d M Y') ?? '—' }}<br><strong>Due Date:</strong> {{ $po->due_date?->format('d M Y') ?? '—' }}</div>
-                <img class="qr" src="{{ $qrDataUri }}" style="margin-top:7px;"><br>
-                <span class="muted small">Scan to open PO status</span>
+                <div class="number"># {{ $po->po_number }}</div>
+                <div style="text-align:right; margin-top:6px;"><img src="{{ $qrDataUri }}" style="width:70px; height:70px;"><br><span class="muted">Scan to open this PO</span></div>
             </td>
         </tr>
     </table>
 
-    <div class="section">Supplier, billing and delivery</div>
-    <table><tr>
-        <td class="box" style="width:34%;"><strong>Supplier</strong><br>{{ $po->vendor_name }}<br>{{ $vendor?->address_building }} {{ $vendor?->address_street }}<br>{{ $vendor?->address_city }}, {{ $vendor?->address_state }} {{ $vendor?->address_zip }}<br>GSTIN: {{ $vendor?->gst_number ?? '—' }}</td>
-        <td class="box" style="width:33%;"><strong>Billing address</strong><br>{{ $po->billing_building }} {{ $po->billing_street }}<br>{{ $po->billing_city }}, {{ $po->billing_state }} {{ $po->billing_zip }}<br>{{ $po->billing_country ?? 'India' }}</td>
-        <td class="box" style="width:33%;"><strong>Delivery location</strong><br>{{ $po->shipping_building }} {{ $po->shipping_street }}<br>{{ $po->shipping_city }}, {{ $po->shipping_state }} {{ $po->shipping_zip }}<br>{{ $po->shipping_country ?? 'India' }} · Contact: {{ $po->contact_name ?? 'Store Manager' }}</td>
-    </tr></table>
+    <table style="margin-top:14px;">
+        <tr>
+            <td style="width:55%;">
+                <div class="label">Vendor Address</div>
+                <div class="strong">{{ $po->vendor_name }}</div>
+                @if ($vendor?->address_building || $vendor?->address_street){{ trim($vendor?->address_building.' '.$vendor?->address_street) }}<br>@endif
+                @if ($vendor?->address_city || $vendor?->address_zip){{ trim($vendor?->address_city.'  '.$vendor?->address_zip) }}<br>@endif
+                @if ($vendor?->address_state){{ $vendor->address_state }}<br>@endif
+                India<br>
+                @if ($vendor?->gst_number && $vendor->gst_number !== 'ZOHO-N/A')GSTIN {{ $vendor->gst_number }}@endif
 
-    @if (!empty($po->header_custom_fields))
-        <div class="section">Additional PO details</div>
-        <table><tr>
-            @foreach ($po->header_custom_fields as $label => $value)
-                <td><strong>{{ $label }}</strong><br>{{ $value }}</td>
-            @endforeach
-        </tr></table>
-    @endif
+                <div class="label" style="margin-top:12px;">Deliver To</div>
+                @if ($po->warehouse_location)Tan90 | {{ $po->warehouse_location }}<br>@endif
+                @if ($po->shipping_building || $po->shipping_street){{ trim($po->shipping_building.' '.$po->shipping_street) }}<br>@endif
+                {{ trim($po->shipping_city.' '.$po->shipping_state.' '.$po->shipping_zip) }}<br>
+                {{ $po->shipping_country ?: 'India' }}<br>
+                @if ($deliverGstin)GSTIN {{ $deliverGstin }}@endif
+            </td>
+            <td style="width:45%; padding-top:70px;">
+                <table class="meta">
+                    @if ($po->shipment_preference)<tr><td class="k">Shipment preference :</td><td class="v">{{ $po->shipment_preference }}</td></tr>@endif
+                    <tr><td class="k">Date :</td><td class="v">{{ $po->po_date?->format('d-m-Y') ?? '—' }}</td></tr>
+                    @if ($po->payment_terms)<tr><td class="k">Terms :</td><td class="v">{{ $po->payment_terms }}</td></tr>@endif
+                    @if ($po->due_date)<tr><td class="k">Delivery Date :</td><td class="v">{{ $po->due_date->format('d-m-Y') }}</td></tr>@endif
+                    @if ($po->reference_number)<tr><td class="k">Ref# :</td><td class="v">{{ $po->reference_number }}</td></tr>@endif
+                    @if ($po->valid_upto)<tr><td class="k">PO Valid Upto :</td><td class="v">{{ \Illuminate\Support\Carbon::parse($po->valid_upto)->format('d-m-Y') }}</td></tr>@endif
+                    @foreach ((array) ($po->header_custom_fields ?? []) as $label => $value)
+                        <tr><td class="k">{{ $label }} :</td><td class="v">{{ $value }}</td></tr>
+                    @endforeach
+                </table>
+            </td>
+        </tr>
+    </table>
 
-    <div class="section">Order lines</div>
-    <table>
-        <thead><tr><th>#</th><th>Product / TAN90 SKU</th><th>HSN / SAC</th><th>Qty</th><th>UOM</th><th class="right">Unit price</th><th class="right">Taxable value</th><th class="right">GST breakup</th></tr></thead>
+    <table class="items" style="margin-top:16px;">
+        <thead><tr><th style="width:5%;">#</th><th>Item &amp; Description</th><th style="width:13%;">HSN/SAC</th><th class="r" style="width:12%;">Qty</th><th class="r" style="width:11%;">Rate</th><th class="r" style="width:14%;">Amount</th></tr></thead>
         <tbody>
             @foreach ($po->lines as $index => $line)
-                @php $tax = $lineTaxes[$line->id] ?? ['taxable' => (float) $line->quantity * (float) $line->list_price, 'cgst' => 0, 'sgst' => 0, 'igst' => 0]; @endphp
+                @php $tax = $lineTaxes[$line->id] ?? ['taxable' => (float) $line->quantity * (float) $line->list_price]; @endphp
                 <tr>
                     <td>{{ $index + 1 }}</td>
-                    <td>{{ $line->product }}
-                        @if ($line->custom_fields)
-                            <br><span class="muted small">{{ collect($line->custom_fields)->map(fn ($value, $label) => $label.': '.$value)->implode(' · ') }}</span>
-                        @endif
+                    <td><span class="strong">{{ $line->product }}</span>
+                        @if ($skuCodes[mb_strtolower(trim((string) $line->product))] ?? null)<br><span class="muted">SKU : {{ $skuCodes[mb_strtolower(trim((string) $line->product))] }}</span>@endif
+                        @if ($line->custom_fields)<br><span class="muted">{{ collect($line->custom_fields)->map(fn ($v, $k) => $k.': '.$v)->implode(' · ') }}</span>@endif
                     </td>
-                    <td>{{ $line->hsn_sac ?? '—' }}</td>
-                    <td>{{ number_format((float) $line->quantity, 3) }}</td>
-                    <td>{{ $line->uom ?? '—' }}</td>
-                    <td class="right">₹{{ number_format((float) $line->list_price, 2) }}</td>
-                    <td class="right">₹{{ number_format($tax['taxable'], 2) }}</td>
-                    <td class="right">{{ number_format((float) $tax['rate'], 2) }}%<br>
-                        @if ($tax['igst'] > 0) IGST ₹{{ number_format($tax['igst'], 2) }}
-                        @elseif ($tax['cgst'] > 0 || $tax['sgst'] > 0) CGST ₹{{ number_format($tax['cgst'], 2) }}<br>SGST ₹{{ number_format($tax['sgst'], 2) }}
-                        @else — @endif
-                    </td>
+                    <td>{{ $line->hsn_sac ?: '' }}</td>
+                    <td class="r">{{ $qty($line->quantity) }}<br><span class="muted">{{ $line->uom }}</span></td>
+                    <td class="r">{{ $money($line->list_price) }}</td>
+                    <td class="r">{{ $money($tax['taxable']) }}</td>
                 </tr>
             @endforeach
         </tbody>
     </table>
 
-    @php
-        $cgstTotal = $lineTaxes->sum('cgst');
-        $sgstTotal = $lineTaxes->sum('sgst');
-        $igstTotal = $lineTaxes->sum('igst');
-    @endphp
-    <table style="margin-top:10px;">
-        <tr><td style="width:62%; border:0;"></td><td class="right">Taxable subtotal</td><td class="right">₹{{ number_format($po->subTotal(), 2) }}</td></tr>
-        @if ((float) $po->discount > 0)<tr><td style="border:0;"></td><td class="right">PO discount</td><td class="right">− ₹{{ number_format((float) $po->discount, 2) }}</td></tr>@endif
-        @if ($cgstTotal > 0)<tr><td style="border:0;"></td><td class="right">CGST</td><td class="right">₹{{ number_format($cgstTotal, 2) }}</td></tr>@endif
-        @if ($sgstTotal > 0)<tr><td style="border:0;"></td><td class="right">SGST</td><td class="right">₹{{ number_format($sgstTotal, 2) }}</td></tr>@endif
-        @if ($igstTotal > 0)<tr><td style="border:0;"></td><td class="right">IGST</td><td class="right">₹{{ number_format($igstTotal, 2) }}</td></tr>@endif
-        @if ((float) $po->adjustment !== 0)<tr><td style="border:0;"></td><td class="right">Adjustment</td><td class="right">₹{{ number_format((float) $po->adjustment, 2) }}</td></tr>@endif
-        <tr><td style="border:0;"></td><td class="right total">Grand total</td><td class="right total">₹{{ number_format($po->grandTotal(), 2) }}</td></tr>
-        <tr><td style="border:0;"></td><td colspan="2" class="right small"><strong>Amount in words:</strong> {{ $totalInWords }}</td></tr>
+    <table class="totals" style="margin-top:4px;">
+        <tr><td style="width:55%;"></td><td class="r">Sub Total</td><td class="r" style="width:110px;">{{ $money($po->subTotal()) }}</td></tr>
+        @if ((float) $po->discount > 0)<tr><td></td><td class="r">Discount</td><td class="r">(-) {{ $money($po->discount) }}</td></tr>@endif
+        @foreach ($taxRows as $row)<tr><td></td><td class="r">{{ $row['label'] }}</td><td class="r">{{ $money($row['amount']) }}</td></tr>@endforeach
+        @if ((float) $po->adjustment != 0)<tr><td></td><td class="r">Adjustment</td><td class="r">{{ $money($po->adjustment) }}</td></tr>@endif
+        <tr><td></td><td class="r grand">Total</td><td class="r grand">₹{{ $money($po->grandTotal()) }}</td></tr>
+        <tr><td></td><td colspan="2" class="r muted">{{ $totalInWords }}</td></tr>
     </table>
-    <div class="section">Terms &amp; traceability</div>
-    <div class="box small"><strong>Material type:</strong> {{ $po->material_type ?? '—' }}<br>{{ $po->terms_and_conditions ?? 'Supply as per approved PO, agreed specifications and delivery schedule.' }}<br>
-        Payment terms: {{ $po->payment_terms ?? '—' }} · Purchase nature: {{ $po->purchase_nature ?? 'Material' }} · Warehouse: {{ $po->warehouse_location ?? '—' }}<br>
-        @if ($po->reverse_charge)<strong>Reverse charge applicable — tax to be accounted for by recipient.</strong><br>@endif
-        <br><span class="muted">PO status: {{ $po->status }} · Release timestamp: {{ $po->released_at?->format('d M Y, H:i') ?? 'Not released' }} · Scan payload: {{ $lookupUrl }}</span></div>
-    @if (!empty($po->attachments))
-        <div class="section">Attachments</div>
-        <div class="box small">@foreach ($po->attachments as $attachment){{ $attachment['name'] ?? 'PO attachment' }}@if(!$loop->last) · @endif @endforeach</div>
+    @if ($po->reverse_charge)<p class="small strong">Reverse charge applicable - tax to be accounted for by the recipient.</p>@endif
+
+    @if ($po->description && ! str_starts_with(trim($po->description), 'Synced from Zoho'))
+        <div class="section">Notes</div>
+        <div class="small">{!! nl2br(e($po->description)) !!}</div>
     @endif
-    <div class="footer">Generated from TAN90 ERP. This document is the vendor-facing PO reference; every dispatch and receipt is linked by PO number.</div>
+    @if ($po->terms_and_conditions)
+        <div class="section">Terms &amp; Conditions</div>
+        <div class="small">{!! nl2br(e($po->terms_and_conditions)) !!}</div>
+    @endif
+
+    <div style="margin-top:46px;">
+        @if (is_file(public_path('images/company-stamp.png')))<img src="{{ public_path('images/company-stamp.png') }}" style="height:90px;"><br>@endif
+        <div style="border-top:1px solid #999; width:160px; padding-top:4px;">Authorized Signature</div>
+    </div>
 </body>
 </html>

@@ -167,6 +167,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('activity', 'shared.activity-log')->name('activity');
     Volt::route('activity/{entry}', 'shared.activity-detail')->name('activity.detail');
     Volt::route('chcek', 'shared.po-tracker')->name('po.tracker');
+    // Scanned from the QR on a PO PDF: vendors see their PO, staff the PO tracker.
+    Route::get('po/{poNumber}/open', function (string $poNumber) {
+        return auth()->user()->role === \App\Enums\Role::Vendor
+            ? redirect('/vendor/purchase-orders?po='.urlencode($poNumber))
+            : redirect()->route('po.tracker', ['po' => $poNumber]);
+    })->where('poNumber', '.+')->name('po.open');
     Volt::route('gate-entries', 'shared.gate-entries-index')->name('gate-entries.index');
     Route::middleware('role:guard,vendor,admin,storeManager,storeExec,qc,finance')->get('gate-entries/{entry}/document/{document}', function (GateEntry $entry, string $document) {
         $user = auth()->user();
@@ -192,6 +198,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('settings', 'shared.settings')->name('settings');
     // Master Data > Custom Fields: Super Admin, or anyone given 'custom_fields.manage' (checked in the page).
     Volt::route('custom-fields', 'admin.custom-fields')->name('custom-fields.index');
+    // Terms & Notes by vendor / customer category: Super Admin + Store Manager (checked in the page).
+    Volt::route('terms-notes', 'admin.terms-templates')->name('terms-templates.index');
     Volt::route('help', 'shared.help-support')->name('help');
 
     Route::middleware('role:guard')->prefix('guard')->name('guard.')->group(function () {

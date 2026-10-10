@@ -88,6 +88,15 @@ new #[Layout('layouts.app')] class extends Component
 
     public string $visitorHostId = '';
 
+    // Outward has two moments at the gate: Truck In (arriving to load - only
+    // driver, vehicle and whom they meet) and Truck Out (leaving - Guard sees
+    // what is going out and confirms the exit, which dispatches the stock).
+    public string $outwardMode = 'in';
+    // Truck In: the old full outward form (package / invoice / material) on request.
+    public bool $outwardFullForm = false;
+    // "Meeting whom" for inward / outward - the staff member the driver came to see.
+    public string $contactUserId = '';
+
     public string $visitPurpose = '';
 
     public array $visitPurposeOptions = ['Meeting', 'Service / Maintenance Visit', 'Audit / Inspection'];
@@ -180,8 +189,13 @@ new #[Layout('layouts.app')] class extends Component
             'locationDetails' => self::LOCATIONS,
             'documentCount' => collect($this->documents)->filter()->count(),
             'documentSummary' => $this->documentSummary(),
-            'hostOptions' => $this->entryType === 'visitor'
-                ? User::whereNotNull('role')->where('role', '!=', Role::Vendor)->orderBy('name')->get(['id', 'name', 'role'])
+            'hostOptions' => in_array($this->entryType, ['visitor', 'inward', 'outward'], true)
+                ? User::whereNotNull('role')->where('role', '!=', Role::Vendor)->orderBy('name')->get(['id', 'name', 'role', 'phone'])
+                : collect(),
+            'leavingTrucks' => $this->entryType === 'outward' && $this->outwardMode === 'out'
+                ? GateEntry::with(['outwardShipment.lines.item', 'contactUser'])->where('entry_type', 'outward')
+                    ->whereIn('status', ['loaded', 'loading', 'dock_assigned', 'validated', 'pending_validation'])
+                    ->orderByRaw("status = 'loaded' DESC")->latest('id')->limit(30)->get()
                 : collect(),
         ];
     }
@@ -194,6 +208,28 @@ new #[Layout('layouts.app')] class extends Component
 
         $this->resetForm();
         $this->entryType = $type;
+    }
+
+    public function setOutwardMode(string $mode): void
+    {
+        if (in_array($mode, ['in', 'out'], true)) {
+            $this->resetForm();
+            $this->outwardMode = $mode;
+        }
+    }
+
+    // Truck Out: the loaded truck leaves; with an Outward Shipment this dispatches the stock.
+    public function confirmTruckExit(int $gateId): void
+    {
+        $gate = GateEntry::where('entry_type', 'outward')->findOrFail($gateId);
+        try {
+            $shipment = app(\App\Services\Outward\GateExitService::class)->confirm($gate, auth()->user());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->addError('exit.'.$gateId, collect($e->errors())->flatten()->implode(' '));
+
+            return;
+        }
+        session()->flash('success', "Vehicle exit confirmed for {$gate->gate_no}. Outward dispatch is complete.".($shipment ? " {$shipment->number}: stock has been deducted." : ''));
     }
 
     public function useGps(): void
@@ -655,9 +691,24 @@ new #[Layout('layouts.app')] class extends Component
         $rules = match ($this->entryType) {
             'visitor' => ['visitorName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'visitorHostId' => ['required', 'integer', 'exists:users,id'], 'visitPurpose' => ['required', 'string']],
             'inward' => ['driverName' => ['required', 'string'], 'driverPhone' => ['required', 'string'], 'vehicleNumber' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'invoiceAmount' => ['required', 'numeric'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'material' => ['required', 'string']],
-            default => ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'material' => ['required', 'string'], 'invoiceQty' => ['required', 'integer', 'min:1']]
+            default => $this->isQuickTruckIn()
+                ? ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'contactUserId' => ['required', 'integer', 'exists:users,id']]
+                : ['vehicleNumber' => ['required', 'string'], 'driverName' => ['required', 'string'], 'poNumber' => ['required', 'string'], 'vendorName' => ['required', 'string'], 'invoiceNumber' => ['required', 'string'], 'material' => ['required', 'string'], 'invoiceQty' => ['required', 'integer', 'min:1']]
         };
-        $this->validate($rules);
+        $rules['contactUserId'] ??= ['nullable', 'integer', 'exists:users,id'];
+        if ($this->entryType === 'visitor') {
+            unset($rules['contactUserId']);
+        }
+        $this->validate($rules, ['contactUserId.required' => 'Pick whom the driver has come to meet.']);
+        if ($this->isQuickTruckIn()) {
+            // Only driver, vehicle and contact at the gate; the Store Manager links
+            // the Outward Shipment when assigning the dock.
+            $this->poNumber = 'Truck for loading';
+            $this->vendorName = 'Outward pickup';
+            $this->invoiceNumber = 'TBD';
+            $this->material = 'To be loaded';
+            $this->invoiceQty = '1';
+        }
 
         // Deliberately NOT a hard block on !fetched: a guard must still be able
         // to log a truck whose PO genuinely isn't in the system yet (new
@@ -712,6 +763,7 @@ new #[Layout('layouts.app')] class extends Component
             'outward_shipment_id' => $this->entryType === 'outward' ? $this->outwardShipmentId : null,
             'vehicle_number' => $this->vehicleNumber ?: 'WALK-IN',
             'driver_name' => $driverName,
+            'contact_user_id' => ! $isVisitor && $this->contactUserId !== '' ? (int) $this->contactUserId : null,
             'transporter' => $this->transporter ?: null,
             'location' => $selected['name'],
             'gps' => $this->gps ?: null,
@@ -758,9 +810,16 @@ new #[Layout('layouts.app')] class extends Component
         session()->flash('success', "{$gate->gate_no} saved and sent for validation.");
     }
 
+    private function isQuickTruckIn(): bool
+    {
+        return $this->entryType === 'outward' && ! $this->outwardFullForm && ! $this->outwardShipmentId && trim($this->poNumber) === '';
+    }
+
     public function resetForm(): void
     {
         $currentType = $this->entryType;
+        $this->outwardFullForm = false;
+        $this->contactUserId = '';
         $this->billScanned = false;
         $this->billFile = null;
         $this->ocrReady = false;
@@ -890,6 +949,12 @@ new #[Layout('layouts.app')] class extends Component
                     @endforeach
                 </div>
             </div>
+            @if ($entryType === 'outward')
+                <div class="grid grid-cols-2 gap-2 mt-4" role="group" aria-label="Outward: truck in or out">
+                    <button type="button" wire:click="setOutwardMode('in')" class="rounded-xl px-4 py-3 text-sm font-semibold border text-left" style="{{ $outwardMode === 'in' ? 'background: var(--brand-bg); border-color: var(--brand); color: var(--brand);' : 'border-color: var(--border); color: var(--text-primary);' }}">Truck In<span class="block text-xs font-normal" style="color: var(--text-secondary);">Truck arriving to load - driver, vehicle, whom they meet</span></button>
+                    <button type="button" wire:click="setOutwardMode('out')" class="rounded-xl px-4 py-3 text-sm font-semibold border text-left" style="{{ $outwardMode === 'out' ? 'background: var(--brand-bg); border-color: var(--brand); color: var(--brand);' : 'border-color: var(--border); color: var(--text-primary);' }}">Truck Out<span class="block text-xs font-normal" style="color: var(--text-secondary);">Loaded truck leaving - see what goes out, confirm exit</span></button>
+                </div>
+            @endif
             <nav aria-label="Guard entry shortcuts" class="flex flex-wrap gap-2 mt-5 pt-4 border-t" style="border-color: var(--border);">
                 <a href="{{ route('guard.scan') }}" wire:navigate class="min-h-10 inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold" style="background: var(--brand-bg); color: var(--brand);">New gate entry</a>
                 <a href="{{ route('guard.entries', ['type' => 'inward']) }}" wire:navigate class="min-h-10 inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold border" style="border-color: var(--border); color: var(--brand);">Recent inward</a>
@@ -899,6 +964,51 @@ new #[Layout('layouts.app')] class extends Component
         </section>
 
 
+        @if ($entryType === 'outward' && $outwardMode === 'out')
+        <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
+            <h2 class="text-lg font-semibold" style="color: var(--text-primary);">Trucks waiting to leave</h2>
+            <p class="text-sm mt-1" style="color: var(--text-secondary);">Check what is on the truck, then confirm the exit. For a truck carrying an Outward Shipment, confirming the exit dispatches it and the stock goes down.</p>
+            @if (session('success'))<div role="status" class="rounded-xl border px-4 py-3 mt-3 text-sm font-medium" style="background: var(--status-good-bg); border-color: var(--status-good); color: var(--status-good);">{{ session('success') }}</div>@endif
+            <div class="space-y-3 mt-4">
+                @forelse ($leavingTrucks as $truck)
+                    @php($ship = $truck->outwardShipment)
+                    <div wire:key="leaving-{{ $truck->id }}" class="rounded-xl border p-4" style="border-color: {{ $truck->status === 'loaded' ? 'var(--status-good)' : 'var(--border)' }}; background: var(--surface-1);">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div class="text-sm">
+                                <div class="font-bold" style="color: var(--text-primary);">{{ $truck->gate_no }} · {{ $truck->vehicle_number }} · {{ $truck->driver_name }}</div>
+                                <div class="text-xs mt-0.5" style="color: var(--text-secondary);">
+                                    {{ $truck->status === 'loaded' ? 'Loaded - ready to leave' : 'Not loaded yet ('.str_replace('_', ' ', $truck->status).')' }}{{ $truck->loading_dock ? ' · Dock '.$truck->loading_dock : '' }}
+                                    @if ($truck->contactUser) · Meeting {{ $truck->contactUser->name }}{{ $truck->contactUser->phone ? ' ('.$truck->contactUser->phone.')' : '' }} @endif
+                                </div>
+                            </div>
+                            @if ($truck->status === 'loaded')
+                                <button type="button" wire:click="confirmTruckExit({{ $truck->id }})" wire:confirm="Let {{ $truck->vehicle_number }} leave and dispatch what is on it?" class="rounded-lg px-4 py-2 text-sm font-bold text-white" style="background: var(--brand);">Confirm exit &amp; dispatch</button>
+                            @endif
+                        </div>
+                        @if ($ship)
+                            <div class="mt-3 rounded-lg border p-3 text-xs" style="border-color: var(--border);">
+                                <div class="font-semibold" style="color: var(--text-primary);">{{ $ship->number }} · {{ $ship->documentLabel() }} {{ $ship->invoice_number ?: $ship->challan_number }} · {{ $ship->from_name }} → {{ $ship->to_name }}</div>
+                                @if ($ship->ewb_number)<div style="color: var(--text-secondary);">E-Way Bill {{ $ship->ewb_number }}</div>@endif
+                                <ul class="mt-1.5 space-y-0.5" style="color: var(--text-primary);">
+                                    @foreach ($ship->lines as $line)
+                                        <li>{{ rtrim(rtrim((string) $line->qty, '0'), '.') }} {{ $line->item?->unit }} · {{ $line->item?->displayName() }}</li>
+                                    @endforeach
+                                </ul>
+                                @if ($ship->status === 'documents_pending')<div class="mt-1 font-semibold" style="color: var(--status-warning);">Documents still pending - the truck cannot leave until they are uploaded.</div>@endif
+                            </div>
+                        @elseif ($truck->material && $truck->material !== 'To be loaded')
+                            <div class="mt-2 text-xs" style="color: var(--text-secondary);">{{ $truck->material }} × {{ $truck->invoice_qty }} · {{ $truck->vendor_name }}</div>
+                        @else
+                            <div class="mt-2 text-xs" style="color: var(--text-muted);">No Outward Shipment linked yet - the Store Manager links it when assigning the dock.</div>
+                        @endif
+                        @error('exit.'.$truck->id) <div class="mt-2 text-xs font-semibold" style="color: var(--status-critical);">{{ $message }}</div> @enderror
+                    </div>
+                @empty
+                    <p class="text-sm" style="color: var(--text-muted);">No outward trucks inside right now.</p>
+                @endforelse
+            </div>
+        </section>
+        @else
         <div class="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-5">
             <section class="rounded-2xl border p-5" x-data="{ scanning: false, scanMessage: '' }" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
@@ -1016,6 +1126,19 @@ new #[Layout('layouts.app')] class extends Component
                             <input wire:model="vehicleNumber" id="vehicleNumber" name="vehicleNumber" autocomplete="off" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border);" placeholder="MH 04 GT 5521" />
                             @error('vehicleNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </label>
+                        <label class="space-y-1.5 text-sm md:col-span-2">
+                            <span class="font-semibold" style="color: var(--text-primary);">Meeting whom{{ $entryType === 'inward' ? ' (optional)' : '' }}</span>
+                            <select wire:model.live="contactUserId" id="contactUserId" name="contactUserId" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border); background: var(--surface-1); color: var(--text-primary);">
+                                <option value="">Whom has the driver come to meet?</option>
+                                @foreach ($hostOptions as $host)
+                                    <option value="{{ $host->id }}">{{ $host->name }} ({{ $host->role?->label() ?? $host->role?->value }}){{ $host->phone ? ' · '.$host->phone : '' }}</option>
+                                @endforeach
+                            </select>
+                            @if ($contactUserId !== '' && ($contact = $hostOptions->firstWhere('id', (int) $contactUserId)) && $contact->phone)
+                                <a href="tel:{{ preg_replace('/[^0-9+]/', '', $contact->phone) }}" class="text-xs font-semibold underline" style="color: var(--brand);">Call {{ $contact->name }}: {{ $contact->phone }}</a>
+                            @endif
+                            @error('contactUserId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
 
                         <label class="space-y-1.5 text-sm md:col-span-2">
                             <span class="font-semibold" style="color: var(--text-primary);">Invoice / PO Number</span>
@@ -1126,6 +1249,9 @@ new #[Layout('layouts.app')] class extends Component
                             @endif
                             @error('outwardShipmentId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                         </div>
+                        @if (! $outwardFullForm && ! $outwardShipmentId && trim($poNumber) === '')
+                            <div class="md:col-span-2 text-xs" style="color: var(--text-secondary);">Only driver, vehicle and whom they meet are needed now. <button type="button" wire:click="$set('outwardFullForm', true)" class="font-semibold underline" style="color: var(--brand);">Fill package / invoice details by hand</button></div>
+                        @else
                         <label class="space-y-1.5 text-sm">
                             <span class="font-semibold" style="color: var(--text-primary);">Package Number</span>
                             <div class="flex gap-2">
@@ -1200,6 +1326,7 @@ new #[Layout('layouts.app')] class extends Component
                                 @error('productLines') <div role="alert" class="mt-2 text-xs" style="color: var(--status-critical);">{{ $message }}</div> @enderror
                             </div>
                         @endif
+                        @endif
                     @endif
 
                     @if ($entryType !== 'inward')
@@ -1215,10 +1342,25 @@ new #[Layout('layouts.app')] class extends Component
                                 @error('driverName') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                             </label>
                         @endunless
+                        @if ($entryType === 'outward')
+                        <label class="space-y-1.5 text-sm md:col-span-2">
+                            <span class="font-semibold" style="color: var(--text-primary);">Meeting whom{{ $entryType === 'inward' ? ' (optional)' : '' }}</span>
+                            <select wire:model.live="contactUserId" id="contactUserId" name="contactUserId" class="w-full rounded-xl border px-3 py-2.5" style="border-color: var(--border); background: var(--surface-1); color: var(--text-primary);">
+                                <option value="">Whom has the driver come to meet?</option>
+                                @foreach ($hostOptions as $host)
+                                    <option value="{{ $host->id }}">{{ $host->name }} ({{ $host->role?->label() ?? $host->role?->value }}){{ $host->phone ? ' · '.$host->phone : '' }}</option>
+                                @endforeach
+                            </select>
+                            @if ($contactUserId !== '' && ($contact = $hostOptions->firstWhere('id', (int) $contactUserId)) && $contact->phone)
+                                <a href="tel:{{ preg_replace('/[^0-9+]/', '', $contact->phone) }}" class="text-xs font-semibold underline" style="color: var(--brand);">Call {{ $contact->name }}: {{ $contact->phone }}</a>
+                            @endif
+                            @error('contactUserId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                        </label>
+                        @endif
                     @endif
                 </div>
 
-                @if ($entryType === 'outward')
+                @if ($entryType === 'outward' && ($outwardFullForm || $outwardShipmentId || trim($poNumber) !== ''))
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-5">
                         @foreach (['invoice' => 'Invoice', 'eway' => 'E-way', 'lr' => 'LR/LRC', 'pod' => 'POD'] as $key => $label)
                             @continue($key === 'pod' && $entryType === 'outward')
@@ -1286,5 +1428,6 @@ new #[Layout('layouts.app')] class extends Component
                 </section>
             </aside>
         </div>
+        @endif
     @endif
 </div>

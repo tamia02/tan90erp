@@ -37,21 +37,14 @@ new #[Layout('layouts.app')] class extends Component
 
         // Pass made from an Outward Shipment: the truck leaving IS the dispatch,
         // so stock goes down now - all lines or none. Short stock blocks the exit.
-        $shipment = $this->entry->outwardShipment;
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($shipment) {
-                if ($shipment && $shipment->status !== 'dispatched') {
-                    app(\App\Services\Outward\OutwardShipmentService::class)->markDispatched($shipment, auth()->user());
-                }
-                $this->entry->update(['status' => 'dispatched', 'exited_at' => now()]);
-            });
+            $shipment = app(\App\Services\Outward\GateExitService::class)->confirm($this->entry, auth()->user());
         } catch (\Illuminate\Validation\ValidationException $e) {
             $this->addError('exit', collect($e->errors())->flatten()->implode(' '));
 
             return;
         }
 
-        \App\Services\AuditLogger::log('Outward vehicle exited premises', $this->entry->gate_no.($shipment ? " · {$shipment->number} dispatched" : ''), $this->entry);
         session()->flash('success', "Vehicle exit confirmed for {$this->entry->gate_no}. Outward dispatch is complete.".($shipment ? " {$shipment->number}: stock has been deducted." : ''));
     }
 
@@ -180,7 +173,7 @@ new #[Layout('layouts.app')] class extends Component
                     'putaway_by', 'putaway_completed_at', 'final_bin',
                 ],
                 'visitor' => [
-                    'po_number', 'po_bill_date', 'vendor_gst', 'invoice_number', 'invoice_qty',
+                    'contact_user_id', 'po_number', 'po_bill_date', 'vendor_gst', 'invoice_number', 'invoice_qty',
                     'invoice_amount', 'rate', 'transporter', 'loading_dock', 'dock_assigned_at',
                     'loading_window_start', 'loading_window_end', 'expected_delivery_date',
                     'loading_started_at', 'dispatch_documents_shared', 'loaded_at', 'exited_at',
@@ -203,6 +196,12 @@ new #[Layout('layouts.app')] class extends Component
                         'vendor_name' => 'Delivery Address',
                         default => $label,
                     };
+                }
+
+                if ($key === 'contact_user_id') {
+                    $label = 'Meeting Whom';
+                    $contact = $value ? \App\Models\User::find($value) : null;
+                    $value = $contact ? $contact->name.($contact->phone ? ' · '.$contact->phone : '') : null;
                 }
 
                 if ($subject instanceof GateEntry && $key === 'po_number') {

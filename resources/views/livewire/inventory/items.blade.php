@@ -378,6 +378,7 @@ new #[Layout('layouts.app')] class extends Component
 
         return [
             'canSeeSku' => $canSeeSku,
+            'editingItem' => $this->editingId ? InventoryItem::with(['createdBy', 'updatedBy'])->find($this->editingId) : null,
             'editingStock' => $this->editingId ? app(InventoryService::class)->balances(InventoryItem::whereKey($this->editingId)->get())[$this->editingId]['final'] ?? 0 : null,
             'historyItem' => $historyItem,
             'history' => $historyItem ? app(InventoryService::class)->history($historyItem) : collect(),
@@ -442,7 +443,12 @@ new #[Layout('layouts.app')] class extends Component
     @endif
     <form wire:submit="save" class="rounded-2xl border {{ $editingId ? 'p-5 w-full max-w-4xl mt-16 shadow-2xl' : 'p-4 mb-5' }}" style="background: var(--surface-3); border-color: var(--border);">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h2 class="text-base font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add an item that is not in Zoho' }}</h2>
+            <div>
+                <h2 class="text-base font-semibold" style="color: var(--text-primary);">{{ $editingId ? 'Edit item' : 'Add an item that is not in Zoho' }}</h2>
+                @if ($editingItem)
+                    <div class="text-xs" style="color: var(--text-muted);">Added {{ $editingItem->created_at?->format('d M Y, H:i') }} by {{ $editingItem->createdBy?->name ?? 'Zoho sync / system' }} · Last updated {{ $editingItem->updated_at?->format('d M Y, H:i') }} by {{ $editingItem->updatedBy?->name ?? 'Zoho sync / system' }}</div>
+                @endif
+            </div>
             <span class="text-xs" style="color: var(--text-muted);">People see the SKU Code and Display Name.</span>
         </div>
         <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 items-start">
