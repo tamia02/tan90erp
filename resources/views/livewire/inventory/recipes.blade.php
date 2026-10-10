@@ -103,7 +103,7 @@ new #[Layout('layouts.app')] class extends Component
                     <tbody>
                         @forelse ($fgs as $fg)
                             <tr wire:key="recipe-fg-{{ $fg->id }}" style="border-top: 1px solid var(--border);{{ $recipeFgId === $fg->id ? ' background: var(--brand-bg);' : '' }}">
-                                <td class="px-4 py-3"><div class="font-medium" style="color: var(--text-primary);">{{ $fg->displayName() }}</div>@if ($fg->name && \App\Models\Inventory\InventoryItem::canSeeSkuName(auth()->user()))<div class="text-xs" style="color: var(--text-muted);">SKU Name: {{ $fg->sku }}</div>@endif</td>
+                                <td class="px-4 py-3"><div class="font-medium" style="color: var(--text-primary);">{{ $fg->displayName() }}</div></td>
                                 <td class="px-4 py-3">{{ $fg->unit }}</td>
                                 <td class="px-4 py-3 text-right">{{ $fg->bom_lines_count }}</td>
                                 <td class="px-4 py-3 text-xs">

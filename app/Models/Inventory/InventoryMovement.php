@@ -8,9 +8,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InventoryMovement extends Model
 {
-    public const IN_TYPES = ['produced'];
+    // adjust_in / adjust_out: Store Manager's stock adjustment (Items > Edit), with a reason in note.
+    public const IN_TYPES = ['produced', 'adjust_in'];
 
-    public const OUT_TYPES = ['consumed', 'wastage', 'dispatched'];
+    public const OUT_TYPES = ['consumed', 'wastage', 'dispatched', 'adjust_out'];
 
     protected $fillable = ['item_id', 'type', 'qty', 'production_id', 'dispatch_id', 'note', 'created_by'];
 

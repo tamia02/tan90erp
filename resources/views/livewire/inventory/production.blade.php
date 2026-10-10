@@ -21,19 +21,25 @@ new #[Layout('layouts.app')] class extends Component
     public string $fgItemId = '';
     public string $qty = '';
     public array $wastage = [];
+    // Qty of each material per 1 Finished Good for this run - starts from the recipe.
+    public array $perUnit = [];
+    public bool $saveAsRecipe = false;
     public string $notes = '';
     public string $zohoLocationId = '';
 
     public function updatedFgItemId(): void
     {
         $this->wastage = [];
+        $this->saveAsRecipe = false;
+        $fg = $this->fgItemId ? InventoryItem::with('bomLines')->find($this->fgItemId) : null;
+        $this->perUnit = $fg ? $fg->bomLines->mapWithKeys(fn ($l) => [$l->component_item_id => rtrim(rtrim((string) $l->qty_per_unit, '0'), '.')])->all() : [];
         $this->resetValidation();
     }
 
     // Changing qty/wastage invalidates the last "Not enough ..." message.
     public function updated(string $property): void
     {
-        if ($property === 'qty' || str_starts_with($property, 'wastage')) {
+        if ($property === 'qty' || str_starts_with($property, 'wastage') || str_starts_with($property, 'perUnit')) {
             $this->resetValidation();
         }
     }
@@ -44,11 +50,20 @@ new #[Layout('layouts.app')] class extends Component
             'fgItemId' => ['required', 'exists:inventory_items,id'],
             'qty' => ['required', 'numeric', 'gt:0'],
             'wastage.*' => ['nullable', 'numeric', 'min:0'],
+            'perUnit.*' => ['nullable', 'numeric', 'min:0'],
             'zohoLocationId' => [$this->sendsToZoho() ? 'required' : 'nullable', 'string'],
         ], ['fgItemId.required' => 'Pick the Finished Good to make.', 'qty.gt' => 'Quantity must be more than 0.', 'zohoLocationId.required' => 'Choose the Zoho warehouse this bundle is made in.']);
 
         $sendsToZoho = $this->sendsToZoho();
-        $production = $inventory->produce(InventoryItem::findOrFail($this->fgItemId), (float) $this->qty, $this->wastage, $this->notes ?: null, auth()->user());
+        $fgItem = InventoryItem::with('bomLines')->findOrFail($this->fgItemId);
+        $changed = $fgItem->bomLines->filter(fn ($l) => isset($this->perUnit[$l->component_item_id]) && $this->perUnit[$l->component_item_id] !== '' && abs((float) $this->perUnit[$l->component_item_id] - (float) $l->qty_per_unit) > 0.00005);
+        $production = $inventory->produce($fgItem, (float) $this->qty, $this->wastage, trim(($this->notes ?: '').($changed->isNotEmpty() && ! $this->saveAsRecipe ? ' [made with changed quantities]' : '')) ?: null, auth()->user(), $this->perUnit);
+        if ($this->saveAsRecipe && $changed->isNotEmpty()) {
+            foreach ($changed as $line) {
+                $line->update(['qty_per_unit' => (float) $this->perUnit[$line->component_item_id]]);
+            }
+            AuditLogger::log('Recipe updated from Create Bundle', "{$fgItem->displayName()} · ".$changed->count().' material(s)', $fgItem);
+        }
         $fg = $production->fgItem;
         AuditLogger::log('Production posted', "{$production->number} · {$production->qty_produced} {$fg->unit} {$fg->displayName()}", $production);
 
@@ -60,7 +75,7 @@ new #[Layout('layouts.app')] class extends Component
         }
 
         session()->flash('success', "{$production->number}: made {$this->qty} {$fg->unit} of {$fg->displayName()}. Raw/packaging material and wastage have been deducted.".$zohoNote);
-        $this->reset(['fgItemId', 'qty', 'wastage', 'notes']);
+        $this->reset(['fgItemId', 'qty', 'wastage', 'notes', 'perUnit', 'saveAsRecipe']);
     }
 
     public function retryZoho(int $productionId): void
@@ -101,7 +116,7 @@ new #[Layout('layouts.app')] class extends Component
 }; ?>
 
 <div>
-    @include('partials.inventory-tabs', ['current' => 'inventory.production', 'title' => 'Create Bundle (Production)', 'subtitle' => 'Turn Raw Material + Packaging Material into a Finished Good. The recipe decides how much RM/PM is used; add any wastage per material.'])
+    @include('partials.inventory-tabs', ['current' => 'inventory.production', 'title' => 'Create Bundle (Production)', 'subtitle' => 'Turn Raw Material + Packaging Material into a Finished Good. The quantities per piece start from the recipe - change them if this batch is made differently; add any wastage per material.'])
 
     {{-- Inputs use deferred wire:model so a fast click on "Create Bundle" always sends the typed qty/wastage; the debounced $refresh only redraws the preview. (wire:model.live.debounce lost values typed <400ms before the click.) --}}
     <form wire:submit="produce" class="rounded-2xl border p-5 space-y-4" style="background: var(--surface-3); border-color: var(--border);">
@@ -134,14 +149,17 @@ new #[Layout('layouts.app')] class extends Component
                             @foreach ($selected->bomLines as $line)
                                 @php
                                     $component = $line->component;
-                                    $use = round((float) $line->qty_per_unit * (float) ($qty ?: 0), 3);
+                                    $perPiece = (isset($perUnit[$line->component_item_id]) && $perUnit[$line->component_item_id] !== '') ? (float) $perUnit[$line->component_item_id] : (float) $line->qty_per_unit;
+                                    $use = round($perPiece * (float) ($qty ?: 0), 3);
                                     $waste = (float) ($wastage[$line->component_item_id] ?? 0);
                                     $have = $componentBalances[$line->component_item_id]['final'] ?? 0;
                                     $left = round($have - $use - $waste, 3);
                                 @endphp
                                 <tr wire:key="prod-line-{{ $line->id }}" style="border-top: 1px solid var(--border);">
                                     <td class="py-2 pr-3"><span class="font-medium">{{ $component?->displayName() }}</span> <span class="text-xs" style="color: var(--text-muted);">{{ $component?->typeLabel() }}</span></td>
-                                    <td class="py-2 pr-3 text-right">{{ rtrim(rtrim((string) $line->qty_per_unit, '0'), '.') }} {{ $component?->unit }}</td>
+                                    <td class="py-2 pr-3 text-right whitespace-nowrap"><input wire:model="perUnit.{{ $line->component_item_id }}" x-on:input.debounce.400ms="$wire.$refresh()" type="number" step="any" min="0" class="rounded-lg border px-2 py-1 w-24 text-right" style="border-color: {{ abs($perPiece - (float) $line->qty_per_unit) > 0.00005 ? 'var(--status-warning)' : 'var(--border)' }};"> {{ $component?->unit }}
+                                        @if (abs($perPiece - (float) $line->qty_per_unit) > 0.00005)<div class="text-xs" style="color: var(--status-warning);">recipe: {{ rtrim(rtrim((string) $line->qty_per_unit, '0'), '.') }}</div>@endif
+                                        @error('perUnit.'.$line->component_item_id) <div class="text-xs mt-1" style="color: var(--status-critical);">{{ $message }}</div> @enderror</td>
                                     <td class="py-2 pr-3 text-right font-semibold">{{ $use }} {{ $component?->unit }}</td>
                                     <td class="py-2 pr-3"><input wire:model="wastage.{{ $line->component_item_id }}" x-on:input.debounce.400ms="$wire.$refresh()" type="number" step="0.001" min="0" placeholder="0" class="rounded-lg border px-2 py-1 w-28" style="border-color: var(--border);">
                                         @error('wastage.'.$line->component_item_id) <div class="text-xs mt-1" style="color: var(--status-critical);">{{ $message }}</div> @enderror</td>
@@ -162,6 +180,7 @@ new #[Layout('layouts.app')] class extends Component
                         @error('zohoLocationId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                     </label>
                 @endif
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="saveAsRecipe"> Also save these quantities as the recipe (otherwise they are used for this batch only)</label>
                 <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Notes (optional)</span>
                     <input wire:model="notes" class="rounded-lg border px-3 py-2" style="border-color: var(--border);" placeholder="Batch / shift / remarks">
                 </label>

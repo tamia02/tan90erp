@@ -66,8 +66,8 @@ class ItemCustomFieldsTest extends TestCase
     public function test_units_come_from_the_units_master(): void
     {
         $this->actingAs(User::factory()->create(['role' => Role::Admin]));
-        Volt::test('inventory.items')->set('sku', 'Odd Unit Item')->set('unit', 'KGS')->call('save')->assertHasErrors('unit');
-        Volt::test('inventory.items')->set('sku', 'Good Unit Item')->set('unit', 'kg')->call('save')->assertHasNoErrors();
+        Volt::test('inventory.items')->set('name', 'Odd Unit Item')->set('unit', 'KGS')->call('save')->assertHasErrors('unit');
+        Volt::test('inventory.items')->set('name', 'Good Unit Item')->set('unit', 'kg')->call('save')->assertHasNoErrors();
         $this->assertSame('KG', InventoryItem::where('sku', 'Good Unit Item')->value('unit'));
     }
 }

@@ -161,9 +161,9 @@ class InventoryFlowTest extends TestCase
         $this->get(route('inventory.outward.challan', $shipment))->assertOk()->assertSee($shipment->challan_number)->assertSee('DELIVERY CHALLAN');
 
         Volt::test('inventory.items')
-            ->set('code', 'TR-001')->set('sku', 'New Trading Item')->set('name', 'Trading Box')->set('itemType', 'trading')->set('unit', 'box')
+            ->set('code', 'TR-001')->set('name', 'Trading Box')->set('itemType', 'trading')->set('unit', 'box')
             ->call('save')->assertHasNoErrors();
-        $this->assertDatabaseHas('inventory_items', ['sku' => 'New Trading Item', 'item_type' => 'trading', 'unit' => 'BOX']);
+        $this->assertDatabaseHas('inventory_items', ['sku' => 'Trading Box', 'code' => 'TR-001', 'name' => 'Trading Box', 'item_type' => 'trading', 'unit' => 'BOX']);
 
         $this->get(route('inventory.stock'))->assertOk()->assertSee('PCM Pouch 500g Blue')->assertSee('= Final');
     }
@@ -331,22 +331,23 @@ class InventoryFlowTest extends TestCase
         $this->compound->update(['code' => 'RM-PCM-01', 'name' => 'Compound A']);
         app(InventoryService::class)->produce($this->fg, 10, [$this->compound->id => 1], null, $this->admin);
 
-        // Super Admin sees the real chemical name (SKU Name).
+        // Nobody sees the hidden SKU name on Items any more - not even Super Admin.
         $this->actingAs($this->admin);
-        Volt::test('inventory.items')->assertSee('SKU Name: PCM Compound')
-            ->call('$set', 'historyItemId', $this->compound->id)
-            ->assertSee('Stock history: Compound A')->assertSee('Used in production')->assertSee('Wastage')
+        Volt::test('inventory.items')->assertSee('Compound A')->assertDontSee('PCM Compound')
+            ->call('edit', $this->compound->id)->assertDontSee('SKU Name')->set('name', 'Compound A2')->call('save')
+            ->assertSee('Saved RM-PCM-01 · Compound A2.')->assertDontSee('PCM Compound');
+        Volt::test('inventory.items')->call('$set', 'historyItemId', $this->compound->id)
+            ->assertSee('Stock history: Compound A2')->assertSee('Used in production')->assertSee('Wastage')
             ->assertSee('In stock now: ');
 
         // A Store Manager without the permission sees only Display Name + Code,
         // and can't find the item by its chemical name.
         $manager = User::factory()->create(['role' => Role::StoreManager])->fresh();
         $this->actingAs($manager);
-        Volt::test('inventory.items')->assertSee('Compound A')->assertSee('RM-PCM-01')->assertDontSee('PCM Compound')
-            ->set('search', 'PCM Compound')->assertDontSee('Compound A')
-            ->set('search', 'RM-PCM')->assertSee('Compound A')
-            ->call('edit', $this->compound->id)->assertSee('Hidden - you can');
-        Volt::test('inventory.recipes')->assertDontSee('SKU Name: PCM Compound');
+        Volt::test('inventory.items')->assertSee('Compound A2')->assertSee('RM-PCM-01')->assertDontSee('PCM Compound')
+            ->set('search', 'PCM Compound')->assertDontSee('Compound A2')
+            ->set('search', 'RM-PCM')->assertSee('Compound A2');
+        Volt::test('inventory.recipes')->assertDontSee('SKU Name');
 
         // Pouch received through GRN: history shows the receipt.
         Volt::test('inventory.items')->call('$set', 'historyItemId', $this->pouch->id)->assertSee('Received (GRN)');

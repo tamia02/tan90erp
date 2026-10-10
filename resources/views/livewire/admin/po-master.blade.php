@@ -672,6 +672,45 @@ new #[Layout('layouts.app')] class extends Component
     }
 
     /** Publishes a draft PO to the vendor's portal. */
+    // Vendor not available to accept in the portal: Store Manager accepts on
+    // the vendor's behalf so the PO moves on. Reason is required and recorded.
+    public ?int $bypassingPoId = null;
+
+    public string $bypassReason = '';
+
+    public function openBypass(int $id): void
+    {
+        $this->bypassingPoId = $id;
+        $this->bypassReason = '';
+        $this->resetValidation('bypassReason');
+    }
+
+    public function bypassVendorAcceptance(): void
+    {
+        $po = PurchaseOrder::with('acknowledgement')->findOrFail($this->bypassingPoId);
+        abort_unless(auth()->user()?->isAdmin() || auth()->user()?->holdsRole(Role::StoreManager), 403);
+        $this->validate(['bypassReason' => ['required', 'string', 'min:5', 'max:500']], ['bypassReason.required' => 'Write why the vendor can\'t accept (e.g. "Vendor confirmed on phone").', 'bypassReason.min' => 'Write a short reason.']);
+        if (! $po->isReleased()) {
+            $this->addError('bypassReason', 'Release the PO first.');
+
+            return;
+        }
+        if ($po->acknowledgement?->accepted) {
+            $this->bypassingPoId = null;
+
+            return;
+        }
+
+        $ack = \App\Models\PurchaseOrderAcknowledgement::updateOrCreate(['po_number' => $po->po_number], [
+            'vendor_name' => $po->vendor_name, 'accepted' => true,
+            'remarks' => 'Accepted by '.auth()->user()->name.' on the vendor\'s behalf (bypass): '.trim($this->bypassReason),
+            'acknowledged_by' => auth()->id(), 'acknowledged_at' => now(), 'production_started_at' => now(),
+        ]);
+        AuditLogger::log('PO vendor acceptance bypassed', "{$po->po_number} · {$po->vendor_name} · ".trim($this->bypassReason), $ack);
+        session()->flash('success', "{$po->po_number} accepted on the vendor's behalf - it can move on to the gate.");
+        $this->reset(['bypassingPoId', 'bypassReason']);
+    }
+
     public function releasePo(int $id): void
     {
         $po = PurchaseOrder::with('lines')->findOrFail($id);
@@ -1171,6 +1210,20 @@ new #[Layout('layouts.app')] class extends Component
                                     @if ($po->acknowledgement->remarks)<div class="mt-1 font-normal" style="color: var(--text-muted);">“{{ $po->acknowledgement->remarks }}”</div>@endif
                                 @else
                                     <div class="mt-1 font-normal" style="color: var(--status-warning);">Awaiting Vendor</div>
+                                @endif
+                                @if ($po->isReleased() && ! $po->acknowledgement?->accepted)
+                                    @if ($bypassingPoId === $po->id)
+                                        <div class="mt-2 flex flex-col gap-1.5 font-normal" wire:key="bypass-{{ $po->id }}">
+                                            <input wire:model="bypassReason" placeholder="Why? e.g. Vendor confirmed on phone" class="rounded-lg border px-2 py-1 text-xs" style="border-color: var(--border);">
+                                            @error('bypassReason') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                                            <div class="flex gap-2">
+                                                <button type="button" wire:click="bypassVendorAcceptance" class="rounded-lg px-2.5 py-1 text-xs font-semibold text-white" style="background: var(--brand);">Accept for vendor</button>
+                                                <button type="button" wire:click="$set('bypassingPoId', null)" class="text-xs" style="color: var(--text-muted);">Cancel</button>
+                                            </div>
+                                        </div>
+                                    @else
+                                        <button type="button" wire:click="openBypass({{ $po->id }})" class="mt-1 text-xs font-semibold underline" style="color: var(--brand);" title="Vendor can't accept in the portal - accept on their behalf">Bypass: accept for vendor</button>
+                                    @endif
                                 @endif
                                 @if ($po->isReleased())
                                     <div class="mt-1 font-semibold" style="color: var(--status-good);">Released — visible in vendor portal</div>

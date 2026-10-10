@@ -249,7 +249,7 @@ def bundle(page):
     page.goto(f"{BASE}/inventory/production"); settle(page)
     page.select_option("[wire\\:model\\.live='fgItemId']", label=FG); settle(page)
     page.fill("[wire\\:model='qty']", "50")
-    page.locator("tr", has_text=RM).locator("input").fill("1")
+    page.locator("tr", has_text=RM).locator("input[wire\\:model^='wastage']").fill("1")  # 2nd box = wastage
     page.wait_for_timeout(1000)
     page.get_by_role("button", name="Create Bundle & update stock").click()
     wait_for_text(page, ": made 50 ")  # the success message, not an older PRD- row

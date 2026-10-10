@@ -15,14 +15,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
-// Final = Opening + Received (GRN, accepted) + Produced - Consumed - Wastage - Dispatched.
+// Final = Opening + Received (GRN, accepted) + Produced + Adjusted - Consumed - Wastage - Dispatched.
 // "Received" is read from the GRN ledger (bucket 'available', same SKU text)
 // and never written here, so the vendor -> GRN flow stays exactly as it is.
 class InventoryService
 {
     /**
      * @param  Collection<int, InventoryItem>  $items
-     * @return array<int, array{opening: float, received: float, produced: float, consumed: float, wastage: float, dispatched: float, final: float}>
+     * @return array<int, array{opening: float, received: float, produced: float, adjusted: float, consumed: float, wastage: float, dispatched: float, final: float}>
      */
     public function balances(Collection $items): array
     {
@@ -54,8 +54,9 @@ class InventoryService
                 'consumed' => (float) ($byType['consumed'] ?? 0),
                 'wastage' => (float) ($byType['wastage'] ?? 0),
                 'dispatched' => (float) ($byType['dispatched'] ?? 0),
+                'adjusted' => round((float) ($byType['adjust_in'] ?? 0) - (float) ($byType['adjust_out'] ?? 0), 3),
             ];
-            $row['final'] = round($row['opening'] + $row['received'] + $row['produced'] - $row['consumed'] - $row['wastage'] - $row['dispatched'], 3);
+            $row['final'] = round($row['opening'] + $row['received'] + $row['produced'] + $row['adjusted'] - $row['consumed'] - $row['wastage'] - $row['dispatched'], 3);
             $balances[$item->id] = $row;
         }
 
@@ -119,23 +120,26 @@ class InventoryService
      * Every stock movement of one item, newest first: received through GRN,
      * produced, used in production, wasted, dispatched.
      *
-     * @return Collection<int, array{at: mixed, label: string, qty: float}>
+     * @return Collection<int, array{at: mixed, label: string, qty: float, kind: string}>
      */
     public function history(InventoryItem $item): Collection
     {
         $grn = LedgerEntry::with('gateEntry')->where('sku', $item->sku)->where('bucket', 'available')->get()
-            ->map(fn ($entry) => ['at' => $entry->created_at, 'label' => trim('Received (GRN) · '.($entry->gateEntry?->gate_no ?? '').' '.($entry->gateEntry?->po_number ?? '')), 'qty' => (float) $entry->qty]);
-        $moves = InventoryMovement::with(['production', 'dispatch'])->where('item_id', $item->id)->get()
+            ->map(fn ($entry) => ['at' => $entry->created_at, 'label' => trim('Received (GRN) · '.($entry->gateEntry?->gate_no ?? '').' '.($entry->gateEntry?->po_number ?? '')), 'qty' => (float) $entry->qty, 'kind' => 'received']);
+        $moves = InventoryMovement::with(['production', 'dispatch', 'creator'])->where('item_id', $item->id)->get()
             ->map(fn ($m) => [
                 'at' => $m->created_at,
                 'label' => match ($m->type) {
                     'produced' => 'Produced (Create Bundle) · '.$m->production?->number,
                     'consumed' => 'Used in production · '.$m->production?->number,
                     'wastage' => 'Wastage · '.$m->production?->number,
+                    'adjust_in' => 'Stock adjusted up by '.($m->creator?->name ?? 'Store Manager').($m->note ? ' · '.$m->note : ''),
+                    'adjust_out' => 'Stock adjusted down by '.($m->creator?->name ?? 'Store Manager').($m->note ? ' · '.$m->note : ''),
                     'dispatched' => 'Dispatched · '.trim(($m->dispatch?->reference ? $m->dispatch->reference.' · ' : '').$m->dispatch?->number).' → '.$m->dispatch?->customer_name,
                     default => ucfirst($m->type),
                 },
                 'qty' => in_array($m->type, InventoryMovement::IN_TYPES, true) ? (float) $m->qty : -(float) $m->qty,
+                'kind' => in_array($m->type, ['adjust_in', 'adjust_out'], true) ? 'adjusted' : $m->type,
             ]);
 
         return $grn->concat($moves)->sortByDesc('at')->values();
@@ -150,8 +154,9 @@ class InventoryService
      * "Create Bundle": consume RM/PM per the FG recipe (+ any wastage) and add FG.
      *
      * @param  array<int, float|string|null>  $wastage  component item id => extra qty wasted
+     * @param  array<int, float|string|null>  $perUnit  component item id => qty per 1 FG for THIS run (made differently); empty = the recipe
      */
-    public function produce(InventoryItem $fg, float $qty, array $wastage, ?string $notes, User $user): InventoryProduction
+    public function produce(InventoryItem $fg, float $qty, array $wastage, ?string $notes, User $user, array $perUnit = []): InventoryProduction
     {
         if ($fg->item_type !== 'fg') {
             throw ValidationException::withMessages(['fgItemId' => 'Only a Finished Good can be produced.']);
@@ -160,8 +165,11 @@ class InventoryService
             throw ValidationException::withMessages(['qty' => 'Quantity to produce must be more than 0.']);
         }
 
-        return DB::transaction(function () use ($fg, $qty, $wastage, $notes, $user) {
+        return DB::transaction(function () use ($fg, $qty, $wastage, $notes, $user, $perUnit) {
             $lines = $fg->bomLines()->with('component')->get();
+            // This run's quantities per 1 FG: the recipe unless changed on the screen.
+            $per = fn ($line) => (isset($perUnit[$line->component_item_id]) && $perUnit[$line->component_item_id] !== '')
+                ? max(0, (float) $perUnit[$line->component_item_id]) : (float) $line->qty_per_unit;
             if ($lines->isEmpty()) {
                 throw ValidationException::withMessages(['fgItemId' => "Add a recipe (RM/PM per 1 {$fg->unit}) to {$fg->displayName()} first."]);
             }
@@ -172,7 +180,7 @@ class InventoryService
 
             $errors = [];
             foreach ($lines as $line) {
-                $need = round((float) $line->qty_per_unit * $qty, 3);
+                $need = round($per($line) * $qty, 3);
                 $waste = round(max(0, (float) ($wastage[$line->component_item_id] ?? 0)), 3);
                 $have = $balances[$line->component_item_id]['final'];
                 if ($need + $waste > $have + 0.0005) {
@@ -190,7 +198,10 @@ class InventoryService
             $production->update(['number' => sprintf('PRD-%05d', $production->id)]);
 
             foreach ($lines as $line) {
-                $this->move($line->component_item_id, 'consumed', round((float) $line->qty_per_unit * $qty, 3), $user, production: $production);
+                $used = round($per($line) * $qty, 3);
+                if ($used > 0) {
+                    $this->move($line->component_item_id, 'consumed', $used, $user, production: $production);
+                }
                 $waste = round(max(0, (float) ($wastage[$line->component_item_id] ?? 0)), 3);
                 if ($waste > 0) {
                     $this->move($line->component_item_id, 'wastage', $waste, $user, production: $production);
@@ -227,6 +238,33 @@ class InventoryService
             $this->move($item->id, 'dispatched', $qty, $user, dispatch: $dispatch);
 
             return $dispatch;
+        });
+    }
+
+    /**
+     * Store Manager's stock correction: + adds, - removes (never below zero).
+     * Recorded with who and why, and shown in the item's history.
+     */
+    public function adjust(InventoryItem $item, float $change, string $reason, User $user): void
+    {
+        $change = round($change, 3);
+        if ($change == 0.0) {
+            throw ValidationException::withMessages(['adjustQty' => 'Enter how much to add (e.g. 25) or remove (e.g. -10).']);
+        }
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['adjustReason' => 'Write why the stock is changing (e.g. physical count, damage).']);
+        }
+
+        DB::transaction(function () use ($item, $change, $reason, $user) {
+            InventoryItem::whereKey($item->id)->lockForUpdate()->first();
+            $have = $this->available($item);
+            if ($change < 0 && abs($change) > $have + 0.0005) {
+                throw ValidationException::withMessages(['adjustQty' => "Only {$have} {$item->unit} in stock - can't remove ".abs($change).'.']);
+            }
+            InventoryMovement::create([
+                'item_id' => $item->id, 'type' => $change > 0 ? 'adjust_in' : 'adjust_out', 'qty' => abs($change),
+                'note' => mb_substr(trim($reason), 0, 250), 'created_by' => $user->id,
+            ]);
         });
     }
 
