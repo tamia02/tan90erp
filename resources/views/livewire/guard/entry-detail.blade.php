@@ -153,7 +153,7 @@ new #[Layout('layouts.app')] class extends Component
     public function downloadExcel(): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $html = view('pdf.gate-entry', $this->pdfData())->render();
-        return response()->streamDownload(fn () => print($html), $this->entry->gate_no.'.xls', ['Content-Type' => 'application/vnd.ms-excel; charset=UTF-8']);
+        return \App\Support\HtmlToXlsx::download($html, $this->entry->gate_no);
     }
 
     /** @return array<int, array{label: string, value: string}> */

@@ -76,7 +76,7 @@ Route::get('shared/vendor-bills/{submission}/pdf', function (VendorSubmission $s
 Route::get('shared/vendor-bills/{submission}/excel', function (VendorSubmission $submission) {
     $html = view('pdf.vendor-bill', app(VendorBillDocumentService::class)->data($submission))->render();
     $billReference = preg_replace('/[^A-Za-z0-9._-]+/', '-', (string) ($submission->invoice_number ?: 'SUB-'.$submission->id));
-    return response()->streamDownload(fn () => print($html), 'TAN90-BILL-'.trim($billReference ?: 'SUB-'.$submission->id, '-').'.xls', ['Content-Type' => 'application/vnd.ms-excel; charset=UTF-8']);
+    return \App\Support\HtmlToXlsx::download($html, 'TAN90-BILL-'.trim($billReference ?: 'SUB-'.$submission->id, '-'));
 })->middleware('signed')->name('vendor.bill.share.excel');
 
 Route::post('zoho/webhook/purchase-order', [ZohoWebhookController::class, 'purchaseOrder'])
@@ -205,6 +205,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('role:guard')->prefix('guard')->name('guard.')->group(function () {
         Volt::route('/', 'guard.dashboard')->name('dashboard');
         Volt::route('scan', 'guard.bill-scan')->name('scan');
+        Volt::route('inside', 'guard.inside')->name('inside');
         Volt::route('entries', 'guard.entries')->name('entries');
         Volt::route('entries/{entry}', 'guard.entry-detail')->name('entries.show');
     });
@@ -228,7 +229,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('purchase-orders/{purchaseOrder:po_number}/excel', function (PurchaseOrder $purchaseOrder) {
             abort_unless($purchaseOrder->vendor_name === auth()->user()->name && $purchaseOrder->isReleased(), 403);
             $html = view('pdf.purchase-order', app(PurchaseOrderDocumentService::class)->data($purchaseOrder))->render();
-            return response()->streamDownload(fn () => print($html), "{$purchaseOrder->po_number}.xls", ['Content-Type' => 'application/vnd.ms-excel; charset=UTF-8']);
+            return \App\Support\HtmlToXlsx::download($html, $purchaseOrder->po_number);
         })->name('po.excel');
     });
 
@@ -273,10 +274,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
             $columns = ReportColumns::selectedGrn($request->query('columns'));
             $reportRows = ReportColumns::grnRows($gate, $gate->grnRecord);
-            return response()->streamDownload(
-                fn () => print (view('reports.grn-excel', ['gate' => $gate, 'grn' => $gate->grnRecord, 'qc' => $gate->qcResult, 'columns' => $columns, 'columnLabels' => ReportColumns::GRN, 'reportRows' => $reportRows])->render()),
-                'TAN90-GRN-'.trim($reference, '-').'.xls',
-                ['Content-Type' => 'application/vnd.ms-excel; charset=UTF-8'],
+            return \App\Support\HtmlToXlsx::download(
+                view('reports.grn-excel', ['gate' => $gate, 'grn' => $gate->grnRecord, 'qc' => $gate->qcResult, 'columns' => $columns, 'columnLabels' => ReportColumns::GRN, 'reportRows' => $reportRows])->render(),
+                'TAN90-GRN-'.trim($reference, '-'),
             );
         })->name('grn.export.excel');
     });
@@ -329,7 +329,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             abort_unless($canView, 403);
             $html = view('pdf.vendor-bill', app(VendorBillDocumentService::class)->data($submission))->render();
             $reference = preg_replace('/[^A-Za-z0-9._-]+/', '-', (string) ($submission->invoice_number ?: 'SUB-'.$submission->id));
-            return response()->streamDownload(fn () => print($html), 'TAN90-BILL-'.trim($reference ?: 'SUB-'.$submission->id, '-').'.xls', ['Content-Type' => 'application/vnd.ms-excel; charset=UTF-8']);
+            return \App\Support\HtmlToXlsx::download($html, 'TAN90-BILL-'.trim($reference ?: 'SUB-'.$submission->id, '-'));
         })->name('submission.excel');
     });
 
@@ -400,7 +400,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         })->name('admin.po.pdf');
         Route::get('admin/po/{purchaseOrder:po_number}/excel', function (PurchaseOrder $purchaseOrder) {
             $html = view('pdf.purchase-order', app(PurchaseOrderDocumentService::class)->data($purchaseOrder))->render();
-            return response()->streamDownload(fn () => print($html), "{$purchaseOrder->po_number}.xls", ['Content-Type' => 'application/vnd.ms-excel; charset=UTF-8']);
+            return \App\Support\HtmlToXlsx::download($html, $purchaseOrder->po_number);
         })->name('admin.po.excel');
     });
 

@@ -109,7 +109,7 @@ new #[Layout('layouts.app')] class extends Component
         RoleCapability::requireExport('stock_ledger');
         $rows = $this->balanceRows();
         $columns = array_values(array_intersect(array_keys($this->columnLabels), $this->columns));
-        return response()->streamDownload(fn () => print(view('reports.stock-balance-excel', ['rows' => $rows, 'columns' => $columns, 'labels' => $this->columnLabels])->render()), 'stock-balance-'.now()->format('Ymd-His').'.xls', ['Content-Type' => 'application/vnd.ms-excel; charset=UTF-8']);
+        return \App\Support\HtmlToXlsx::download(view('reports.stock-balance-excel', ['rows' => $rows, 'columns' => $columns, 'labels' => $this->columnLabels])->render(), 'stock-balance-'.now()->format('Ymd-His'));
     }
 
     public function with(): array

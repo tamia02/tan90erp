@@ -738,6 +738,55 @@ new #[Layout('layouts.app')] class extends Component
         $this->reset(['bypassingPoId', 'bypassReason']);
     }
 
+    // Edit the billing address of a saved PO (Zoho-pulled POs often have none,
+    // which blocks Release to vendor). Pre-fills from the vendor master.
+    public ?int $addressPoId = null;
+
+    public array $addressForm = [];
+
+    public function openAddressEdit(int $id): void
+    {
+        $po = PurchaseOrder::findOrFail($id);
+        $vendor = VendorMaster::where('vendor_name', $po->vendor_name)->first();
+        $this->addressPoId = $po->id;
+        $this->addressForm = [
+            'building' => (string) ($po->billing_building ?: $vendor?->address_building ?: $po->vendor_name),
+            'street' => (string) ($po->billing_street ?: $vendor?->address_street ?: ''),
+            'city' => (string) ($po->billing_city ?: $vendor?->address_city ?: ''),
+            'state' => (string) ($po->billing_state ?: $vendor?->address_state ?: ''),
+            'zip' => (string) ($po->billing_zip ?: $vendor?->address_zip ?: ''),
+        ];
+        $this->resetValidation();
+    }
+
+    public function saveAddress(bool $release = false): void
+    {
+        $po = PurchaseOrder::findOrFail($this->addressPoId);
+        $this->validate([
+            'addressForm.building' => ['required', 'string', 'max:255'],
+            'addressForm.street' => ['required', 'string', 'max:255'],
+            'addressForm.city' => ['required', 'string', 'max:100'],
+            'addressForm.state' => ['required', 'string', 'max:100'],
+            'addressForm.zip' => ['required', 'string', 'max:20'],
+        ], [], ['addressForm.building' => 'building / name', 'addressForm.street' => 'street', 'addressForm.city' => 'city', 'addressForm.state' => 'state', 'addressForm.zip' => 'PIN code']);
+
+        $po->update([
+            'billing_building' => trim($this->addressForm['building']),
+            'billing_street' => trim($this->addressForm['street']),
+            'billing_city' => trim($this->addressForm['city']),
+            'billing_state' => trim($this->addressForm['state']),
+            'billing_zip' => trim($this->addressForm['zip']),
+        ]);
+        AuditLogger::log('Purchase Order billing address edited', "{$po->po_number} · {$po->vendor_name}", $po);
+        $this->reset(['addressPoId', 'addressForm']);
+
+        if ($release) {
+            $this->releasePo($po->id);
+        } else {
+            session()->flash('po-released', "{$po->po_number}: billing address saved.");
+        }
+    }
+
     public function releasePo(int $id): void
     {
         $po = PurchaseOrder::with('lines')->findOrFail($id);
@@ -747,7 +796,11 @@ new #[Layout('layouts.app')] class extends Component
         }
 
         if (! $po->billing_building || ! $po->billing_street || ! $po->billing_city || ! $po->billing_state || ! $po->billing_zip) {
-            throw ValidationException::withMessages(['po' => 'Complete the PO billing address before releasing it.']);
+            // Open the address box on this PO's row so it can be fixed right here.
+            $this->openAddressEdit($po->id);
+            $this->addError('addressEdit', 'This PO has no complete billing address. Fill it below, then Save & release.');
+
+            return;
         }
         // Delivery-state/GST-code validation is intentionally bypassed for
         // now. Tax breakdown remains fail-safe for an unmapped place of supply.
@@ -1267,12 +1320,34 @@ new #[Layout('layouts.app')] class extends Component
                                     <a href="{{ route('admin.po.pdf', $po->po_number) }}" target="_blank" class="font-medium" style="color: var(--brand);">PDF + QR</a>
                                     <a href="{{ route('admin.po.excel', $po->po_number) }}" class="font-medium" style="color: var(--brand);">Download Excel</a>
                                     @unless ($po->isReleased())
+                                        <button type="button" wire:click="openAddressEdit({{ $po->id }})" class="font-medium" style="color: var(--brand);">Edit address</button>
                                         <button wire:click="releasePo({{ $po->id }})" wire:loading.attr="disabled" wire:target="releasePo({{ $po->id }})" wire:confirm="Release {{ $po->po_number }} to {{ $po->vendor_name }}? They'll be able to see and acknowledge it in their portal." class="font-medium disabled:opacity-50" style="color: var(--brand);">Release to vendor</button>
                                     @endunless
                                     <button wire:click="deletePo({{ $po->id }})" wire:confirm="Remove PO {{ $po->po_number }}?" style="color: var(--status-critical);">Remove</button>
                                 </div>
                             </td>
                         </tr>
+                        @if ($addressPoId === $po->id)
+                            <tr style="background: var(--surface-2);" wire:key="po-address-{{ $po->id }}">
+                                <td colspan="6" class="px-4 py-3">
+                                    <div class="text-sm font-semibold mb-1" style="color: var(--text-primary);">Billing address for {{ $po->po_number }}</div>
+                                    @error('addressEdit') <div role="alert" class="text-xs mb-2" style="color: var(--status-warning);">{{ $message }}</div> @enderror
+                                    <div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                                        @foreach (['building' => 'Building / name', 'street' => 'Street', 'city' => 'City', 'state' => 'State', 'zip' => 'PIN code'] as $key => $label)
+                                            <label class="flex flex-col gap-1 text-xs" style="color: var(--text-secondary);">{{ $label }}
+                                                <input wire:model="addressForm.{{ $key }}" class="rounded-lg border px-2 py-1.5 text-sm" style="border-color: var(--border);">
+                                                @error('addressForm.'.$key) <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                    <div class="flex flex-wrap gap-2 mt-3">
+                                        <button type="button" wire:click="saveAddress(true)" wire:loading.attr="disabled" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--brand);">Save &amp; release to vendor</button>
+                                        <button type="button" wire:click="saveAddress(false)" wire:loading.attr="disabled" class="rounded-lg border px-3 py-1.5 text-sm font-semibold" style="border-color: var(--border); color: var(--text-primary);">Save only</button>
+                                        <button type="button" wire:click="$set('addressPoId', null)" class="text-sm" style="color: var(--text-muted);">Cancel</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endif
                         @if ($expanded === $po->id)
                             <tr style="background: var(--surface-2);">
                                 <td></td>

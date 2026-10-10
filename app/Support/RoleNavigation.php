@@ -58,6 +58,7 @@ class RoleNavigation
             Role::Guard => [
                 ['label' => 'Guard Dashboard', 'route' => 'guard.dashboard', 'icon' => 'gauge'],
                 ['label' => 'New Gate Pass', 'route' => 'guard.scan', 'icon' => 'scan-line'],
+                ['label' => 'Vehicles Inside (Truck Out)', 'route' => 'guard.inside', 'icon' => 'log-out'],
                 ['label' => 'Past Gate Entries', 'route' => 'guard.entries', 'icon' => 'clipboard-list'],
             ],
             Role::Vendor => [

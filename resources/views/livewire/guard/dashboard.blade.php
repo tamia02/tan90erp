@@ -25,6 +25,11 @@ new #[Layout('layouts.app')] class extends Component
             'todayCount' => GateEntry::whereDate('created_at', today())->count(),
             'pendingCount' => GateEntry::where('status', 'pending_validation')->count(),
             'breachedCount' => GateEntry::where('status', '!=', 'closed')->where('sla_deadline', '<', now())->count(),
+            'insideCount' => GateEntry::query()->where(function ($q) {
+                $q->where(fn ($i) => $i->where('entry_type', 'inward')->whereNull('exited_at')->where('created_at', '>=', now()->subDays(2)->startOfDay()))
+                    ->orWhere(fn ($o) => $o->where('entry_type', 'outward')->whereNull('exited_at')->where('status', '!=', 'dispatched'))
+                    ->orWhere(fn ($v) => $v->where('entry_type', 'visitor')->where('status', 'checked_in'));
+            })->count(),
             'visitorsOnSite' => GateEntry::where('entry_type', 'visitor')->where('status', 'checked_in')->count(),
             // Scoped to today, not just "most recent 5 ever".
             'recent' => GateEntry::whereDate('created_at', today())->latest('created_at')->limit(5)->get(),
@@ -41,6 +46,7 @@ new #[Layout('layouts.app')] class extends Component
         <p class="text-sm mt-1" style="color: var(--text-secondary);">Today's gate activity at a glance.</p>
         <div class="flex flex-wrap gap-2 mt-4">
             <a href="{{ route('guard.scan') }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold text-white" style="background: var(--brand);">Create gate entry</a>
+            <a href="{{ route('guard.inside') }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold text-white" style="background: var(--status-good);">Truck Out ({{ $insideCount }} inside)</a>
             <a href="{{ route('guard.entries', ['type' => 'inward']) }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Inward log</a>
             <a href="{{ route('guard.entries', ['type' => 'outward']) }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Outward log</a>
             <a href="{{ route('guard.entries', ['type' => 'visitor']) }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Visitor log</a>
