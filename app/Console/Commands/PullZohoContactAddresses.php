@@ -71,7 +71,10 @@ class PullZohoContactAddresses extends Command
                         $done = $type === 'vendor' ? $addresses->fillVendor($row) : $addresses->fillCustomer($row);
                         $filled[$type] += $done ? 1 : 0;
                     } catch (Throwable $e) {
-                        $this->warn(($row->vendor_name ?? $row->name).': '.$e->getMessage());
+                        // One bad record (e.g. odd data) must not stop the run: note it and go on.
+                        $this->warn(($row->vendor_name ?? $row->name).': '.mb_substr($e->getMessage(), 0, 200));
+
+                        continue;
                     }
                     if ($row->zoho_address_checked_at === null) {
                         $this->warn('Zoho stopped answering (likely the daily limit) - the next run continues.');

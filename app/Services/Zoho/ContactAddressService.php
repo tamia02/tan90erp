@@ -100,13 +100,16 @@ class ContactAddressService
             return array_filter(['state' => $contact['place_of_contact_formatted'] ?? null]);
         }
 
+        // Columns hold 255 characters (zip 20); some Zoho streets are far longer.
+        $fit = fn ($v, $len = 255) => ($v = trim((string) $v)) === '' ? null : mb_substr($v, 0, $len);
+
         return array_filter([
-            'building' => trim((string) ($a['attention'] ?? '')) ?: null,
-            'street' => trim(($a['address'] ?? '').' '.($a['street2'] ?? '')) ?: null,
-            'city' => $a['city'] ?? null,
-            'state' => $a['state'] ?? null,
-            'zip' => $a['zip'] ?? null,
-            'country' => $a['country'] ?? null,
+            'building' => $fit($a['attention'] ?? ''),
+            'street' => $fit(($a['address'] ?? '').' '.($a['street2'] ?? '')),
+            'city' => $fit($a['city'] ?? ''),
+            'state' => $fit($a['state'] ?? ''),
+            'zip' => $fit($a['zip'] ?? '', 20),
+            'country' => $fit($a['country'] ?? ''),
         ]);
     }
 

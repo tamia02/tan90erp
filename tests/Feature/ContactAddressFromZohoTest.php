@@ -27,10 +27,11 @@ class ContactAddressFromZohoTest extends TestCase
         ]]);
         Http::fake([
             'accounts.zoho.test/*' => Http::response(['access_token' => 't']),
+            'zoho.test/inventory/v1/contacts/333*' => Http::response(['contact' => ['billing_address' => ['address' => str_repeat('Dag no. 775, ', 60), 'city' => 'Hooghly', 'zip' => '712311']]]),
             'zoho.test/inventory/v1/contacts/111*' => Http::response(['contact' => ['billing_address' => ['attention' => 'Unit 4', 'address' => 'MIDC Road', 'street2' => 'Phase 2', 'city' => 'Thane', 'state' => 'Maharashtra', 'zip' => '400604', 'country' => 'India']]]),
             'zoho.test/inventory/v1/contacts/222*' => Http::response(['contact' => ['billing_address' => [], 'shipping_address' => ['address' => 'Plot 9', 'city' => 'Pune', 'state' => 'Maharashtra', 'zip' => '411001']]]),
             'zoho.test/inventory/v1/contacts*' => fn ($request) => Http::response(['contacts' => [
-                ['contact_name' => 'Acme Chemicals', 'contact_id' => '111'], ['contact_name' => 'Fresh Dairy', 'contact_id' => '222'],
+                ['contact_name' => 'Acme Chemicals', 'contact_id' => '111'], ['contact_name' => 'Fresh Dairy', 'contact_id' => '222'], ['contact_name' => 'Long Street Ltd', 'contact_id' => '333'],
             ]]),
         ]);
     }
@@ -62,10 +63,13 @@ class ContactAddressFromZohoTest extends TestCase
     {
         VendorMaster::create(['vendor_name' => 'Acme Chemicals', 'gst_number' => 'X', 'contact_phone' => '1', 'category' => 'RM', 'active' => true]);
         VendorMaster::create(['vendor_name' => 'Not In Zoho', 'gst_number' => 'Y', 'contact_phone' => '1', 'category' => 'RM', 'active' => true]);
+        VendorMaster::create(['vendor_name' => 'Long Street Ltd', 'gst_number' => 'Z', 'contact_phone' => '1', 'category' => 'RM', 'active' => true]);
 
         $this->artisan('zoho:pull-contact-addresses')->assertSuccessful();
 
         $this->assertSame('Thane', VendorMaster::where('vendor_name', 'Acme Chemicals')->value('address_city'));
+        // A street longer than the column is cut to fit instead of failing (Zoho has 500+ character ones).
+        $this->assertSame('Hooghly', VendorMaster::where('vendor_name', 'Long Street Ltd')->value('address_city'));
         // Asked once and marked, so the next night skips it.
         $this->assertNotNull(VendorMaster::where('vendor_name', 'Not In Zoho')->value('zoho_address_checked_at'));
         $this->artisan('zoho:pull-contact-addresses')->expectsOutputToContain('0 vendors')->assertSuccessful();
