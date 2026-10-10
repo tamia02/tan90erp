@@ -1,0 +1,73 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Enums\Role;
+use App\Models\Tan90\MasterData\Customer;
+use App\Models\User;
+use App\Models\VendorMaster;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Livewire\Volt\Volt;
+use Tests\TestCase;
+
+// 2026-10-10: PO form showed "City not mapped" - Zoho's contact list has no
+// address, so none were ever imported. Picking a vendor / customer now asks
+// Zoho (GET only) once; an address typed on a PO is kept for the next one.
+class ContactAddressFromZohoTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['services.zoho_items_pull' => [
+            'organization_id' => '1', 'refresh_token' => 'r', 'client_id' => 'c', 'client_secret' => 's',
+            'accounts_url' => 'https://accounts.zoho.test', 'api_base_url' => 'https://zoho.test/inventory/v1',
+        ]]);
+        Http::fake([
+            'accounts.zoho.test/*' => Http::response(['access_token' => 't']),
+            'zoho.test/inventory/v1/contacts/111*' => Http::response(['contact' => ['billing_address' => ['attention' => 'Unit 4', 'address' => 'MIDC Road', 'street2' => 'Phase 2', 'city' => 'Thane', 'state' => 'Maharashtra', 'zip' => '400604', 'country' => 'India']]]),
+            'zoho.test/inventory/v1/contacts/222*' => Http::response(['contact' => ['billing_address' => [], 'shipping_address' => ['address' => 'Plot 9', 'city' => 'Pune', 'state' => 'Maharashtra', 'zip' => '411001']]]),
+            'zoho.test/inventory/v1/contacts*' => fn ($request) => Http::response(['contacts' => [
+                ['contact_name' => 'Acme Chemicals', 'contact_id' => '111'], ['contact_name' => 'Fresh Dairy', 'contact_id' => '222'],
+            ]]),
+        ]);
+    }
+
+    public function test_picking_a_vendor_with_no_address_fills_it_from_zoho(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => Role::StoreManager]));
+        $vendor = VendorMaster::create(['vendor_name' => 'Acme Chemicals', 'gst_number' => '27AABCP1234Q1Z5', 'contact_phone' => '1', 'category' => 'Raw Material', 'active' => true]);
+
+        Volt::test('admin.po-master')->call('selectVendor', 'Acme Chemicals')
+            ->assertSet('billingCity', 'Thane')->assertSet('billingZip', '400604')->assertSet('billingStreet', 'MIDC Road Phase 2');
+
+        $vendor->refresh();
+        $this->assertSame('Thane', $vendor->address_city);
+        $this->assertNotNull($vendor->zoho_address_checked_at);
+        Http::assertNotSent(fn ($request) => $request->method() !== 'GET' && ! str_contains($request->url(), 'oauth'));
+    }
+
+    public function test_picking_a_customer_as_delivery_fills_the_full_address(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => Role::StoreManager]));
+        Customer::create(['code' => 'ZC-FRESH', 'name' => 'Fresh Dairy', 'segment' => 'Dairy', 'status' => 'active', 'approval_status' => 'approved']);
+
+        Volt::test('admin.po-master')->set('warehouseLocation', 'Fresh Dairy')
+            ->assertSet('shippingStreet', 'Plot 9')->assertSet('shippingCity', 'Pune')->assertSet('shippingZip', '411001');
+    }
+
+    public function test_nightly_command_fills_and_marks_contacts(): void
+    {
+        VendorMaster::create(['vendor_name' => 'Acme Chemicals', 'gst_number' => 'X', 'contact_phone' => '1', 'category' => 'RM', 'active' => true]);
+        VendorMaster::create(['vendor_name' => 'Not In Zoho', 'gst_number' => 'Y', 'contact_phone' => '1', 'category' => 'RM', 'active' => true]);
+
+        $this->artisan('zoho:pull-contact-addresses')->assertSuccessful();
+
+        $this->assertSame('Thane', VendorMaster::where('vendor_name', 'Acme Chemicals')->value('address_city'));
+        // Asked once and marked, so the next night skips it.
+        $this->assertNotNull(VendorMaster::where('vendor_name', 'Not In Zoho')->value('zoho_address_checked_at'));
+        $this->artisan('zoho:pull-contact-addresses')->expectsOutputToContain('0 vendors')->assertSuccessful();
+    }
+}

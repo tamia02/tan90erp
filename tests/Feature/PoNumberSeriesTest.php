@@ -55,18 +55,33 @@ class PoNumberSeriesTest extends TestCase
         $vendor = VendorMaster::create(['vendor_name' => 'Series Vendor', 'gst_number' => '27AABCP1234Q1Z5', 'contact_phone' => '1', 'category' => 'Raw Material', 'active' => true]);
         SkuMaster::create(['sku' => 'Series RM', 'category' => 'PCM — Raw Material', 'unit' => 'KG']);
         $fy = NumberSeriesService::financialYear();
-        PurchaseOrder::factory()->create(['po_number' => "PO RM {$fy} 0001"]); // typed by hand earlier
+        // 2026-10-10: Zoho format POxx{FY}{####}, continuing after the highest existing one.
+        PurchaseOrder::factory()->create(['po_number' => "PO RM {$fy} 0001"]); // old spaced ERP number
+        PurchaseOrder::factory()->create(['po_number' => "PORM{$fy}0063"]);   // pulled from Zoho
 
-        $make = fn (string $poNumber) => Volt::test('admin.po-master')
-            ->set('purchaseNature', 'Raw Material')->call('selectVendor', $vendor->vendor_name)->set('poNumber', $poNumber)
-            ->set('billingBuilding', 'Office')->set('billingStreet', 'Road')->set('billingCity', 'Thane')
-            ->set('billingState', 'Maharashtra')->set('billingZip', '400604')
-            ->set('items.0.product', 'Series RM')->set('items.0.hsnSac', '3824')
-            ->set('items.0.quantity', '10')->set('items.0.uom', 'KG')->set('items.0.listPrice', '40')
-            ->call('saveAndSubmit')->assertHasNoErrors();
+        $make = function (string $poNumber, string $nature = 'Raw Material') use ($vendor) {
+            $page = Volt::test('admin.po-master')->set('purchaseNature', $nature)->call('selectVendor', $vendor->vendor_name);
+            if ($poNumber !== 'auto') {
+                $page->set('poNumber', $poNumber);
+            }
 
+            return $page->set('billingBuilding', 'Office')->set('billingStreet', 'Road')->set('billingCity', 'Thane')
+                ->set('billingState', 'Maharashtra')->set('billingZip', '400604')
+                ->set('items.0.product', 'Series RM')->set('items.0.hsnSac', '3824')
+                ->set('items.0.quantity', '10')->set('items.0.uom', 'KG')->set('items.0.listPrice', '40')
+                ->call('saveAndSubmit')->assertHasNoErrors();
+        };
+
+        // Choosing the type fills the number in the form straight away.
+        Volt::test('admin.po-master')->set('purchaseNature', 'Trading')->assertSet('poNumber', "POTG{$fy}0001")->assertSet('poNumberAuto', true);
+        Volt::test('admin.po-master')->set('purchaseNature', 'Raw Material')->assertSet('poNumber', "PORM{$fy}0064");
+
+        $make('auto');
+        $this->assertTrue(PurchaseOrder::where('po_number', "PORM{$fy}0064")->exists());
         $make('');
-        $this->assertTrue(PurchaseOrder::where('po_number', "PO RM {$fy} 0002")->exists()); // skipped the taken 0001
+        $this->assertTrue(PurchaseOrder::where('po_number', "PORM{$fy}0065")->exists()); // next one in order
+        $make('auto', 'Trading');
+        $this->assertTrue(PurchaseOrder::where('po_number', "POTG{$fy}0001")->exists());
         $make('MANUAL-77');
         $this->assertTrue(PurchaseOrder::where('po_number', 'MANUAL-77')->exists());
     }

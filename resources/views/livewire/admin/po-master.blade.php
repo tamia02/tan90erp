@@ -156,9 +156,30 @@ new #[Layout('layouts.app')] class extends Component
         $this->adding = true;
     }
 
+    // True while the PO number field holds the auto-suggested number (not typed).
+    public bool $poNumberAuto = false;
+
+    public function updatedPoNumber(): void
+    {
+        $this->poNumberAuto = false;
+    }
+
+    // Choosing the PO type fills the next number (POTG26270147); typing your own keeps it.
+    private function suggestPoNumber(): void
+    {
+        if (trim($this->poNumber) !== '' && ! $this->poNumberAuto) {
+            return;
+        }
+        $next = app(\App\Services\PoNumberService::class)->next($this->purchaseNature, $this->materialType);
+        $this->poNumber = (string) $next;
+        $this->poNumberAuto = $next !== null;
+        $this->resetValidation('poNumber');
+    }
+
     public function updatedPurchaseNature(): void
     {
         $this->applyNatureDefaults();
+        $this->suggestPoNumber();
         $this->termsTemplateId = '';
         $this->termsAndConditions = '';
         $this->resetValidation(['purchaseNature', 'materialType', 'paymentTerms', 'termsTemplateId']);
@@ -184,6 +205,7 @@ new #[Layout('layouts.app')] class extends Component
         if ($this->purchaseNature && isset(self::NATURE_CONFIG[$this->purchaseNature])) {
             $this->materialType = self::NATURE_CONFIG[$this->purchaseNature]['materialType'];
         }
+        $this->suggestPoNumber();
 
         $template = $this->termsTemplateId
             ? PurchaseOrderTermsTemplate::whereKey($this->termsTemplateId)->where('material_type', $this->materialType)->where('active', true)->first()
@@ -222,6 +244,10 @@ new #[Layout('layouts.app')] class extends Component
     public function selectVendor(string $vendorName): void
     {
         $vendor = VendorMaster::where('vendor_name', $vendorName)->firstOrFail();
+        // No address saved yet: ask Zoho once (read-only) before filling the form.
+        if (blank($vendor->address_city) && ! $vendor->zoho_address_checked_at) {
+            app(\App\Services\Zoho\ContactAddressService::class)->fillVendor($vendor);
+        }
 
         $this->vendorName = $vendorName;
         $this->vendorSearch = $vendorName;
@@ -279,14 +305,17 @@ new #[Layout('layouts.app')] class extends Component
         if (! $warehouse && ! $location && ! $customer) {
             return;
         }
+        if ($customer && blank($customer->address_zip) && ! $customer->zoho_address_checked_at) {
+            app(\App\Services\Zoho\ContactAddressService::class)->fillCustomer($customer);
+        }
 
         $this->sameAsBillingAddress = false;
         $this->shippingAddressMode = 'new';
-        $this->shippingBuilding = (string) ($warehouse?->name ?? $location?->name ?? $customer?->name ?? '');
-        $this->shippingStreet = (string) ($location?->address ?? '');
+        $this->shippingBuilding = (string) ($warehouse?->name ?? $location?->name ?? ($customer?->address_building ?: $customer?->name) ?? '');
+        $this->shippingStreet = (string) ($location?->address ?? $customer?->address_street ?? '');
         $this->shippingCity = (string) ($location?->city ?? $customer?->city ?? '');
         $this->shippingState = (string) ($location?->state ?? $customer?->state ?? '');
-        $this->shippingZip = (string) ($location?->pincode ?? '');
+        $this->shippingZip = (string) ($location?->pincode ?? $customer?->address_zip ?? '');
         $this->resetValidation(['shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip']);
     }
 
@@ -403,25 +432,15 @@ new #[Layout('layouts.app')] class extends Component
         $this->persistPo(true, false);
     }
 
-    // Blank PO Number = next number from the PO category's series (Master Data >
-    // Number Series, restarts each April). A typed number is used as before.
+    // Blank or auto-filled PO Number = next number in the Zoho format
+    // (POTG26270147, restarts each April), re-checked at save time in case
+    // someone else saved that number meanwhile. A typed number is used as before.
     private function fillPoNumberFromSeries(): void
     {
-        if (trim($this->poNumber) !== '' || $this->purchaseNature === '') {
+        if ((trim($this->poNumber) !== '' && ! $this->poNumberAuto) || $this->purchaseNature === '') {
             return;
         }
-        $series = app(\App\Services\Tan90\MasterData\NumberSeriesService::class);
-        for ($try = 0; $try < 50; $try++) {
-            $number = $series->next('Purchase Order: '.$this->purchaseNature);
-            if ($number === null) {
-                return;
-            }
-            if (! PurchaseOrder::where('po_number', $number)->exists()) {
-                $this->poNumber = $number;
-
-                return;
-            }
-        }
+        $this->poNumber = (string) app(\App\Services\PoNumberService::class)->next($this->purchaseNature, $this->materialType);
     }
 
     private function persistPo(bool $submit, bool $releaseToVendor = false): void
@@ -568,8 +587,9 @@ new #[Layout('layouts.app')] class extends Component
         }
 
         AuditLogger::log($releaseToVendor ? 'Purchase Order released to vendor' : ($submit ? 'Purchase Order submitted for release' : 'Purchase Order saved as draft'), "{$po->po_number} · {$po->vendor_name}", $po);
+        $this->rememberVendorAddress($po->vendor_name, [$this->billingBuilding, $this->billingStreet, $this->billingCity, $this->billingState, $this->billingZip]);
 
-        $this->reset(['poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'materialType', 'pdfTemplate', 'termsTemplateId', 'shipmentPreference', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'poNotes', 'autoTerms', 'autoNotes', 'headerCustomFields', 'zohoFields', 'reverseCharge', 'attachments', 'vendorSearch', 'adding', 'shippingAddressMode', 'sameAsBillingAddress']);
+        $this->reset(['poNumber', 'poNumberAuto', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'materialType', 'pdfTemplate', 'termsTemplateId', 'shipmentPreference', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'poNotes', 'autoTerms', 'autoNotes', 'headerCustomFields', 'zohoFields', 'reverseCharge', 'attachments', 'vendorSearch', 'adding', 'shippingAddressMode', 'sameAsBillingAddress']);
         $this->billingCountry = $this->shippingCountry = 'India';
         $this->purchaseNature = '';
         $this->materialType = '';
@@ -585,7 +605,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function cancelPo(): void
     {
-        $this->reset(['adding', 'poNumber', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'poNotes', 'autoTerms', 'autoNotes', 'headerCustomFields', 'zohoFields', 'attachments', 'vendorSearch', 'shippingAddressMode', 'sameAsBillingAddress']);
+        $this->reset(['adding', 'poNumber', 'poNumberAuto', 'subject', 'vendorName', 'poDate', 'dueDate', 'referenceNumber', 'paymentTerms', 'validUpto', 'purchaseNature', 'billingBuilding', 'billingStreet', 'billingCity', 'billingState', 'billingZip', 'shippingBuilding', 'shippingStreet', 'shippingCity', 'shippingState', 'shippingZip', 'warehouseLocation', 'warehouseSearch', 'termsAndConditions', 'poNotes', 'autoTerms', 'autoNotes', 'headerCustomFields', 'zohoFields', 'attachments', 'vendorSearch', 'shippingAddressMode', 'sameAsBillingAddress']);
         $this->items = [['product' => '', 'hsnSac' => '', 'quantity' => '', 'uom' => 'PCS', 'listPrice' => '', 'customFields' => []]];
         $this->billingCountry = $this->shippingCountry = 'India';
         $this->materialType = '';
@@ -738,6 +758,20 @@ new #[Layout('layouts.app')] class extends Component
         $this->reset(['bypassingPoId', 'bypassReason']);
     }
 
+    // A vendor with no address saved (most Zoho vendors have none) keeps the one
+    // typed on its PO, so the next PO fills it. ERP only: written without model
+    // events, so nothing is pushed to Zoho. A saved address is never overwritten.
+    private function rememberVendorAddress(string $vendorName, array $address): void
+    {
+        [$building, $street, $city, $state, $zip] = array_map(fn ($v) => trim((string) $v), $address + array_fill(0, 5, ''));
+        if ($city === '' || $zip === '') {
+            return;
+        }
+        \Illuminate\Support\Facades\DB::table('vendor_masters')->where('vendor_name', $vendorName)
+            ->where(fn ($q) => $q->whereNull('address_city')->orWhere('address_city', ''))
+            ->update(['address_building' => $building ?: null, 'address_street' => $street ?: null, 'address_city' => $city, 'address_state' => $state ?: null, 'address_zip' => $zip]);
+    }
+
     // Edit the billing address of a saved PO (Zoho-pulled POs often have none,
     // which blocks Release to vendor). Pre-fills from the vendor master.
     public ?int $addressPoId = null;
@@ -778,6 +812,7 @@ new #[Layout('layouts.app')] class extends Component
             'billing_zip' => trim($this->addressForm['zip']),
         ]);
         AuditLogger::log('Purchase Order billing address edited', "{$po->po_number} · {$po->vendor_name}", $po);
+        $this->rememberVendorAddress($po->vendor_name, array_values($this->addressForm));
         $this->reset(['addressPoId', 'addressForm']);
 
         if ($release) {
@@ -836,16 +871,20 @@ new #[Layout('layouts.app')] class extends Component
             ? VendorMaster::where('vendor_name', $this->vendorName)->first()
             : null;
 
-        $deliveryLocations = Warehouse::with('location')->orderBy('name')->get()->map(fn ($warehouse) => [
+        // "Name · City, State"; with no address yet just the name (picking it fetches it from Zoho).
+        $place = fn (...$parts) => ($p = collect($parts)->filter()->implode(', ')) ? ' · '.$p : '';
+        $search = trim($this->warehouseSearch);
+        $deliveryLocations = Warehouse::with('location')->orderBy('name')->get()->toBase()->map(fn ($warehouse) => [
             'value' => $warehouse->name,
-            'label' => $warehouse->name.' · '.($warehouse->location?->city ?: 'Location not mapped').($warehouse->location?->state ? ', '.$warehouse->location->state : ''),
+            'label' => $warehouse->name.$place($warehouse->location?->city, $warehouse->location?->state),
         ])->merge(Location::orderBy('name')->get()->map(fn ($location) => [
             'value' => $location->name,
-            'label' => $location->name.' · '.($location->city ?: 'City not mapped').($location->state ? ', '.$location->state : ''),
-        ]))->merge(Customer::orderBy('name')->get()->map(fn ($customer) => [
-            'value' => $customer->name,
-            'label' => $customer->name.' · customer · '.($customer->city ?: 'City not mapped').($customer->state ? ', '.$customer->state : ''),
-        ]))->unique('value')->values();
+            'label' => $location->name.$place($location->city, $location->state),
+        ]))->merge(Customer::when($search !== '', fn ($q) => $q->where('name', 'like', '%'.$search.'%'))
+            ->orderBy('name')->limit(50)->get()->map(fn ($customer) => [ // 3,000+ customers: only the ones matching the search
+                'value' => $customer->name,
+                'label' => $customer->name.' · customer'.$place($customer->city, $customer->state),
+            ]))->unique('value')->values();
 
         if (trim($this->warehouseSearch) !== '') {
             $needle = Str::lower(trim($this->warehouseSearch));
@@ -1004,7 +1043,8 @@ new #[Layout('layouts.app')] class extends Component
             </div>
             <label class="flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">PO Number</span>
-                <input wire:model="poNumber" class="rounded-lg border px-3 py-2 text-sm" style="border-color: {{ $errors->has('poNumber') ? 'var(--status-critical)' : 'var(--border)' }};" aria-invalid="{{ $errors->has('poNumber') ? 'true' : 'false' }}" placeholder="{{ ($purchaseNature && ($nextPo = app(\App\Services\Tan90\MasterData\NumberSeriesService::class)->peek('Purchase Order: '.$purchaseNature))) ? 'Leave blank for next: '.$nextPo : 'PO RM 2627 0099' }}" />
+                <input wire:model="poNumber" class="rounded-lg border px-3 py-2 text-sm" style="border-color: {{ $errors->has('poNumber') ? 'var(--status-critical)' : 'var(--border)' }};" aria-invalid="{{ $errors->has('poNumber') ? 'true' : 'false' }}" placeholder="Choose Nature of PO - the next number fills in" />
+                @if ($poNumberAuto) <span class="text-xs" style="color: var(--text-muted);">Next number for this PO type. You can type your own instead.</span> @endif
                 @error('poNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>
             <label class="flex flex-col gap-1.5 text-sm">
