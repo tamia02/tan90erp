@@ -26,6 +26,18 @@ new #[Layout('layouts.app')] class extends Component
     public ?int $expanded = null;
     public string $poLookup = '';
 
+    public int $poLimit = 25;
+
+    public function updatedPoLookup(): void
+    {
+        $this->poLimit = 25;
+    }
+
+    public function showMorePos(): void
+    {
+        $this->poLimit += 50;
+    }
+
     public string $poNumber = '';
     public string $subject = '';
     public string $vendorName = '';
@@ -892,9 +904,16 @@ new #[Layout('layouts.app')] class extends Component
         }
 
         return [
+            // Only the latest $poLimit POs: with 2,000+ POs the full list made every
+            // click re-send ~8 MB of HTML (Add PO looked dead, whole page lagged).
             'orders' => PurchaseOrder::with(['lines', 'acknowledgement'])
-                ->when($this->poLookup !== '', fn ($query) => $query->where('po_number', 'like', '%'.$this->poLookup.'%'))
-                ->orderByDesc('created_at')->get(),
+                ->when(trim($this->poLookup) !== '', fn ($query) => $query->where(fn ($q) => $q
+                    ->where('po_number', 'like', '%'.trim($this->poLookup).'%')
+                    ->orWhere('vendor_name', 'like', '%'.trim($this->poLookup).'%')))
+                ->orderByDesc('created_at')->limit($this->poLimit)->get(),
+            'ordersTotal' => PurchaseOrder::when(trim($this->poLookup) !== '', fn ($query) => $query->where(fn ($q) => $q
+                ->where('po_number', 'like', '%'.trim($this->poLookup).'%')
+                ->orWhere('vendor_name', 'like', '%'.trim($this->poLookup).'%')))->count(),
             'vendors' => VendorMaster::withAddress()->when($this->vendorSearch, fn ($query) => $query->where(function ($q) {
                 $term = '%'.$this->vendorSearch.'%';
                 $q->where('vendor_name', 'like', $term)->orWhere('gst_number', 'like', $term);
@@ -1293,6 +1312,10 @@ new #[Layout('layouts.app')] class extends Component
         </div>
     @endif
 
+    <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+        <input wire:model.live.debounce.400ms="poLookup" type="search" placeholder="Search PO number or vendor" aria-label="Search purchase orders" class="rounded-lg border px-3 py-2 text-sm sm:w-80" style="border-color: var(--border); background: var(--surface-1);" />
+        <span class="text-xs" style="color: var(--text-muted);">Showing {{ min($orders->count(), $ordersTotal) }} of {{ $ordersTotal }} POs, newest first</span>
+    </div>
     <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -1426,4 +1449,9 @@ new #[Layout('layouts.app')] class extends Component
             </table>
         </div>
     </div>
+    @if ($orders->count() < $ordersTotal)
+        <div class="mt-3 text-center">
+            <button type="button" wire:click="showMorePos" wire:loading.attr="disabled" class="rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50" style="border-color: var(--border); color: var(--brand);">Show 50 more</button>
+        </div>
+    @endif
 </div>
