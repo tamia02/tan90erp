@@ -92,4 +92,19 @@ class ContactAddressFromZohoTest extends TestCase
         Volt::test('admin.po-master')->call('selectVendor', 'Acme Chemicals')->assertSet('billingCity', 'Vapi')->assertSet('billingZip', '396195');
         $this->artisan('zoho:pull-contact-addresses')->assertFailed();
     }
+
+    public function test_pickers_hide_vendors_and_customers_without_an_address(): void
+    {
+        config(['services.zoho_items_pull.address_pull_enabled' => false]);
+        $this->actingAs(User::factory()->create(['role' => Role::StoreManager]));
+        VendorMaster::create(['vendor_name' => 'Has Address Co', 'gst_number' => 'A', 'contact_phone' => '1', 'category' => 'RM', 'active' => true, 'address_city' => 'Thane', 'address_zip' => '400604']);
+        VendorMaster::create(['vendor_name' => 'No Address Co', 'gst_number' => 'B', 'contact_phone' => '1', 'category' => 'RM', 'active' => true]);
+        Customer::create(['code' => 'ZC-HAS', 'name' => 'Customer With City', 'segment' => 'Other', 'city' => 'Pune', 'status' => 'active', 'approval_status' => 'approved']);
+        Customer::create(['code' => 'ZC-NO', 'name' => 'Customer Without City', 'segment' => 'Other', 'status' => 'active', 'approval_status' => 'approved']);
+
+        Volt::test('admin.po-master')->set('adding', true)->set('vendorSearch', 'Co')
+            ->assertSee('Has Address Co')->assertDontSee('No Address Co')
+            ->set('warehouseSearch', 'Customer')->assertSee('Customer With City')->assertDontSee('Customer Without City')
+            ->assertDontSee('City not mapped');
+    }
 }

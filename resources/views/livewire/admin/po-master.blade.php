@@ -880,7 +880,7 @@ new #[Layout('layouts.app')] class extends Component
         ])->merge(Location::orderBy('name')->get()->map(fn ($location) => [
             'value' => $location->name,
             'label' => $location->name.$place($location->city, $location->state),
-        ]))->merge(Customer::when($search !== '', fn ($q) => $q->where('name', 'like', '%'.$search.'%'))
+        ]))->merge(Customer::withAddress()->when($search !== '', fn ($q) => $q->where('name', 'like', '%'.$search.'%'))
             ->orderBy('name')->limit(50)->get()->map(fn ($customer) => [ // 3,000+ customers: only the ones matching the search
                 'value' => $customer->name,
                 'label' => $customer->name.' · customer'.$place($customer->city, $customer->state),
@@ -895,7 +895,7 @@ new #[Layout('layouts.app')] class extends Component
             'orders' => PurchaseOrder::with(['lines', 'acknowledgement'])
                 ->when($this->poLookup !== '', fn ($query) => $query->where('po_number', 'like', '%'.$this->poLookup.'%'))
                 ->orderByDesc('created_at')->get(),
-            'vendors' => VendorMaster::when($this->vendorSearch, fn ($query) => $query->where(function ($q) {
+            'vendors' => VendorMaster::withAddress()->when($this->vendorSearch, fn ($query) => $query->where(function ($q) {
                 $term = '%'.$this->vendorSearch.'%';
                 $q->where('vendor_name', 'like', $term)->orWhere('gst_number', 'like', $term);
             }))->orderBy('vendor_name')->limit(50)->get(),

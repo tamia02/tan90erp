@@ -37,10 +37,12 @@ class PullZohoContactAddresses extends Command
             $addresses->setPause(app()->runningUnitTests() ? 0 : (int) $this->option('pause')); // 1100 = about 55 calls a minute
 
             $onPos = DB::table('purchase_orders')->distinct()->pluck('vendor_name')->flip();
-            $vendors = VendorMaster::whereNull('zoho_address_checked_at')
+            // Never asked, or asked over 30 days ago and still without an address (it may be added in Zoho since).
+            $stale = now()->subDays(30);
+            $vendors = VendorMaster::where(fn ($q) => $q->whereNull('zoho_address_checked_at')->orWhere('zoho_address_checked_at', '<', $stale))
                 ->where(fn ($q) => $q->whereNull('address_city')->orWhere('address_city', '')->orWhereNull('address_zip')->orWhere('address_zip', ''))
                 ->get()->sortBy(fn ($v) => $onPos->has($v->vendor_name) ? 0 : 1)->values();
-            $customers = Customer::whereNull('zoho_address_checked_at')
+            $customers = Customer::where(fn ($q) => $q->whereNull('zoho_address_checked_at')->orWhere('zoho_address_checked_at', '<', $stale))
                 ->where(fn ($q) => $q->whereNull('city')->orWhere('city', '')->orWhereNull('address_zip')->orWhere('address_zip', ''))
                 ->get();
             $this->info("Missing an address: {$vendors->count()} vendors, {$customers->count()} customers.");

@@ -21,6 +21,15 @@ class VendorMaster extends Model
         return [
             'active' => 'boolean',
             'email_opt_out' => 'boolean',
+            'zoho_address_checked_at' => 'datetime',
         ];
+    }
+
+    // Pickers (PO vendor search, Terms & Notes) list only vendors with an
+    // address, so a PO never shows "City not mapped". The vendor appears once
+    // its address arrives from Zoho; Vendors master still lists everyone.
+    public function scopeWithAddress($query)
+    {
+        return $query->whereNotNull('address_city')->where('address_city', '!=', '');
     }
 }

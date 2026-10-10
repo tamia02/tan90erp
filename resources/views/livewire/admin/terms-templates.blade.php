@@ -111,7 +111,7 @@ new #[Layout('layouts.app')] class extends Component
                     : Customer::where('terms_template_id', $this->editingId)->orderBy('name')->get(['id', 'name as label']))
                 : collect(),
             'partyNames' => $this->editingId
-                ? ($isVendor ? VendorMaster::where('active', true)->orderBy('vendor_name')->pluck('vendor_name') : Customer::orderBy('name')->pluck('name'))
+                ? ($isVendor ? VendorMaster::withAddress()->where('active', true)->orderBy('vendor_name')->pluck('vendor_name') : Customer::withAddress()->orderBy('name')->pluck('name'))
                 : collect(),
         ];
     }

@@ -195,7 +195,7 @@ new #[Layout('layouts.app')] class extends Component
             'short' => $short,
             'purposes' => OutwardShipment::PURPOSES,
             'locations' => Location::orderBy('name')->get(),
-            'customers' => Customer::orderBy('name')->get(['id', 'name', 'gstin', 'state']),
+            'customers' => Customer::withAddress()->orderBy('name')->get(['id', 'name', 'gstin', 'state']), // only customers with an address
             'itemOptions' => InventoryItem::whereIn('item_type', $itemTypes)->where('active', true)->get(['sku', 'name', 'code'])
                 ->map(fn ($i) => InventoryItem::canSeeSkuName(auth()->user()) ? $i->sku : $i->displayName())->unique()->sort()->values(),
             'lineTotal' => $total,
