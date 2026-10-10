@@ -4,6 +4,42 @@ namespace App\Services\Access;
 
 class PermissionRegistry
 {
+    // [key, module, screen, category, action, label, route]. Vendor portal
+    // pages are left out on purpose: they show the logged-in vendor's own data.
+    public const SCREEN_PAGES = [
+        ['guard.dashboard.view', 'Guard', 'Dashboard', 'page', 'view', 'View Guard Dashboard', 'guard.dashboard'],
+        ['guard.scan.view', 'Guard', 'New Gate Pass', 'page', 'view', 'View New Gate Pass', 'guard.scan'],
+        ['guard.inside.view', 'Guard', 'Vehicles Inside', 'page', 'view', 'View Vehicles Inside (Truck Out)', 'guard.inside'],
+        ['guard.entries.view', 'Guard', 'Past Gate Entries', 'page', 'view', 'View Past Gate Entries', 'guard.entries'],
+        ['unloading.dashboard.view', 'Unloading', 'Dashboard', 'page', 'view', 'View Unloading Dashboard', 'unloading.dashboard'],
+        ['unloading.desk.view', 'Unloading', 'Loading & Unloading', 'page', 'view', 'View Loading & Unloading', 'unloading.desk'],
+        ['unloading.putaway.view', 'Unloading', 'Putaway', 'page', 'view', 'View Putaway', 'unloading.putaway'],
+        ['unloading.dock_scheduling.view', 'Unloading', 'Dock Scheduling', 'page', 'view', 'View Dock Scheduling', 'unloading.dock-scheduling'],
+        ['unloading.history.view', 'Unloading', 'History', 'page', 'view', 'View Unloading History', 'unloading.history'],
+        ['qc.history.view', 'QC', 'History', 'page', 'view', 'View QC History', 'qc.history'],
+        ['grn.po_control_tower.view', 'GRN', 'PO Control Tower', 'page', 'view', 'View PO Control Tower', 'grn.po-control-tower'],
+        ['grn.entry_approvals.view', 'GRN', 'Entry Approvals', 'page', 'view', 'View Entry Approvals', 'store-manager.entry-approvals'],
+        ['grn.purchase_orders.view', 'GRN', 'Purchase Orders', 'page', 'view', 'View Purchase Orders (PO Master)', 'admin.po'],
+        ['grn.bins.view', 'GRN', 'Shelf & Bin', 'page', 'view', 'View Shelf & Bin', 'grn.bins'],
+        ['grn.validation_issues.view', 'GRN', 'Validation Issues', 'page', 'view', 'View Validation Issues', 'validation.issues'],
+        ['inventory.stock.view', 'Inventory', 'Inventory Summary', 'page', 'view', 'View Inventory Summary', 'inventory.stock'],
+        ['inventory.items.view', 'Inventory', 'Items', 'page', 'view', 'View Items', 'inventory.items'],
+        ['inventory.recipes.view', 'Inventory', 'Composite Items', 'page', 'view', 'View Composite Items (Recipes)', 'inventory.recipes'],
+        ['inventory.production.view', 'Inventory', 'Create Bundle', 'page', 'view', 'View Create Bundle', 'inventory.production'],
+        ['inventory.dispatch.view', 'Inventory', 'Outward Shipment', 'page', 'view', 'View Outward Shipment', 'inventory.dispatch'],
+        ['finance.dashboard.view', 'Finance', 'Dashboard', 'page', 'view', 'View Finance Dashboard', 'finance.dashboard'],
+        ['finance.reports.view', 'Finance', 'Reports', 'page', 'view', 'View Finance Reports', 'finance.reports'],
+        ['admin.command_center.view', 'Admin', 'Command Center', 'page', 'view', 'View Command Center', 'command-center'],
+        ['admin.overview.view', 'Admin', 'Overview', 'page', 'view', 'View Admin Overview', 'admin.dashboard'],
+        ['admin.vendors.view', 'Admin', 'Vendors', 'page', 'view', 'View Vendors', 'admin.vendors'],
+        ['admin.vendor_scorecard.view', 'Admin', 'Supplier Scorecards', 'page', 'view', 'View Supplier Scorecards', 'admin.vendor-scorecard'],
+        ['admin.supplier_claims.view', 'Admin', 'Supplier Claims', 'page', 'view', 'View Supplier Claims', 'admin.supplier-claims'],
+        ['admin.rfq.view', 'Admin', 'RFQs', 'page', 'view', 'View RFQs', 'admin.rfq'],
+        ['admin.quote_comparison.view', 'Admin', 'Quote Comparison', 'page', 'view', 'View Quote Comparison', 'admin.quote-comparison'],
+        ['admin.integrations.view', 'Admin', 'Integrations', 'page', 'view', 'View Integrations', 'admin.integrations'],
+        ['admin.reports.view', 'Admin', 'Reports', 'page', 'view', 'View Admin Reports', 'admin.reports'],
+    ];
+
     public function permissions(): array
     {
         $base = [
@@ -122,6 +158,10 @@ class PermissionRegistry
             ['inventory.custom_fields.manage', 'Inventory', 'Items', 'action', 'manage', 'Add / turn off custom item fields (e.g. Cost Price)', null],
             ['custom_fields.manage', 'Master Data', 'Custom Fields', 'page', 'manage', 'Add custom fields to any table (Items, Vendors, Customers, ...) and choose their data type', 'custom-fields.index'],
             ['inventory.chemical_names.view', 'Inventory', 'Items', 'field', 'view', 'See real chemical names (SKU Name) - otherwise only Display Name / Code', null],
+
+            // 2026-10-10: one "view" switch per GRN-era staff screen, so a custom
+            // access role can open it (before, these opened only by job role).
+            ...self::SCREEN_PAGES,
 
             ['flow.dashboard.view', 'Flow', 'Command Centre', 'page', 'view', 'View Fulfilment Command Centre', 'flow.dashboard'],
             ['flow.inventory.view', 'Flow', 'FG Inventory', 'page', 'view', 'View FG inventory and ledger', 'flow.inventory.index'],

@@ -136,6 +136,13 @@ class AccessControlService
 
     public function canDelegate(User $actor, string $permissionKey, array|RequestedGrant $requestedScope): bool
     {
+        // Super Admin passes every can() check, so it may give any permission.
+        // Without this, Allow ticks for permissions added after the
+        // ACCESS-SUPER-ADMIN role was seeded were silently dropped on save.
+        if ($this->isSuperAdmin($actor)) {
+            return true;
+        }
+
         $permission = $this->effectivePermissions($actor)[$permissionKey] ?? null;
 
         if (! $permission || ! $permission['delegable']) {
@@ -263,7 +270,9 @@ class AccessControlService
             ->orderBy('sort_order')
             ->get()
             ->filter(fn (AccessPermission $permission) => str_ends_with($permission->key, '.view') && $this->can($user, $permission->key))
-            ->map(fn (AccessPermission $permission) => ['label' => $permission->label, 'route' => $permission->route_name, 'icon' => 'shield'])
+            // Menu shows the screen name ("Inventory Summary"), not "View Inventory Summary".
+            ->map(fn (AccessPermission $permission) => ['label' => preg_replace('/^View /', '', $permission->label), 'route' => $permission->route_name, 'icon' => 'shield'])
+            ->unique('route')
             ->values()
             ->all();
     }
@@ -312,8 +321,14 @@ class AccessControlService
             return false;
         }
 
-        return AccessPermission::where('route_name', $routeName)->pluck('key')
-            ->contains(fn ($key) => $this->can($user, $key));
+        // A detail page / download (guard.entries.show, admin.po.pdf) opens
+        // with its parent screen when it has no permission of its own.
+        $keys = AccessPermission::where('route_name', $routeName)->pluck('key');
+        if ($keys->isEmpty() && str_contains($routeName, '.')) {
+            $keys = AccessPermission::where('route_name', substr($routeName, 0, strrpos($routeName, '.')))->pluck('key');
+        }
+
+        return $keys->contains(fn ($key) => $this->can($user, $key));
     }
 
     public function audit(?User $actor, string $action, mixed $target = null, ?array $before = null, ?array $after = null): void
