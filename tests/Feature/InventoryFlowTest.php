@@ -158,7 +158,7 @@ class InventoryFlowTest extends TestCase
             ->call('createShipment')->assertHasErrors('lines.0.item_id'); // and blocked at Create
         $this->assertSame(1, OutwardShipment::count());
         $this->assertSame(6.0, $this->balance($this->fg)['final']);
-        $this->get(route('inventory.outward.challan', $shipment))->assertOk()->assertSee($shipment->challan_number)->assertSee('DELIVERY CHALLAN');
+        $this->get(route('inventory.outward.challan', $shipment))->assertOk()->assertHeader('Content-Type', 'application/pdf');
 
         Volt::test('inventory.items')
             ->set('code', 'TR-001')->set('name', 'Trading Box')->set('itemType', 'trading')->set('unit', 'box')

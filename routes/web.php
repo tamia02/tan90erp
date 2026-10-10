@@ -436,11 +436,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('recipes', 'inventory.recipes')->name('recipes');
         Volt::route('production', 'inventory.production')->name('production');
         Volt::route('dispatch', 'inventory.dispatch')->name('dispatch');
+        // Delivery Challan / Transfer Order in the Zoho Books layout, opened as a PDF.
         Route::get('outward/{shipment}/challan', function (\App\Models\Outward\OutwardShipment $shipment) {
             abort_unless($shipment->challan_number, 404);
+            $pdf = Pdf::loadView('pdf.outward-document', ['kind' => 'challan', 'shipment' => $shipment->load(['lines.item', 'fromLocation', 'toLocation', 'creator'])]);
 
-            return view('inventory.delivery-challan', ['shipment' => $shipment->load('lines.item')]);
+            return response($pdf->output(), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="'.$shipment->challan_number.'.pdf"']);
         })->name('outward.challan');
+        Route::get('outward/{shipment}/transfer-order', function (\App\Models\Outward\OutwardShipment $shipment) {
+            abort_unless($shipment->purpose === 'transfer', 404);
+            $pdf = Pdf::loadView('pdf.outward-document', ['kind' => 'transfer', 'shipment' => $shipment->load(['lines.item', 'fromLocation', 'toLocation', 'creator'])]);
+
+            return response($pdf->output(), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="'.($shipment->invoice_number ?: $shipment->number).'.pdf"']);
+        })->name('outward.transfer-order');
         Route::get('outward/{shipment}/{document}', function (\App\Models\Outward\OutwardShipment $shipment, string $document) {
             $path = $shipment->{$document.'_file'};
             abort_unless($path && \Illuminate\Support\Facades\Storage::disk('local')->exists($path), 404);

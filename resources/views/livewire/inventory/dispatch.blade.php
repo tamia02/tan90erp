@@ -353,6 +353,7 @@ new #[Layout('layouts.app')] class extends Component
                             <span class="rounded-full px-2.5 py-1 text-xs font-semibold" style="color: var(--status-critical); background: var(--status-critical-bg);" title="{{ implode('; ', $short[$s->id]) }}">Short: {{ implode('; ', $short[$s->id]) }}</span>
                         @endif
                         @if ($s->challan_number)<a href="{{ route('inventory.outward.challan', $s) }}" target="_blank" class="text-xs font-semibold" style="color: var(--brand);">Print challan</a>@endif
+                        @if ($s->purpose === 'transfer')<a href="{{ route('inventory.outward.transfer-order', $s) }}" target="_blank" class="text-xs font-semibold" style="color: var(--brand);">Print transfer order</a>@endif
                         @if (! in_array($s->status, ['dispatched', 'cancelled'], true))
                             <button type="button" wire:click="openDocs({{ $s->id }})" class="text-xs font-semibold" style="color: var(--brand);">Documents</button>
                         @endif

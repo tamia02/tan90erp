@@ -35,4 +35,19 @@ class GrnRecord extends Model
     {
         return $this->hasMany(GrnRecordLine::class);
     }
+
+    // The Store Manager who posted the GRN.
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    // GRN/2026-27/000123: financial year (April-March) of posting + record id.
+    public function number(): string
+    {
+        $at = $this->created_at ?? now();
+        $start = $at->month >= 4 ? $at->year : $at->year - 1;
+
+        return sprintf('GRN/%d-%02d/%06d', $start, ($start + 1) % 100, $this->id);
+    }
 }

@@ -3,73 +3,80 @@
 <head>
     <meta charset="utf-8">
     <title>TAN90 Bill {{ $submission->invoice_number ?: 'SUB-'.$submission->id }}</title>
-    <style>
-        body { font-family: DejaVu Sans, sans-serif; font-size: 10px; color: #172033; }
-        table { width: 100%; border-collapse: collapse; }
-        .header td { vertical-align: top; }
-        .brand { font-size: 19px; font-weight: bold; color: #172033; }
-        .muted { color: #64748b; }
-        .small { font-size: 9px; }
-        .title { font-size: 16px; font-weight: bold; color: #2563eb; text-transform: uppercase; letter-spacing: 1px; }
-        .section { margin-top: 18px; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; font-size: 11px; font-weight: bold; }
-        .box { border: 1px solid #cbd5e1; padding: 8px; }
-        th { background: #eff6ff; color: #1e3a8a; font-weight: bold; text-align: left; }
-        td, th { border: 1px solid #cbd5e1; padding: 7px; }
-        .right { text-align: right; }
-        .qr { width: 92px; height: 92px; }
-        .logo { width: 88px; height: 78px; }
-        .total { font-size: 13px; font-weight: bold; color: #172033; }
-        .footer { margin-top: 22px; padding-top: 8px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 8px; }
-        .pill { color: #166534; background: #dcfce7; padding: 4px 7px; }
-    </style>
+    {{-- Zoho Books "BILL" layout: logo + company, BILL title, Bill From vendor, order / dates, dark item header, GST split, total, signature. --}}
+    <x-pdf.zoho-style />
 </head>
+@php
+    $m = fn ($n) => \App\Support\PdfDocument::money($n);
+    $issuer ??= \App\Support\PdfDocument::issuer();
+    $billLines ??= [];
+    $taxRows ??= [];
+    $billTotal ??= (float) $submission->invoice_amount;
+    $subTotal ??= $billTotal;
+    $billNo = $submission->invoice_number ?: 'SUB-'.$submission->id;
+    $billDate = $submission->invoice_date ?? $submission->created_at;
+@endphp
 <body>
-    <table class="header">
+    <x-pdf.zoho-header :issuer="$issuer" title="BILL" :number="'Bill# '.$billNo">
+        <div style="text-align:right; margin-top:14px;"><span class="strong" style="font-size:8.5px;">Total</span><br><span class="strong" style="font-size:12px;">₹{{ $m($billTotal) }}</span></div>
+        <div style="text-align:right; margin-top:6px;"><img src="{{ $qrDataUri }}" style="width:62px; height:62px;"><br><span class="muted">Scan to open secure bill</span></div>
+    </x-pdf.zoho-header>
+
+    <table style="margin-top:16px;">
         <tr>
-            <td style="width:68%; border:0; padding:0;">
-                <table style="width:auto; border:0;"><tr>
-                    <td style="border:0; padding:0 10px 0 0; vertical-align:middle;"><img class="logo" src="{{ public_path('images/tan90-logo.png') }}" alt="Tan90 logo"></td>
-                    <td style="border:0; padding:0; vertical-align:middle;"><div class="brand">TAN90</div>
-                    <div class="muted small">TAN90 ERP · Vendor Bill &amp; Dispatch Note</div></td>
-                </tr></table>
-                <div class="small" style="margin-top:9px;">{{ $po?->shipping_building }} {{ $po?->shipping_street }}<br>{{ $po?->shipping_city }}, {{ $po?->shipping_state }} {{ $po?->shipping_zip }}</div>
+            <td style="width:55%;">
+                <div class="label">Bill From</div>
+                <div class="strong">{{ $submission->vendor_name }}</div>
+                @if ($vendor?->address_building || $vendor?->address_street){{ trim($vendor?->address_building.' '.$vendor?->address_street) }}<br>@endif
+                @if ($vendor?->address_city){{ $vendor->address_city }}<br>@endif
+                @if ($vendor?->address_zip || $vendor?->address_state){{ trim($vendor?->address_zip.' '.$vendor?->address_state) }}<br>@endif
+                India<br>
+                @if ($vendor?->gst_number && $vendor->gst_number !== 'ZOHO-N/A')GSTIN {{ $vendor->gst_number }}@endif
             </td>
-            <td style="width:32%; border:0; padding:0; text-align:right;">
-                <div class="title">Vendor Bill</div>
-                <div class="small" style="margin-top:6px;"><strong>Bill No:</strong> {{ $submission->invoice_number ?: 'SUB-'.$submission->id }}<br><strong>Bill Date:</strong> {{ $submission->invoice_date?->format('d M Y') ?? $submission->created_at?->format('d M Y') }}<br><strong>PO No:</strong> {{ $submission->po_number }}</div>
-                <img class="qr" src="{{ $qrDataUri }}" style="margin-top:7px;"><br>
-                <span class="muted small">Scan to open secure bill</span>
+            <td style="width:45%;">
+                <table class="meta">
+                    <tr><td class="k">Order Number :</td><td class="v">{{ $submission->po_number ?: '—' }}</td></tr>
+                    <tr><td class="k">Bill Date :</td><td class="v">{{ $billDate?->format('d-m-Y') ?? '—' }}</td></tr>
+                    <tr><td class="k">Due Date :</td><td class="v">{{ ($submission->invoice_due_date ?? $po?->due_date)?->format('d-m-Y') ?? '—' }}</td></tr>
+                    @if ($po?->payment_terms)<tr><td class="k">Terms :</td><td class="v">{{ $po->payment_terms }}</td></tr>@endif
+                </table>
             </td>
         </tr>
     </table>
 
-    <div class="section">Vendor / delivery</div>
-    <table><tr>
-        <td class="box" style="width:50%;"><strong>{{ $submission->vendor_name }}</strong><br>{{ $vendor?->address_building }} {{ $vendor?->address_street }}<br>{{ $vendor?->address_city }}, {{ $vendor?->address_state }} {{ $vendor?->address_zip }}<br>GSTIN: {{ $vendor?->gst_number ?? '—' }}</td>
-        <td class="box" style="width:50%;"><strong>Deliver against PO</strong><br>{{ $po?->subject ?? '—' }}<br>Expected arrival: {{ $submission->expected_arrival_at?->format('d M Y, H:i') ?? '—' }}<br>Vehicle: {{ $submission->vehicle_number ?: '—' }}</td>
-    </tr></table>
-
-    <div class="section">Bill details</div>
-    <table>
-        <thead><tr><th style="width:7%;">#</th><th>Product / material</th><th style="width:17%;">Qty</th><th style="width:17%;">UOM</th><th style="width:22%;" class="right">Amount</th></tr></thead>
+    <table class="items" style="margin-top:16px;">
+        <thead><tr><th style="width:5%;">#</th><th>Item &amp; Description</th><th style="width:12%;">HSN/SAC</th><th class="r" style="width:12%;">Qty</th><th class="r" style="width:12%;">Rate</th><th class="r" style="width:15%;">Amount</th></tr></thead>
         <tbody>
-            <tr><td>1</td><td>{{ $submission->material ?: ($po?->primaryLine()?->product ?? '—') }}</td><td>{{ number_format((float) ($submission->invoice_qty ?? 0), 3) }}</td><td>{{ $po?->primaryLine()?->uom ?? '—' }}</td><td class="right">{{ $submission->invoice_amount !== null ? '₹'.number_format((float) $submission->invoice_amount, 2) : '—' }}</td></tr>
+            @foreach ($billLines as $i => $line)
+                <tr>
+                    <td>{{ $i + 1 }}</td>
+                    <td>{{ $line['name'] }}@if ($line['code'])<br><span class="muted">SKU : {{ $line['code'] }}</span>@endif</td>
+                    <td>{{ $line['hsn'] }}</td>
+                    <td class="r">{{ number_format((float) $line['qty'], 2) }}@if ($line['uom'])<br><span class="muted">{{ $line['uom'] }}</span>@endif</td>
+                    <td class="r">{{ $m($line['rate']) }}</td>
+                    <td class="r">{{ $m($line['amount']) }}</td>
+                </tr>
+            @endforeach
         </tbody>
     </table>
 
-    <table style="margin-top:10px;"><tr><td style="width:65%; border:0;"></td><td class="right total">Bill total</td><td class="right total">{{ $submission->invoice_amount !== null ? '₹'.number_format((float) $submission->invoice_amount, 2) : '—' }}</td></tr></table>
-
-    <div class="section">Dispatch and document status</div>
-    <table>
-        <tr><td style="width:28%;"><strong>Dispatch status</strong></td><td><span class="pill">{{ ucfirst(str_replace('_', ' ', $submission->status)) }} · Dispatched</span></td></tr>
-        <tr><td><strong>Dispatched at</strong></td><td>{{ $submission->dispatched_at?->format('d M Y, H:i') ?? '—' }}</td></tr>
-        <tr><td><strong>Expected arrival</strong></td><td>{{ $submission->expected_arrival_at?->format('d M Y, H:i') ?? '—' }}</td></tr>
-        <tr><td><strong>Attached documents</strong></td><td>{{ collect(['Invoice' => $submission->invoice_document_path, 'E-way Bill' => $submission->eway_bill_document_path, 'LR/POD' => $submission->lr_pod_document_path])->filter()->keys()->implode(', ') ?: 'None' }}</td></tr>
-        <tr><td><strong>PO due date</strong></td><td>{{ $po?->due_date?->format('d M Y') ?? '—' }}</td></tr>
+    <table class="totals" style="margin-top:4px;">
+        <tr><td style="width:55%;"></td><td class="r">Sub Total</td><td class="r" style="width:110px;">{{ $m($subTotal) }}</td></tr>
+        @foreach ($taxRows as $row)<tr><td></td><td class="r">{{ $row['label'] }}</td><td class="r">{{ $m($row['amount']) }}</td></tr>@endforeach
+        <tr><td></td><td class="r grand band">Total</td><td class="r grand band">₹{{ $m($billTotal) }}</td></tr>
+        <tr><td></td><td colspan="2" class="r muted">{{ \App\Support\PdfDocument::amountInWords($billTotal) }}</td></tr>
     </table>
 
-    <div class="section">Traceability</div>
-    <div class="box small">This bill is generated from the vendor submission saved in TAN90 ERP. The PO number links this bill to vendor acknowledgement, gate entry, unloading, QC, GRN, putaway and finance status.<br><br><span class="muted">Secure share link valid until {{ now()->addDay()->format('d M Y, H:i') }} · {{ $shareUrl }}</span></div>
-    <div class="footer">Generated from TAN90 ERP. This document is a system-generated vendor bill/dispatch reference; the uploaded source invoice remains the legal tax document.</div>
+    <div class="section">Dispatch details</div>
+    <table class="meta" style="width:70%;">
+        <tr><td style="width:35%;">Dispatch status</td><td>{{ ucfirst(str_replace('_', ' ', $submission->status)) }}</td></tr>
+        <tr><td>Dispatched at</td><td>{{ $submission->dispatched_at?->format('d-m-Y H:i') ?? '—' }}</td></tr>
+        <tr><td>Expected arrival</td><td>{{ $submission->expected_arrival_at?->format('d-m-Y H:i') ?? '—' }}</td></tr>
+        <tr><td>Vehicle</td><td>{{ $submission->vehicle_number ?: '—' }}</td></tr>
+        <tr><td>Attached documents</td><td>{{ collect(['Invoice' => $submission->invoice_document_path, 'E-way Bill' => $submission->eway_bill_document_path, 'LR/POD' => $submission->lr_pod_document_path])->filter()->keys()->implode(', ') ?: 'None' }}</td></tr>
+    </table>
+
+    <x-pdf.signature />
+    <p class="muted" style="margin-top:14px;">Generated from TAN90 ERP from the vendor's submission. The vendor's uploaded tax invoice remains the legal tax document. Secure link valid until {{ now()->addDay()->format('d-m-Y H:i') }}.</p>
 </body>
 </html>
