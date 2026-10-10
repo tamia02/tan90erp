@@ -15,7 +15,7 @@ use Throwable;
 // so ones with no address in Zoho are not asked again.
 class PullZohoContactAddresses extends Command
 {
-    protected $signature = 'zoho:pull-contact-addresses {--max=1500 : Most contacts to fetch in this run} {--dry-run : Only count what is missing}';
+    protected $signature = 'zoho:pull-contact-addresses {--max=1500 : Most contacts to fetch in this run} {--dry-run : Only count what is missing} {--type=all : vendor, customer or all} {--pause=1100 : Milliseconds between Zoho calls}';
 
     protected $description = 'Bring vendor and customer addresses from Zoho (read-only), in nightly batches.';
 
@@ -34,7 +34,7 @@ class PullZohoContactAddresses extends Command
         }
 
         try {
-            $addresses->setPause(app()->runningUnitTests() ? 0 : 1100); // about 55 calls a minute
+            $addresses->setPause(app()->runningUnitTests() ? 0 : (int) $this->option('pause')); // 1100 = about 55 calls a minute
 
             $onPos = DB::table('purchase_orders')->distinct()->pluck('vendor_name')->flip();
             $vendors = VendorMaster::whereNull('zoho_address_checked_at')
@@ -51,7 +51,11 @@ class PullZohoContactAddresses extends Command
             $budget = (int) $this->option('max');
             $filled = ['vendor' => 0, 'customer' => 0];
             $asked = 0;
+            $only = $this->option('type');
             foreach (['vendor' => $vendors, 'customer' => $customers] as $type => $rows) {
+                if ($only !== 'all' && $only !== $type) {
+                    continue;
+                }
                 if ($rows->isEmpty() || $asked >= $budget) {
                     continue;
                 }

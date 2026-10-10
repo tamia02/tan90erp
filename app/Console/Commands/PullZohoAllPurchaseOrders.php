@@ -15,7 +15,7 @@ use Throwable;
 // the next run carries on where this one stopped.
 class PullZohoAllPurchaseOrders extends Command
 {
-    protected $signature = 'zoho:pull-all-pos {--max=1500 : Most POs to fetch in this run} {--dry-run : Only count what is missing}';
+    protected $signature = 'zoho:pull-all-pos {--max=1500 : Most POs to fetch in this run} {--dry-run : Only count what is missing} {--pause=1100 : Milliseconds between Zoho calls}';
 
     protected $description = 'Pull Zoho purchase orders that are missing in the ERP, in daily batches (read-only).';
 
@@ -34,7 +34,7 @@ class PullZohoAllPurchaseOrders extends Command
         }
 
         try {
-            $zoho->pauseMs = app()->runningUnitTests() ? 0 : 1100; // about 55 calls a minute, under Zoho's per-minute limit
+            $zoho->pauseMs = app()->runningUnitTests() ? 0 : (int) $this->option('pause'); // about 55 calls a minute, under Zoho's per-minute limit
             $rows = $zoho->all('/purchaseorders', 'purchaseorders', ['sort_column' => 'date', 'sort_order' => 'D'], 100);
             $have = PurchaseOrder::pluck('po_number')->map(fn ($n) => mb_strtolower($n))->flip();
             $missing = collect($rows)->filter(fn ($r) => filled($r['purchaseorder_number'] ?? null) && ! $have->has(mb_strtolower($r['purchaseorder_number'])))->values();
