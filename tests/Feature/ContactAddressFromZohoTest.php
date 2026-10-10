@@ -23,7 +23,7 @@ class ContactAddressFromZohoTest extends TestCase
         parent::setUp();
         config(['services.zoho_items_pull' => [
             'organization_id' => '1', 'refresh_token' => 'r', 'client_id' => 'c', 'client_secret' => 's',
-            'accounts_url' => 'https://accounts.zoho.test', 'api_base_url' => 'https://zoho.test/inventory/v1',
+            'accounts_url' => 'https://accounts.zoho.test', 'api_base_url' => 'https://zoho.test/inventory/v1', 'address_pull_enabled' => true,
         ]]);
         Http::fake([
             'accounts.zoho.test/*' => Http::response(['access_token' => 't']),
@@ -69,5 +69,27 @@ class ContactAddressFromZohoTest extends TestCase
         // Asked once and marked, so the next night skips it.
         $this->assertNotNull(VendorMaster::where('vendor_name', 'Not In Zoho')->value('zoho_address_checked_at'));
         $this->artisan('zoho:pull-contact-addresses')->expectsOutputToContain('0 vendors')->assertSuccessful();
+    }
+
+    public function test_switched_off_nothing_is_asked_from_zoho_but_typed_address_is_kept(): void
+    {
+        config(['services.zoho_items_pull.address_pull_enabled' => false]);
+        $this->actingAs(User::factory()->create(['role' => Role::StoreManager]));
+        VendorMaster::create(['vendor_name' => 'Acme Chemicals', 'gst_number' => '27AABCP1234Q1Z5', 'contact_phone' => '1', 'category' => 'Raw Material', 'active' => true]);
+        \App\Models\SkuMaster::create(['sku' => 'Addr RM', 'category' => 'PCM — Raw Material', 'unit' => 'KG']);
+
+        Volt::test('admin.po-master')->set('purchaseNature', 'Raw Material')->call('selectVendor', 'Acme Chemicals')
+            ->assertSet('billingCity', '')
+            ->set('billingBuilding', 'Unit 7')->set('billingStreet', 'Station Road')->set('billingCity', 'Vapi')
+            ->set('billingState', 'Gujarat')->set('billingZip', '396195')
+            ->set('items.0.product', 'Addr RM')->set('items.0.hsnSac', '3824')
+            ->set('items.0.quantity', '10')->set('items.0.uom', 'KG')->set('items.0.listPrice', '40')
+            ->call('saveAndSubmit')->assertHasNoErrors();
+
+        Http::assertNothingSent();
+        $this->assertSame('Vapi', VendorMaster::where('vendor_name', 'Acme Chemicals')->value('address_city'));
+        // Next PO for this vendor fills it.
+        Volt::test('admin.po-master')->call('selectVendor', 'Acme Chemicals')->assertSet('billingCity', 'Vapi')->assertSet('billingZip', '396195');
+        $this->artisan('zoho:pull-contact-addresses')->assertFailed();
     }
 }

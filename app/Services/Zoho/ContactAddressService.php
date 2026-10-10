@@ -18,7 +18,7 @@ class ContactAddressService
 
     public function configured(): bool
     {
-        return $this->zoho->configured();
+        return (bool) config('services.zoho_items_pull.address_pull_enabled') && $this->zoho->configured();
     }
 
     /** Fill a vendor's empty address from Zoho. True when something was filled. */

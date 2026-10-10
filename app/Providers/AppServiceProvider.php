@@ -160,10 +160,12 @@ class AppServiceProvider extends ServiceProvider
                     ->dailyAt('01:30')
                     ->withoutOverlapping();
                 // Vendor / customer addresses (Zoho's contact list has none), a batch a night.
-                $this->app->make(Schedule::class)
-                    ->command('zoho:pull-contact-addresses --max=1500')
-                    ->dailyAt('03:30')
-                    ->withoutOverlapping();
+                if (config('services.zoho_items_pull.address_pull_enabled')) {
+                    $this->app->make(Schedule::class)
+                        ->command('zoho:pull-contact-addresses --max=1500')
+                        ->dailyAt('03:30')
+                        ->withoutOverlapping();
+                }
             }
         });
     }

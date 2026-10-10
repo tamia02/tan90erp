@@ -158,6 +158,9 @@ return [
         'api_base_url' => env('ZOHO_DISCOVERY_API_BASE_URL', env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1')),
         // Off until approved: when true the item pull runs hourly.
         'schedule_enabled' => env('ZOHO_ITEMS_PULL_ENABLED', false),
+        // Vendor / customer addresses from Zoho (on PO pick + nightly). Off until
+        // the client has checked the Zoho contact data.
+        'address_pull_enabled' => env('ZOHO_ADDRESS_PULL_ENABLED', false),
     ],
 
 ];
