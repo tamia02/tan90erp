@@ -135,6 +135,52 @@ class CustomFields
         };
     }
 
+    /**
+     * Records of a table for the CSV: id + the columns people recognise them by.
+     * Inventory Items never expose the masked SKU Name - only Code + Display Name.
+     *
+     * @return array{columns: array<string, string>, rows: \Illuminate\Support\Collection}
+     */
+    public static function recordsForCsv(string $entity): array
+    {
+        if ($entity === self::INVENTORY_ITEMS) {
+            $codes = DB::table('sku_masters')->whereNotNull('product_code')->pluck('product_code', 'sku')->mapWithKeys(fn ($c, $sku) => [mb_strtolower($sku) => $c]);
+            $rows = DB::table('inventory_items')->orderBy('id')->get(['id', 'sku', 'code', 'name', 'custom_fields'])
+                ->map(fn ($i) => ['id' => $i->id, 'code' => $i->code ?: ($codes[mb_strtolower($i->sku)] ?? ''), 'name' => $i->name ?: (\App\Models\Inventory\InventoryItem::canSeeSkuName(auth()->user()) ? $i->sku : ''),
+                    'values' => json_decode((string) $i->custom_fields, true) ?: []]);
+
+            return ['columns' => ['code' => 'Code', 'name' => 'Display Name'], 'rows' => $rows];
+        }
+
+        $slug = substr($entity, 7);
+        $config = config("tan90_master_data.entities.{$slug}");
+        $model = new $config['model'];
+        $table = $model->getTable();
+        $cols = array_values(array_filter(['code', 'name'], fn ($c) => \Illuminate\Support\Facades\Schema::hasColumn($table, $c)));
+        $values = DB::table('custom_field_values')->where('entity', $entity)->pluck('data', 'record_id');
+        $rows = DB::table($table)->when(\Illuminate\Support\Facades\Schema::hasColumn($table, 'deleted_at'), fn ($q) => $q->whereNull('deleted_at'))
+            ->orderBy('id')->get(array_merge(['id'], $cols))
+            ->map(fn ($r) => ['id' => $r->id] + collect($cols)->mapWithKeys(fn ($c) => [$c => $r->{$c}])->all()
+                + ['values' => json_decode((string) ($values[$r->id] ?? ''), true) ?: []]);
+
+        return ['columns' => collect($cols)->mapWithKeys(fn ($c) => [$c => ucfirst($c)])->all(), 'rows' => $rows];
+    }
+
+    /** Writes values for one record, keeping fields not in $values. */
+    public static function saveFor(string $entity, int $recordId, array $values): void
+    {
+        if ($entity === self::INVENTORY_ITEMS) {
+            $item = \App\Models\Inventory\InventoryItem::findOrFail($recordId);
+            $item->update(['custom_fields' => array_merge($item->custom_fields ?? [], $values) ?: null]);
+
+            return;
+        }
+        DB::table('custom_field_values')->updateOrInsert(
+            ['entity' => $entity, 'record_id' => $recordId],
+            ['data' => json_encode(array_merge(self::values($entity, $recordId), $values)), 'updated_at' => now(), 'created_at' => now()],
+        );
+    }
+
     // New field: unique key per table from its name.
     public static function add(string $entity, string $label, string $type, ?string $options, bool $required, ?User $by): CustomFieldDefinition
     {

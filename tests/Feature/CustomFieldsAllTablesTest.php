@@ -80,4 +80,36 @@ class CustomFieldsAllTablesTest extends TestCase
             ->set('customValues', ['shelf_life_until' => '2027-03-31'])->call('save')->assertHasNoErrors();
         $this->assertSame(['shelf_life_until' => '2027-03-31'], $item->fresh()->custom_fields);
     }
+
+    public function test_bulk_update_by_csv_checks_every_row_first(): void
+    {
+        $admin = User::factory()->create(['role' => Role::Admin]);
+        $this->actingAs($admin);
+        $page = Volt::test('admin.custom-fields')->set('table', CustomFields::INVENTORY_ITEMS);
+        $page->set('label', 'Cost Price')->set('type', 'number')->call('add');
+        $page->set('label', 'Hazardous')->set('type', 'yes_no')->call('add');
+        $page->set('label', 'Expiry')->set('type', 'date')->call('add');
+        $a = InventoryItem::create(['sku' => 'Chem A', 'code' => 'RM-A', 'name' => 'Compound A', 'item_type' => 'rm', 'unit' => 'KG', 'custom_fields' => ['cost_price' => 10]]);
+        $b = InventoryItem::create(['sku' => 'Chem B', 'code' => 'RM-B', 'name' => 'Compound B', 'item_type' => 'rm', 'unit' => 'KG']);
+
+        $page->call('downloadCsv')->assertFileDownloaded();
+
+        // One bad row -> nothing saved, row shown.
+        $bad = "ID,Code,Display Name,Cost Price,Hazardous,Expiry\n{$a->id},RM-A,Compound A,abc,Yes,31/03/2027\n{$b->id},RM-B,Compound B,25,No,\n99999,X,X,1,,\n";
+        $page->set('csv', \Illuminate\Http\UploadedFile::fake()->createWithContent('items.csv', $bad))->call('uploadCsv')
+            ->assertSee('Nothing was saved')->assertSee('Row 2 (ID '.$a->id.')')->assertSee('Row 4: ID');
+        $this->assertSame(['cost_price' => 10], $a->fresh()->custom_fields);
+
+        // Correct file -> saved; blank cells leave values alone; Excel date and Yes/No understood.
+        $good = "\xEF\xBB\xBFID,Code,Display Name,Cost Price,Hazardous,Expiry\n{$a->id},RM-A,Compound A,,Yes,31/03/2027\n{$b->id},RM-B,Compound B,25.5,No,\n";
+        $page->set('csv', \Illuminate\Http\UploadedFile::fake()->createWithContent('items.csv', $good))->call('uploadCsv')->assertHasNoErrors();
+        $this->assertEquals(['cost_price' => 10, 'hazardous' => true, 'expiry' => '2027-03-31'], $a->fresh()->custom_fields);
+        $this->assertEquals(['cost_price' => 25.5, 'hazardous' => false], $b->fresh()->custom_fields);
+
+        // Master Data tables work the same way.
+        $entity = LegalEntity::factory()->create();
+        $page->set('table', self::TABLE)->set('label', 'Credit Days')->set('type', 'number')->call('add');
+        $page->set('csv', \Illuminate\Http\UploadedFile::fake()->createWithContent('le.csv', "ID,Code,Name,Credit Days\n{$entity->id},\"{$entity->code}\",\"{$entity->name}\",30\n"))->call('uploadCsv')->assertHasNoErrors()->assertSet('csvErrors', []);
+        $this->assertEquals(30, CustomFields::values(self::TABLE, $entity->id)['credit_days']);
+    }
 }
