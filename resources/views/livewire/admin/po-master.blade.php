@@ -4,6 +4,7 @@ use App\Enums\Role;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderCustomFieldDefinition;
 use App\Models\PurchaseOrderTermsTemplate;
+use App\Models\SkuMaster;
 use App\Models\User;
 use App\Models\VendorMaster;
 use App\Models\ZohoFieldDefinition;
@@ -157,6 +158,38 @@ new #[Layout('layouts.app')] class extends Component
         'Uttarakhand' => ['Dehradun', 'Haridwar', 'Haldwani', 'Rishikesh'],
         'West Bengal' => ['Kolkata', 'Howrah', 'Siliguri', 'Durgapur'],
     ];
+
+    // SKU dropdown shows only items of the PO's type (RM PO -> RM SKUs); words
+    // match both Zoho ("Zoho — Raw Material (RM)") and older ERP categories.
+    private function skuCategoryPattern(): ?string
+    {
+        return match ($this->purchaseNature) {
+            'Trading' => '%Trading Good%',
+            'Raw Material' => '%Raw Material%',
+            'PM Packaging Material' => '%Packaging Material%',
+            default => $this->materialType === 'FG' ? '%(FG)%' : null, // Consumables / Capex / Other: Zoho has no such category
+        };
+    }
+
+    // Picking a SKU fills its HSN (from Zoho) and unit, unless typed by hand.
+    public function updatedItems(mixed $value, ?string $key = null): void
+    {
+        if (! preg_match('/^(\d+)\.product$/', (string) $key, $m)) {
+            return;
+        }
+        $sku = SkuMaster::where('sku', $value)->first(['sku', 'zoho_hsn', 'unit']);
+        if (! $sku) {
+            return;
+        }
+        if (filled($sku->zoho_hsn)) {
+            $this->items[$m[1]]['hsnSac'] = (string) $sku->zoho_hsn;
+        }
+        $unit = ['NOS' => 'PCS', 'PC' => 'PCS', 'KGS' => 'KG', 'LTR' => 'LITER', 'L' => 'LITER', 'MTR' => 'METER'][strtoupper((string) $sku->unit)] ?? strtoupper((string) $sku->unit);
+        if (in_array($unit, ['KG', 'GRAM', 'PCS', 'BOX', 'METER', 'LITER', 'ROLL', 'SET'], true)) {
+            $this->items[$m[1]]['uom'] = $unit;
+        }
+        $this->resetValidation(["items.{$m[1]}.product", "items.{$m[1]}.hsnSac"]);
+    }
 
     public function addItem(): void
     {
@@ -613,6 +646,7 @@ new #[Layout('layouts.app')] class extends Component
         } else {
             session()->flash('po-saved', $submit ? 'PO submitted for release. Use Release to vendor when it is approved.' : 'PO saved as a draft.');
         }
+        session()->flash('po-created', $po->po_number); // "Download PDF" button above the list
     }
 
     public function cancelPo(): void
@@ -911,6 +945,9 @@ new #[Layout('layouts.app')] class extends Component
                     ->where('po_number', 'like', '%'.trim($this->poLookup).'%')
                     ->orWhere('vendor_name', 'like', '%'.trim($this->poLookup).'%')))
                 ->orderByDesc('created_at')->limit($this->poLimit)->get(),
+            'skuOptions' => SkuMaster::where('active', true)
+                ->when($this->skuCategoryPattern(), fn ($q, $pattern) => $q->where('category', 'like', $pattern))
+                ->orderBy('sku')->get(['sku', 'zoho_hsn']),
             'ordersTotal' => PurchaseOrder::when(trim($this->poLookup) !== '', fn ($query) => $query->where(fn ($q) => $q
                 ->where('po_number', 'like', '%'.trim($this->poLookup).'%')
                 ->orWhere('vendor_name', 'like', '%'.trim($this->poLookup).'%')))->count(),
@@ -958,6 +995,12 @@ new #[Layout('layouts.app')] class extends Component
 
     @if (session('po-saved'))
         <div class="rounded-lg border px-4 py-3 mb-4 text-sm" role="status" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">{{ session('po-saved') }}</div>
+    @endif
+    @if (session('po-created'))
+        <div class="rounded-lg border px-4 py-3 mb-4 text-sm flex flex-wrap items-center gap-3" role="status" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">
+            <span>{{ session('po-created') }} created.</span>
+            <a href="{{ route('admin.po.pdf', session('po-created')) }}" target="_blank" class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style="background: var(--brand);">Download PDF</a>
+        </div>
     @endif
     @if (session('po-settings-saved'))
         <div class="rounded-lg border px-4 py-3 mb-4 text-sm" role="status" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">{{ session('po-settings-saved') }}</div>
@@ -1268,11 +1311,16 @@ new #[Layout('layouts.app')] class extends Component
                             <div class="grid grid-cols-1 sm:grid-cols-5 gap-3">
                                 <label class="flex flex-col gap-1.5 text-sm sm:col-span-2">
                                     <span class="font-medium" style="color: var(--text-primary);">Product / SKU</span>
-                                    <input wire:model="items.{{ $index }}.product" class="rounded-lg border px-3 py-2 text-sm" style="border-color: {{ $errors->has("items.$index.product") ? 'var(--status-critical)' : 'var(--border)' }};" aria-invalid="{{ $errors->has("items.$index.product") ? 'true' : 'false' }}" placeholder="PCM Raw Compound (TN-1 Grade)" />
+                                    <select wire:model.live="items.{{ $index }}.product" class="rounded-lg border px-3 py-2 text-sm" style="border-color: {{ $errors->has("items.$index.product") ? 'var(--status-critical)' : 'var(--border)' }}; background: var(--surface-1);" aria-invalid="{{ $errors->has("items.$index.product") ? 'true' : 'false' }}">
+                                        <option value="">{{ $purchaseNature ? 'Search and pick a SKU' : 'Choose Nature of PO first' }}</option>
+                                        @if ($item['product'] && ! $skuOptions->contains('sku', $item['product']))<option value="{{ $item['product'] }}">{{ $item['product'] }}</option>@endif
+                                        @foreach ($skuOptions as $sku)<option value="{{ $sku->sku }}">{{ $sku->sku }}</option>@endforeach
+                                    </select>
+                                    <span class="text-xs" style="color: var(--text-muted);">{{ $skuOptions->count() }} {{ $purchaseNature ? 'SKUs for this PO type' : 'SKUs' }}</span>
                                     @error("items.$index.product") <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
                                 </label>
                                 <label class="flex flex-col gap-1.5 text-sm">
-                                    <span class="font-medium" style="color: var(--text-primary);">HSN / SAC <span class="font-normal" style="color: var(--text-muted);">(optional)</span></span>
+                                    <span class="font-medium" style="color: var(--text-primary);">HSN / SAC <span class="font-normal" style="color: var(--text-muted);">(fills from the SKU)</span></span>
                                     <input wire:model="items.{{ $index }}.hsnSac" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" placeholder="Optional — e.g. 39269099" />
                                     <span class="text-xs" style="color: var(--status-warning);">Finance warning: unknown or blank HSN is saved with 0 tax until Finance maps it.</span>
                                     @error("items.$index.hsnSac") <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
@@ -1380,8 +1428,7 @@ new #[Layout('layouts.app')] class extends Component
                             <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">₹{{ number_format($po->grandTotal(), 2) }}</td>
                             <td class="px-4 py-2.5 text-right">
                                 <div class="flex items-center justify-end gap-3">
-                                    <a href="{{ route('admin.po.pdf', $po->po_number) }}" target="_blank" class="font-medium" style="color: var(--brand);">PDF + QR</a>
-                                    <a href="{{ route('admin.po.excel', $po->po_number) }}" class="font-medium" style="color: var(--brand);">Download Excel</a>
+                                    <a href="{{ route('admin.po.pdf', $po->po_number) }}" target="_blank" class="font-medium" style="color: var(--brand);">Download PDF</a>
                                     @unless ($po->isReleased())
                                         <button type="button" wire:click="openAddressEdit({{ $po->id }})" class="font-medium" style="color: var(--brand);">Edit address</button>
                                         <button wire:click="releasePo({{ $po->id }})" wire:loading.attr="disabled" wire:target="releasePo({{ $po->id }})" wire:confirm="Release {{ $po->po_number }} to {{ $po->vendor_name }}? They'll be able to see and acknowledge it in their portal." class="font-medium disabled:opacity-50" style="color: var(--brand);">Release to vendor</button>

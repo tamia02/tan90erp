@@ -119,7 +119,15 @@ def create_po(page):
     for field, value in [("billingBuilding", "Tan90 Plant"), ("billingStreet", "MIDC Road"), ("billingCity", "Thane"), ("billingState", "Maharashtra")]:
         page.fill(f"[wire\\:model\\.live='{field}']", value); settle(page, 300)
     page.fill("[wire\\:model='billingZip']", "400604")
-    page.fill("[wire\\:model='items.0.product']", RM)
+    # SKU is a dropdown of this PO type's items (searchable); HSN and unit fill from it.
+    page.select_option("[wire\\:model\\.live='items.0.product']", RM); settle(page, 1000)
+    try:
+        page.wait_for_function("() => document.querySelector(\"[wire\\\\:model='items.0.hsnSac']\")?.value !== ''", timeout=8000)
+    except Exception:
+        pass
+    if not page.input_value("[wire\\:model='items.0.hsnSac']"):
+        prod = page.locator("[wire\\:model\\.live='items.0.product']")
+        raise AssertionError(f"HSN did not fill from the SKU (picked {prod.input_value()!r}, {prod.locator('option').count()} options, RM={RM!r})")
     page.fill("[wire\\:model='items.0.quantity']", "100")
     page.select_option("[wire\\:model='items.0.uom']", "LITER")
     page.fill("[wire\\:model='items.0.listPrice']", "50")
