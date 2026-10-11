@@ -945,7 +945,8 @@ new #[Layout('layouts.app')] class extends Component
                     ->where('po_number', 'like', '%'.trim($this->poLookup).'%')
                     ->orWhere('vendor_name', 'like', '%'.trim($this->poLookup).'%')))
                 ->orderByDesc('created_at')->limit($this->poLimit)->get(),
-            'skuOptions' => SkuMaster::where('active', true)
+            // Nothing until Nature of PO is chosen (the list depends on it).
+            'skuOptions' => $this->purchaseNature === '' ? collect() : SkuMaster::where('active', true)
                 ->when($this->skuCategoryPattern(), fn ($q, $pattern) => $q->where('category', 'like', $pattern))
                 ->orderBy('sku')->get(['sku', 'zoho_hsn']),
             'ordersTotal' => PurchaseOrder::when(trim($this->poLookup) !== '', fn ($query) => $query->where(fn ($q) => $q
