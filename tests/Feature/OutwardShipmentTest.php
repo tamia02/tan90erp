@@ -209,4 +209,27 @@ class OutwardShipmentTest extends TestCase
         $this->actingAs(User::factory()->create(['role' => Role::Guard]))
             ->get(route('inventory.dispatch'))->assertForbidden();
     }
+
+    // 2026-10-11: "Save documents doesn't work" - it saved, but the result showed
+    // only at the page top and some errors (IRN, e-way bill no., dates) never showed.
+    public function test_save_documents_shows_result_and_errors_next_to_the_button(): void
+    {
+        Storage::fake('local');
+        $s = $this->create('sales', '29ABCDE1234F1Z5', [['item_id' => $this->fg->id, 'qty' => 2, 'rate' => 100]]);
+        $this->actingAs(User::factory()->create(['role' => Role::StoreManager]));
+
+        \Livewire\Volt\Volt::test('inventory.dispatch')->call('openDocs', $s->id)
+            ->set('doc.ewb_number', str_repeat('9', 25))->call('saveDocuments')
+            ->assertSee('Not saved - please fix')->assertSee('E-Way Bill number');
+
+        \Livewire\Volt\Volt::test('inventory.dispatch')->call('openDocs', $s->id)
+            ->set('doc.invoice_number', 'INV-9')->set('doc.invoice_date', '2026-10-11')
+            ->set('doc.irn', 'IRN123')->set('doc.irn_ack_number', 'ACK1')
+            ->set('doc.ewb_number', '331234567890')->set('doc.ewb_valid_until', '2026-10-20')
+            ->set('invoiceFile', UploadedFile::fake()->create('inv.pdf', 10, 'application/pdf'))
+            ->set('ewbFile', UploadedFile::fake()->create('ewb.pdf', 10, 'application/pdf'))
+            ->call('saveDocuments')->assertHasNoErrors()
+            ->assertSee('Saved. All documents are in.');
+        $this->assertSame('ready', $s->fresh()->status);
+    }
 }

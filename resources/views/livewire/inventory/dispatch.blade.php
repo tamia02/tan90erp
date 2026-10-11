@@ -130,6 +130,7 @@ new #[Layout('layouts.app')] class extends Component
     {
         $s = OutwardShipment::findOrFail($id);
         $this->docsFor = $s->id;
+        $this->docsSaved = '';
         $this->doc = [
             'invoice_number' => (string) $s->invoice_number, 'invoice_date' => $s->invoice_date?->toDateString() ?? '',
             'irn' => (string) $s->irn, 'irn_ack_number' => (string) $s->irn_ack_number, 'irn_ack_date' => $s->irn_ack_date?->toDateString() ?? '',
@@ -140,8 +141,12 @@ new #[Layout('layouts.app')] class extends Component
         $this->resetValidation();
     }
 
+    // Result of the last Save documents, shown beside the button.
+    public string $docsSaved = '';
+
     public function saveDocuments(OutwardShipmentService $service): void
     {
+        $this->docsSaved = '';
         $shipment = OutwardShipment::findOrFail($this->docsFor);
         $max = config('outward.max_upload_kb');
         $this->validate([
@@ -151,11 +156,20 @@ new #[Layout('layouts.app')] class extends Component
             'invoiceFile' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', "max:{$max}"],
             'irnFile' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', "max:{$max}"],
             'ewbFile' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', "max:{$max}"],
+        ], [], [
+            'doc.invoice_date' => 'invoice date', 'doc.irn_ack_date' => 'Ack date', 'doc.ewb_date' => 'E-Way Bill date',
+            'doc.ewb_valid_until' => 'E-Way Bill valid-until date', 'doc.irn' => 'IRN', 'doc.ewb_number' => 'E-Way Bill number',
+            'invoiceFile' => 'invoice file', 'irnFile' => 'IRN file', 'ewbFile' => 'E-Way Bill file',
         ]);
         $service->saveDocuments($shipment, $this->doc, ['invoice_file' => $this->invoiceFile, 'irn_file' => $this->irnFile, 'ewb_file' => $this->ewbFile]);
         AuditLogger::log('Outward documents saved', "{$shipment->number} · ".($shipment->status === 'ready' ? 'ready to dispatch' : 'still missing: '.implode(', ', $shipment->missingDocuments())), $shipment);
-        session()->flash('success', $shipment->status === 'ready' ? "{$shipment->number}: all documents in - the Guard can dispatch it when the truck leaves." : "{$shipment->number}: saved. Still missing: ".implode(', ', $shipment->missingDocuments()).'.');
+        $message = $shipment->status === 'ready' ? "{$shipment->number}: all documents in - the Guard can dispatch it when the truck leaves." : "{$shipment->number}: saved. Still missing: ".implode(', ', $shipment->missingDocuments()).'.';
+        session()->flash('success', $message);
         $this->openDocs($shipment->id);
+        // Shown next to the Save button too: the page-top message is out of sight here.
+        $this->docsSaved = $shipment->status === 'ready'
+            ? "Saved. All documents are in. Next: when the truck comes, the Guard picks {$shipment->number} in New Gate Pass > Outward."
+            : $message;
     }
 
     public function cancelShipment(int $id, OutwardShipmentService $service): void
@@ -407,6 +421,14 @@ new #[Layout('layouts.app')] class extends Component
                         </div>
                         @if ($missing = $s->missingDocuments())
                             <p class="text-xs font-semibold" style="color: var(--status-warning);">Still missing: {{ implode(', ', $missing) }}</p>
+                        @endif
+                        @if ($errors->any())
+                            <div role="alert" class="rounded-lg border px-3 py-2 text-xs" style="border-color: var(--status-critical); background: var(--status-critical-bg); color: var(--status-critical);">
+                                <div class="font-semibold">Not saved - please fix:</div>
+                                <ul class="list-disc pl-4">@foreach ($errors->all() as $message)<li>{{ $message }}</li>@endforeach</ul>
+                            </div>
+                        @elseif ($docsSaved)
+                            <div role="status" class="rounded-lg border px-3 py-2 text-xs font-semibold" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">{{ $docsSaved }}</div>
                         @endif
                         <div class="flex gap-2">
                             <button type="button" wire:click="saveDocuments" wire:loading.attr="disabled" wire:target="saveDocuments,invoiceFile,irnFile,ewbFile" class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50" style="background: var(--brand);">Save documents</button>
