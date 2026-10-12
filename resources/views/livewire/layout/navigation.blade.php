@@ -162,7 +162,7 @@ new class extends Component
 
         return [
             ...$items,
-            ['heading' => 'Super Admin'],
+            ['heading' => 'Super Admin'], // Command Center + Overview; the rest is in its own sections
             ...RoleNavigation::forRole(Role::Admin),
             ...($modules ? [['heading' => 'All Modules'], ...$modules] : []),
             ...($accessControl ? [['heading' => 'Access Control'], ...$accessControl] : []),
@@ -247,29 +247,69 @@ new class extends Component
     </div>
 
     <nav class="flex-1 overflow-y-auto py-3 px-2.5 space-y-0.5">
-        @foreach ($navItems as $item)
-            @if (isset($item['heading']))
-                <div class="hidden sm:block px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">{{ $item['heading'] }}</div>
-                <div class="sm:hidden my-2 border-t" style="border-color: var(--border);"></div>
-                @continue
-            @endif
+        {{-- Items before the first heading stay on top; each heading starts a
+             section that opens / closes. The section with the open page starts
+             open; other choices are remembered per browser. On phone width
+             (icons only) every section stays open. --}}
+        @php
+            $navSections = [['heading' => null, 'items' => []]];
+            foreach ($navItems as $navItem) {
+                if (isset($navItem['heading'])) {
+                    $navSections[] = ['heading' => $navItem['heading'], 'items' => []];
+                } else {
+                    $navSections[array_key_last($navSections)]['items'][] = $navItem;
+                }
+            }
+            $isActive = fn ($item) => request()->routeIs($item['route']) && request()->route('entity') == ($item['params'][0] ?? request()->route('entity'));
+        @endphp
+        @foreach ($navSections as $section)
+            @continue(! $section['items'])
             @php
-                $active = request()->routeIs($item['route']) && request()->route('entity') == ($item['params'][0] ?? request()->route('entity'));
+                $sectionActive = collect($section['items'])->contains(fn ($item) => $isActive($item));
+                $sectionKey = 'nav:'.\Illuminate\Support\Str::slug((string) $section['heading']);
             @endphp
-            <a
-                href="{{ route($item['route'], $item['params'] ?? []) }}"
-                wire:navigate
-                aria-label="{{ $item['label'] }}"
-                title="{{ $item['label'] }}"
-                @class([
-                    'min-h-11 w-full flex items-center justify-center sm:justify-start gap-0 sm:gap-3 px-0 sm:px-3 py-2 rounded-lg text-sm font-medium transition-colors border focus-visible:ring-2 focus-visible:ring-offset-2',
-                    'border-transparent' => ! $active,
-                ])
-                style="{{ $active ? 'background: var(--brand-bg); color: var(--brand); border-color: var(--brand-bg);' : 'color: var(--text-secondary);' }}"
-            >
-                <x-icon :name="$item['icon'] ?? 'circle'" class="w-5 h-5 shrink-0" />
-                <span class="sr-only sm:not-sr-only sm:truncate">{{ $item['label'] }}</span>
-            </a>
+            @if ($section['heading'] !== null)
+                <div
+                    x-data="{ open: {{ $sectionActive ? 'true' : 'false' }}, key: @js($sectionKey) }"
+                    x-init="if (! {{ $sectionActive ? 'true' : 'false' }}) { try { open = localStorage.getItem(key) === '1' } catch (e) {} }"
+                >
+                    <button
+                        type="button"
+                        x-on:click="open = ! open; try { localStorage.setItem(key, open ? '1' : '0') } catch (e) {}"
+                        x-bind:aria-expanded="open.toString()"
+                        class="hidden sm:flex w-full items-center justify-between gap-2 px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider rounded-md focus-visible:ring-2"
+                        style="color: {{ $sectionActive ? 'var(--brand)' : 'var(--text-muted)' }};"
+                    >
+                        <span class="truncate">{{ $section['heading'] }}</span>
+                        <span class="flex items-center gap-1.5 shrink-0">
+                            <span class="font-normal normal-case tracking-normal" x-show="! open">{{ count($section['items']) }}</span>
+                            <svg class="w-3.5 h-3.5" style="transition: transform .15s;" x-bind:style="open ? 'transform: rotate(90deg)' : ''" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.17 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"/></svg>
+                        </span>
+                    </button>
+                    <div class="sm:hidden my-2 border-t" style="border-color: var(--border);"></div>
+                    <div class="space-y-0.5" x-bind:class="open ? '' : 'sm:hidden'">
+            @endif
+            @foreach ($section['items'] as $item)
+                @php($active = $isActive($item))
+                <a
+                    href="{{ route($item['route'], $item['params'] ?? []) }}"
+                    wire:navigate
+                    aria-label="{{ $item['label'] }}"
+                    title="{{ $item['label'] }}"
+                    @class([
+                        'min-h-11 w-full flex items-center justify-center sm:justify-start gap-0 sm:gap-3 px-0 sm:px-3 py-2 rounded-lg text-sm font-medium transition-colors border focus-visible:ring-2 focus-visible:ring-offset-2',
+                        'border-transparent' => ! $active,
+                    ])
+                    style="{{ $active ? 'background: var(--brand-bg); color: var(--brand); border-color: var(--brand-bg);' : 'color: var(--text-secondary);' }}"
+                >
+                    <x-icon :name="$item['icon'] ?? 'circle'" class="w-5 h-5 shrink-0" />
+                    <span class="sr-only sm:not-sr-only sm:truncate">{{ $item['label'] }}</span>
+                </a>
+            @endforeach
+            @if ($section['heading'] !== null)
+                    </div>
+                </div>
+            @endif
         @endforeach
     </nav>
 
