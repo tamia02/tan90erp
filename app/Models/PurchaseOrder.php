@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
-    'po_number', 'po_owner', 'subject', 'requisition_number', 'vendor_name', 'contact_name',
+    'po_number', 'location_id', 'po_owner', 'subject', 'requisition_number', 'vendor_name', 'contact_name',
     'po_date', 'due_date', 'status', 'submitted_at', 'released_at', 'carrier', 'tracking_number', 'excise_duty', 'sales_commission',
     'billing_country', 'billing_building', 'billing_street', 'billing_city', 'billing_state', 'billing_zip',
     'shipping_country', 'shipping_building', 'shipping_street', 'shipping_city', 'shipping_state', 'shipping_zip',
@@ -17,7 +17,24 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 ])]
 class PurchaseOrder extends Model
 {
+    use \App\Models\Concerns\SiteScoped;
+
     use HasFactory;
+
+    // Site = the delivery warehouse's site, else the site of whoever creates it.
+    // Zoho-pulled POs (no warehouse, nobody signed in) stay without a site:
+    // visible to every site.
+    protected static function booted(): void
+    {
+        static::saving(function (PurchaseOrder $po) {
+            if ($po->isDirty('warehouse_location') && filled($po->warehouse_location)) {
+                $po->location_id = \App\Support\SiteLocation::idForName($po->warehouse_location) ?? $po->location_id;
+            }
+            if (! $po->exists && $po->location_id === null) {
+                $po->location_id = \App\Support\SiteLocation::current();
+            }
+        });
+    }
 
     protected function casts(): array
     {

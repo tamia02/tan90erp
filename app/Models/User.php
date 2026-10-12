@@ -26,7 +26,7 @@ use Illuminate\Notifications\Notifiable;
 // `role` enum column below. A user can hold a GRN role (this enum), a
 // Tan90 module role (tan90Profile), both, or neither — the two systems are
 // deliberately not merged into one, see the merge plan's Phase 2 notes.
-#[Fillable(['name', 'email', 'phone', 'role', 'access_mode', 'vendor_tier', 'description', 'sla_directive', 'super_admin', 'is_active', 'preferences', 'password'])]
+#[Fillable(['name', 'email', 'phone', 'location_id', 'role', 'access_mode', 'vendor_tier', 'description', 'sla_directive', 'super_admin', 'is_active', 'preferences', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -49,6 +49,12 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'preferences' => 'array',
         ];
+    }
+
+    // The site this person works at (Master Data > Locations); null = all sites.
+    public function location(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Tan90\MasterData\Location::class, 'location_id');
     }
 
     public function isAdmin(): bool

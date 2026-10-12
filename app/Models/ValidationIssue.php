@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['gate_entry_id', 'code', 'type', 'sku', 'title', 'description', 'severity', 'status', 'owner', 'note'])]
 class ValidationIssue extends Model
 {
+    use \App\Models\Concerns\SiteScopedViaParent;
+
     /** @return BelongsTo<GateEntry, $this> */
     public function gateEntry(): BelongsTo
     {

@@ -61,6 +61,16 @@
                         <p class="text-xs access-muted">The <b>main role</b> decides their home page after login. Tick <b>extra roles</b> if the same person also does other jobs - e.g. main role Store Manager, extra roles Store Executive and QC.</p>
                     </div>
                     <div class="max-w-sm">
+                        <label class="text-xs font-bold access-muted uppercase">Location (site)</label>
+                        <select class="access-input mt-1" name="location_id">
+                            <option value="">All sites</option>
+                            @foreach ($siteLocations as $site)
+                                <option value="{{ $site->id }}" @selected(old('location_id') == $site->id)>{{ $site->name }} ({{ $site->city }})</option>
+                            @endforeach
+                        </select>
+                        <p class="text-xs access-muted mt-1">They see only this site's gate entries, POs, GRN and shipments. "All sites" = everything, as before.</p>
+                    </div>
+                    <div class="max-w-sm">
                         <select class="access-input" name="main_role" x-model="main">
                             <option value="">No main role</option>
                             @foreach ($combinableRoles as $role)

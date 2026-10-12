@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class GrnRecord extends Model
 {
+    use \App\Models\Concerns\SiteScopedViaParent;
+
     protected function casts(): array
     {
         return [

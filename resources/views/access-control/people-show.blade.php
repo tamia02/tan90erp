@@ -44,11 +44,22 @@
                         </div>
                         <p class="text-xs access-muted mt-1" x-show="main === ''">Pick a main role first to add extra roles.</p>
                     </div>
-                    <button class="access-btn access-btn-primary">Save job roles</button>
+                    <div class="max-w-sm">
+                        <label class="text-xs font-bold access-muted uppercase">Location (site)</label>
+                        <select class="access-input mt-1" name="location_id">
+                            <option value="">All sites</option>
+                            @foreach ($siteLocations as $site)
+                                <option value="{{ $site->id }}" @selected(old('location_id', $person->location_id) == $site->id)>{{ $site->name }} ({{ $site->city }})</option>
+                            @endforeach
+                        </select>
+                        <p class="text-xs access-muted mt-1">Only this site's gate entries, POs, GRN and shipments are shown to them.</p>
+                    </div>
+                    <button class="access-btn access-btn-primary">Save job roles &amp; location</button>
                 </form>
             @else
                 <div class="flex flex-wrap gap-2">
                     @if ($mainRole)<span class="access-chip">{{ $mainRole->label() }} (main)</span>@endif
+                    <span class="access-chip">Site: {{ $person->location?->name ?? 'All sites' }}</span>
                     @foreach ($person->extraRoles() as $role)<span class="access-chip">{{ $role->label() }}</span>@endforeach
                     @if (! $mainRole)<span class="access-muted text-sm">None</span>@endif
                 </div>

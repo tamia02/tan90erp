@@ -83,7 +83,8 @@ new #[Layout('layouts.app')] class extends Component
     {
         $this->validate([
             'purpose' => ['required', 'in:'.implode(',', array_keys(OutwardShipment::PURPOSES))],
-            'fromLocationId' => ['required', 'exists:tan90_locations,id'],
+            // A site's staff ship only from their own site.
+            'fromLocationId' => ['required', 'exists:tan90_locations,id', ...(\App\Support\SiteLocation::current() ? ['in:'.\App\Support\SiteLocation::current()] : [])],
             'toName' => ['required', 'string', 'max:255'],
             'toGstin' => ['nullable', 'string', 'size:15'],
             'toState' => ['nullable', 'string', 'max:60'],
@@ -209,6 +210,7 @@ new #[Layout('layouts.app')] class extends Component
             'short' => $short,
             'purposes' => OutwardShipment::PURPOSES,
             'locations' => Location::orderBy('name')->get(),
+            'fromLocations' => Location::when(\App\Support\SiteLocation::current(), fn ($q, $site) => $q->whereKey($site))->orderBy('name')->get(),
             'customers' => Customer::withAddress()->orderBy('name')->get(['id', 'name', 'gstin', 'state']), // only customers with an address
             'itemOptions' => InventoryItem::whereIn('item_type', $itemTypes)->where('active', true)->get(['sku', 'name', 'code'])
                 ->map(fn ($i) => InventoryItem::canSeeSkuName(auth()->user()) ? $i->sku : $i->displayName())->unique()->sort()->values(),
@@ -253,7 +255,7 @@ new #[Layout('layouts.app')] class extends Component
             <label class="flex flex-col gap-1 text-sm"><span class="font-medium">From (our location)</span>
                 <select wire:model.live="fromLocationId" class="{{ $input }}" style="border-color: var(--border);">
                     <option value="">Select…</option>
-                    @foreach ($locations as $location)<option value="{{ $location->id }}">{{ $location->name }} - {{ $location->state }} - GSTIN {{ $location->gstin ?: 'not set' }}</option>@endforeach
+                    @foreach ($fromLocations as $location)<option value="{{ $location->id }}">{{ $location->name }} - {{ $location->state }} - GSTIN {{ $location->gstin ?: 'not set' }}</option>@endforeach
                 </select>
                 @error('fromLocationId') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
             </label>

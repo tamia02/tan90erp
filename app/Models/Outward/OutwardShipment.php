@@ -11,6 +11,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OutwardShipment extends Model
 {
+    use \App\Models\Concerns\SiteScoped;
+
+    // Site = where the goods leave from.
+    public static function siteColumn(): string
+    {
+        return 'from_location_id';
+    }
+
     public const PURPOSES = [
         'sales' => 'Sales Order',
         'transfer' => 'Transfer Order / Internal Movement',

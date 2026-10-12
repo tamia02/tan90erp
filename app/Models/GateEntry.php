@@ -13,14 +13,26 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'created_by', 'approved_by', 'approved_at', 'store_exec_verified_by', 'store_exec_verified_at', 'visitor_host_id', 'gate_no', 'entry_type', 'po_number', 'po_bill_date', 'vendor_name', 'vendor_gst',
     'invoice_number', 'invoice_qty', 'invoice_amount', 'rate', 'material',
     'product_lines', 'outward_shipment_id',
-    'vehicle_number', 'driver_name', 'contact_user_id', 'transporter', 'location', 'gps',
+    'vehicle_number', 'driver_name', 'contact_user_id', 'transporter', 'location', 'location_id', 'gps',
     'bill_scanned', 'bill_document_path', 'remarks', 'status', 'sla_deadline', 'loading_dock', 'dock_assigned_at',
     'loading_window_start', 'loading_window_end', 'expected_delivery_date', 'loading_started_at', 'dispatch_documents_shared', 'loaded_at', 'exited_at',
     'putaway_by', 'putaway_completed_at', 'final_bin', 'visitor_checked_in_at', 'visitor_checked_out_at',
 ])]
 class GateEntry extends Model
 {
+    use \App\Models\Concerns\SiteScoped;
+
     use HasFactory;
+
+    // Site from the Guard's location name ("Bhiwandi WH (MU)" -> Bhiwandi).
+    protected static function booted(): void
+    {
+        static::saving(function (GateEntry $entry) {
+            if ($entry->isDirty('location') || ($entry->location_id === null && filled($entry->location))) {
+                $entry->location_id = \App\Support\SiteLocation::idForName($entry->location) ?? $entry->location_id;
+            }
+        });
+    }
 
     // Outward gate pass made from an Outward Shipment (GST documents + stock).
     public function outwardShipment(): BelongsTo

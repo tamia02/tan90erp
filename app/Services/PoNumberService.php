@@ -30,7 +30,7 @@ class PoNumberService
         $prefix = 'PO'.$code.NumberSeriesService::financialYear($date);
 
         // Older ERP numbers were written with spaces ("PO RM 2627 0020").
-        $max = PurchaseOrder::query()
+        $max = PurchaseOrder::withoutSiteScope() // one number series across all sites
             ->whereRaw("REPLACE(po_number, ' ', '') LIKE ?", [$prefix.'%'])
             ->pluck('po_number')
             ->map(fn ($n) => substr(str_replace(' ', '', $n), strlen($prefix)))

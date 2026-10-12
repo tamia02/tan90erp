@@ -76,6 +76,14 @@ new #[Layout('layouts.app')] class extends Component
 
     public string $location = 'bhiwandi';
 
+    public function mount(): void
+    {
+        // Start on the Guard's own site (Bhiwandi stays the default for all-site users).
+        if (! in_array($this->location, $this->siteLocationKeys(), true)) {
+            $this->location = $this->siteLocationKeys()[0];
+        }
+    }
+
     public string $remarks = '';
 
     // Deliberately separate from driverName/poNumber/material rather than
@@ -111,6 +119,25 @@ new #[Layout('layouts.app')] class extends Component
         'bhiwandi' => ['name' => 'Bhiwandi WH (MU)', 'code' => 'Mumbai-TAN90-MU', 'company' => 'TAN90', 'contact' => 'Shamim', 'phone' => '+91 89258 46275', 'address' => 'S.No. 90 H No 2 situated at Vadpa, Bhiwandi, Maharashtra 421302', 'gps' => '19.2967 N, 73.0631 E'],
     ];
 
+    // A Guard tied to a site only makes passes for that site's gate.
+    private function siteLocationKeys(): array
+    {
+        $site = \App\Support\SiteLocation::current();
+        if ($site === null) {
+            return array_keys(self::LOCATIONS);
+        }
+        $keys = array_values(array_filter(array_keys(self::LOCATIONS), fn ($key) => \App\Support\SiteLocation::idForName(self::LOCATIONS[$key]['name']) === $site));
+
+        return $keys ?: array_keys(self::LOCATIONS);
+    }
+
+    public function updatedLocation(string $value): void
+    {
+        if (! in_array($value, $this->siteLocationKeys(), true)) {
+            $this->location = $this->siteLocationKeys()[0];
+        }
+    }
+
     private function nextGateNumber(): string
     {
         $prefix = match ($this->entryType) {
@@ -120,7 +147,7 @@ new #[Layout('layouts.app')] class extends Component
         };
         $year = now()->format('Y');
         $needle = "GP-{$prefix}-{$year}-";
-        $last = GateEntry::where('gate_no', 'like', $needle.'%')
+        $last = GateEntry::withoutSiteScope()->where('gate_no', 'like', $needle.'%') // numbers are unique across sites
             ->pluck('gate_no')
             // Stringable must be converted explicitly before casting on PHP 8;
             // an implicit (int) cast throws and prevents every new gate pass
@@ -186,7 +213,7 @@ new #[Layout('layouts.app')] class extends Component
             'isVisitor' => $this->entryType === 'visitor',
             'modeLabel' => $this->modeLabel(),
             'selectedLocation' => self::LOCATIONS[$this->location] ?? self::LOCATIONS['bhiwandi'],
-            'locationDetails' => self::LOCATIONS,
+            'locationDetails' => array_intersect_key(self::LOCATIONS, array_flip($this->siteLocationKeys())),
             'documentCount' => collect($this->documents)->filter()->count(),
             'documentSummary' => $this->documentSummary(),
             'hostOptions' => in_array($this->entryType, ['visitor', 'inward', 'outward'], true)
@@ -736,6 +763,7 @@ new #[Layout('layouts.app')] class extends Component
         $poNumber = $isVisitor ? ($hostUser?->name ?? '') : $this->poNumber;
         $material = $isVisitor ? $this->visitPurpose : $this->material;
 
+        $this->updatedLocation($this->location); // a site's Guard always saves for that site
         $selected = self::LOCATIONS[$this->location] ?? ['name' => $this->location, 'code' => 'NA'];
         $qty = $this->invoiceQty !== '' ? $this->invoiceQty : '1';
         $form = [

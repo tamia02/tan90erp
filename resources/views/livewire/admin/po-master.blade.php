@@ -834,7 +834,7 @@ new #[Layout('layouts.app')] class extends Component
 
             return;
         }
-        if (\App\Models\VendorSubmission::where('vendor_name', $po->vendor_name)->where('invoice_number', trim($this->bypassInvoiceNumber))->exists()) {
+        if (\App\Models\VendorSubmission::withoutSiteScope()->where('vendor_name', $po->vendor_name)->where('invoice_number', trim($this->bypassInvoiceNumber))->exists()) {
             $this->addError('bypassInvoiceNumber', 'This invoice number is already submitted for this vendor.');
 
             return;
@@ -1006,10 +1006,11 @@ new #[Layout('layouts.app')] class extends Component
         // "Name · City, State"; with no address yet just the name (picking it fetches it from Zoho).
         $place = fn (...$parts) => ($p = collect($parts)->filter()->implode(', ')) ? ' · '.$p : '';
         $search = trim($this->warehouseSearch);
-        $deliveryLocations = Warehouse::with('location')->orderBy('name')->get()->toBase()->map(fn ($warehouse) => [
+        $site = \App\Support\SiteLocation::current(); // a site's staff deliver to their own site's warehouses
+        $deliveryLocations = Warehouse::with('location')->when($site, fn ($q) => $q->where('tan90_location_id', $site))->orderBy('name')->get()->toBase()->map(fn ($warehouse) => [
             'value' => $warehouse->name,
             'label' => $warehouse->name.$place($warehouse->location?->city, $warehouse->location?->state),
-        ])->merge(Location::orderBy('name')->get()->map(fn ($location) => [
+        ])->merge(Location::when($site, fn ($q) => $q->whereKey($site))->orderBy('name')->get()->map(fn ($location) => [
             'value' => $location->name,
             'label' => $location->name.$place($location->city, $location->state),
         ]))->merge(Customer::withAddress()->when($search !== '', fn ($q) => $q->where('name', 'like', '%'.$search.'%'))

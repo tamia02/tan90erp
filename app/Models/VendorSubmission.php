@@ -16,6 +16,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class VendorSubmission extends Model
 {
+    use \App\Models\Concerns\SiteScopedViaParent;
+
+    // Site = its PO's site.
+    public static function siteParent(): array
+    {
+        return ['po_number', PurchaseOrder::class, 'po_number'];
+    }
+
     use HasFactory;
 
     protected function casts(): array

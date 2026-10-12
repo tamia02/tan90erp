@@ -43,11 +43,11 @@ class GateValidationService
             $raise('VENDOR_MISSING', 'Vendor Missing', 'No vendor name entered for this inward entry', 'hardFail');
         }
 
-        if (! empty($form['invoice_number']) && GateEntry::whereRaw('LOWER(invoice_number) = ?', [strtolower($form['invoice_number'])])->exists()) {
+        if (! empty($form['invoice_number']) && GateEntry::withoutSiteScope()->whereRaw('LOWER(invoice_number) = ?', [strtolower($form['invoice_number'])])->exists()) {
             $raise('DUP_INVOICE', 'Duplicate Invoice', 'Possible duplicate invoice detected', 'hardFail');
         }
 
-        if (GateEntry::where('status', '!=', 'closed')->whereRaw('LOWER(vehicle_number) = ?', [strtolower($form['vehicle_number'])])->exists()) {
+        if (GateEntry::withoutSiteScope()->where('status', '!=', 'closed')->whereRaw('LOWER(vehicle_number) = ?', [strtolower($form['vehicle_number'])])->exists()) {
             $raise('DUP_VEHICLE', 'Duplicate Vehicle', 'This vehicle already has an open, unclosed gate entry', 'warning');
         }
 

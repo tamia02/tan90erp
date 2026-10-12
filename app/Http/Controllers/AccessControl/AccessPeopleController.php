@@ -48,6 +48,7 @@ class AccessPeopleController extends Controller
         abort_unless($this->access->can($request->user(), 'access.people.view'), 403);
 
         return view('access-control.people-create', [
+            'siteLocations' => \App\Models\Tan90\MasterData\Location::orderBy('name')->get(),
             'roles' => AccessRole::where('status', 'active')->orderBy('level')->orderBy('name')->get(),
             'people' => User::where('access_mode', 'advanced')->orderBy('name')->get(),
             'combinableRoles' => Role::combinable(),
@@ -81,6 +82,7 @@ class AccessPeopleController extends Controller
             'reports_to_user_id' => ['nullable', 'exists:users,id'],
             'report_user_ids' => ['nullable', 'array'],
             'report_user_ids.*' => ['exists:users,id'],
+            'location_id' => ['nullable', 'integer', 'exists:tan90_locations,id'],
         ], [
             'role_id.required_without' => 'Pick an Access Control role or a main job role.',
         ]);
@@ -96,6 +98,8 @@ class AccessPeopleController extends Controller
             'password' => Hash::make($data['password']),
             'access_mode' => 'advanced',
             'is_active' => true,
+            // Site: Super Admin only, like job roles.
+            'location_id' => $request->user()->isAdmin() ? ($data['location_id'] ?? null) : null,
         ]);
 
         if ($role) {
@@ -176,6 +180,7 @@ class AccessPeopleController extends Controller
         abort_unless($this->access->canManageUser($request->user(), $user) || $request->user()->is($user), 403);
 
         return view('access-control.people-show', [
+            'siteLocations' => \App\Models\Tan90\MasterData\Location::orderBy('name')->get(),
             'person' => $user->load(['accessRoles', 'accessPositions', 'extraRoleRecords']),
             'roles' => AccessRole::where('status', 'active')->orderBy('level')->orderBy('name')->get(),
             'combinableRoles' => Role::combinable(),
@@ -221,13 +226,19 @@ class AccessPeopleController extends Controller
             'main_role' => ['nullable', Rule::in($combinable)],
             'extra_roles' => ['nullable', 'array'],
             'extra_roles.*' => [Rule::in($combinable)],
+            'location_id' => ['nullable', 'integer', 'exists:tan90_locations,id'],
         ], [
             'main_role.in' => 'Pick a valid main role.',
         ]);
 
         $this->saveJobRoles($request->user(), $user, $data['main_role'] ?? null, $data['extra_roles'] ?? []);
+        if ($user->location_id != ($data['location_id'] ?? null)) {
+            $before = $user->location_id;
+            $user->forceFill(['location_id' => $data['location_id'] ?? null])->save();
+            $this->access->audit($request->user(), 'user.location.changed', $user, ['location_id' => $before], ['location_id' => $user->location_id]);
+        }
 
-        return back()->with('status', 'Job roles saved.');
+        return back()->with('status', 'Job roles and location saved.');
     }
 
     public function removeRole(Request $request, User $user, AccessRole $role)
