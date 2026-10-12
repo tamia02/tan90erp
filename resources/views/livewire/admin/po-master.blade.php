@@ -771,18 +771,59 @@ new #[Layout('layouts.app')] class extends Component
 
     public string $bypassReason = '';
 
+    // Bypass = Store Manager does the vendor's part: accept the PO AND submit
+    // the dispatch documents the vendor would upload (invoice / e-way bill /
+    // LR-POD, quantities, vehicle). That makes the same VendorSubmission the
+    // vendor portal makes, so the Guard fetches it at the gate as usual.
+    public string $bypassInvoiceNumber = '';
+
+    public string $bypassInvoiceDate = '';
+
+    public string $bypassVehicle = '';
+
+    public string $bypassArrival = '';
+
+    public array $bypassLines = [];
+
+    public $bypassInvoiceFile;
+
+    public $bypassEwayFile;
+
+    public $bypassLrFile;
+
     public function openBypass(int $id): void
     {
-        $this->bypassingPoId = $id;
-        $this->bypassReason = '';
-        $this->resetValidation('bypassReason');
+        $po = PurchaseOrder::with('lines')->findOrFail($id);
+        $this->reset(['bypassReason', 'bypassInvoiceNumber', 'bypassInvoiceDate', 'bypassVehicle', 'bypassArrival', 'bypassInvoiceFile', 'bypassEwayFile', 'bypassLrFile']);
+        $this->bypassingPoId = $po->id;
+        $this->bypassInvoiceDate = now()->toDateString();
+        $this->bypassLines = $po->lines->mapWithKeys(fn ($line) => [$line->id => (float) $line->quantity])->all();
+        $this->resetValidation();
     }
 
     public function bypassVendorAcceptance(): void
     {
-        $po = PurchaseOrder::with('acknowledgement')->findOrFail($this->bypassingPoId);
+        $po = PurchaseOrder::with(['acknowledgement', 'lines'])->findOrFail($this->bypassingPoId);
         abort_unless(auth()->user()?->isAdmin() || auth()->user()?->holdsRole(Role::StoreManager), 403);
-        $this->validate(['bypassReason' => ['required', 'string', 'min:5', 'max:500']], ['bypassReason.required' => 'Write why the vendor can\'t accept (e.g. "Vendor confirmed on phone").', 'bypassReason.min' => 'Write a short reason.']);
+        $this->validate([
+            'bypassReason' => ['required', 'string', 'min:5', 'max:500'],
+            'bypassInvoiceNumber' => ['required', 'string', 'max:255'],
+            'bypassInvoiceDate' => ['required', 'date'],
+            'bypassVehicle' => ['nullable', 'string', 'max:255'],
+            'bypassArrival' => ['nullable', 'date'],
+            'bypassLines.*' => ['nullable', 'numeric', 'min:0'],
+            'bypassInvoiceFile' => ['nullable', 'file', 'max:5120'],
+            'bypassEwayFile' => ['nullable', 'file', 'max:5120'],
+            'bypassLrFile' => ['nullable', 'file', 'max:5120'],
+        ], ['bypassReason.required' => 'Write why the vendor can\'t do it (e.g. "Vendor confirmed on phone").', 'bypassReason.min' => 'Write a short reason.'], [
+            'bypassInvoiceNumber' => 'vendor invoice number', 'bypassInvoiceDate' => 'invoice date', 'bypassVehicle' => 'vehicle number',
+            'bypassArrival' => 'expected arrival', 'bypassInvoiceFile' => 'invoice file', 'bypassEwayFile' => 'e-way bill', 'bypassLrFile' => 'LR / POD',
+        ]);
+        if (! $this->bypassInvoiceFile && ! $this->bypassEwayFile && ! $this->bypassLrFile) {
+            $this->addError('bypassInvoiceFile', 'Upload at least one document (Invoice, E-way Bill or LR/POD), as the vendor would.');
+
+            return;
+        }
         if (! $po->isReleased()) {
             $this->addError('bypassReason', 'Release the PO first.');
 
@@ -793,15 +834,60 @@ new #[Layout('layouts.app')] class extends Component
 
             return;
         }
+        if (\App\Models\VendorSubmission::where('vendor_name', $po->vendor_name)->where('invoice_number', trim($this->bypassInvoiceNumber))->exists()) {
+            $this->addError('bypassInvoiceNumber', 'This invoice number is already submitted for this vendor.');
 
-        $ack = \App\Models\PurchaseOrderAcknowledgement::updateOrCreate(['po_number' => $po->po_number], [
-            'vendor_name' => $po->vendor_name, 'accepted' => true,
-            'remarks' => 'Accepted by '.auth()->user()->name.' on the vendor\'s behalf (bypass): '.trim($this->bypassReason),
-            'acknowledged_by' => auth()->id(), 'acknowledged_at' => now(), 'production_started_at' => now(),
-        ]);
-        AuditLogger::log('PO vendor acceptance bypassed', "{$po->po_number} · {$po->vendor_name} · ".trim($this->bypassReason), $ack);
-        session()->flash('success', "{$po->po_number} accepted on the vendor's behalf - it can move on to the gate.");
-        $this->reset(['bypassingPoId', 'bypassReason']);
+            return;
+        }
+        $lines = collect($this->bypassLines)->map(fn ($q) => (float) $q)->filter(fn ($q) => $q > 0);
+        foreach ($lines as $lineId => $qty) {
+            $line = $po->lines->firstWhere('id', (int) $lineId);
+            if (! $line || $qty > (float) $line->quantity) {
+                $this->addError("bypassLines.{$lineId}", 'More than ordered on this line.');
+
+                return;
+            }
+        }
+        if ($lines->isEmpty()) {
+            $this->addError('bypassLines', 'Enter the quantity being dispatched.');
+
+            return;
+        }
+
+        $reason = trim($this->bypassReason);
+        $paths = [
+            'invoice' => $this->bypassInvoiceFile?->store('documents'),
+            'eway' => $this->bypassEwayFile?->store('documents'),
+            'lr' => $this->bypassLrFile?->store('documents'),
+        ];
+        [$ack, $submission] = \Illuminate\Support\Facades\DB::transaction(function () use ($po, $reason, $lines, $paths) {
+            $ack = \App\Models\PurchaseOrderAcknowledgement::updateOrCreate(['po_number' => $po->po_number], [
+                'vendor_name' => $po->vendor_name, 'accepted' => true,
+                'remarks' => 'Accepted by '.auth()->user()->name.' on the vendor\'s behalf (bypass): '.$reason,
+                'acknowledged_by' => auth()->id(), 'acknowledged_at' => now(), 'production_started_at' => now(),
+            ]);
+            $allocations = $lines->mapWithKeys(fn ($q, $id) => [(int) $id => $q])->all();
+            $submission = \App\Models\VendorSubmission::create([
+                'po_number' => $po->po_number, 'vendor_name' => $po->vendor_name,
+                'invoice_number' => trim($this->bypassInvoiceNumber), 'invoice_date' => $this->bypassInvoiceDate ?: null, 'invoice_due_date' => null,
+                'invoice_qty' => (int) round($lines->sum()),
+                'invoice_amount' => round(app(\App\Services\PurchaseOrderAmountCalculator::class)->amounts($po, $allocations)['total'], 2),
+                'material' => $po->lines->whereIn('id', $lines->keys()->map(fn ($k) => (int) $k)->all())->pluck('product')->unique()->implode(' + '),
+                'line_quantities' => $lines->all(),
+                'expected_arrival_at' => $this->bypassArrival ?: null, 'vehicle_number' => trim($this->bypassVehicle) ?: null,
+                'has_invoice' => (bool) $paths['invoice'], 'invoice_document_path' => $paths['invoice'],
+                'has_eway_bill' => (bool) $paths['eway'], 'eway_bill_document_path' => $paths['eway'],
+                'has_lr_pod' => (bool) $paths['lr'], 'lr_pod_document_path' => $paths['lr'],
+                'status' => 'submitted', 'note' => 'Submitted by '.auth()->user()->name.' for the vendor (bypass): '.$reason,
+                'production_started_at' => now(), 'dispatched_at' => now(), 'tat_due_at' => $po->due_date?->copy()->endOfDay(),
+            ]);
+
+            return [$ack, $submission];
+        });
+        AuditLogger::log('PO vendor acceptance bypassed', "{$po->po_number} · {$po->vendor_name} · {$reason}", $ack);
+        AuditLogger::log('Vendor submission created', "{$submission->po_number} · {$submission->invoice_number} (by Store Manager, bypass)", $submission);
+        session()->flash('success', "{$po->po_number} accepted for the vendor and dispatch documents recorded (invoice {$submission->invoice_number}). The Guard can now fetch it at the gate.");
+        $this->reset(['bypassingPoId', 'bypassReason', 'bypassInvoiceNumber', 'bypassInvoiceDate', 'bypassVehicle', 'bypassArrival', 'bypassLines', 'bypassInvoiceFile', 'bypassEwayFile', 'bypassLrFile']);
     }
 
     // A vendor with no address saved (most Zoho vendors have none) keeps the one
@@ -949,6 +1035,7 @@ new #[Layout('layouts.app')] class extends Component
             'skuOptions' => $this->purchaseNature === '' ? collect() : SkuMaster::where('active', true)
                 ->when($this->skuCategoryPattern(), fn ($q, $pattern) => $q->where('category', 'like', $pattern))
                 ->orderBy('sku')->get(['sku', 'zoho_hsn']),
+            'bypassPo' => $this->bypassingPoId ? PurchaseOrder::with('lines')->find($this->bypassingPoId) : null,
             'ordersTotal' => PurchaseOrder::when(trim($this->poLookup) !== '', fn ($query) => $query->where(fn ($q) => $q
                 ->where('po_number', 'like', '%'.trim($this->poLookup).'%')
                 ->orWhere('vendor_name', 'like', '%'.trim($this->poLookup).'%')))->count(),
@@ -1005,6 +1092,9 @@ new #[Layout('layouts.app')] class extends Component
     @endif
     @if (session('po-settings-saved'))
         <div class="rounded-lg border px-4 py-3 mb-4 text-sm" role="status" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">{{ session('po-settings-saved') }}</div>
+    @endif
+    @if (session('success'))
+        <div class="rounded-lg border px-4 py-3 mb-4 text-sm" role="status" aria-live="polite" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">{{ session('success') }}</div>
     @endif
     @if (session('po-released'))
         <div class="rounded-lg border px-4 py-3 mb-4 text-sm" role="status" aria-live="polite" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">{{ session('po-released') }}</div>
@@ -1361,6 +1451,77 @@ new #[Layout('layouts.app')] class extends Component
         </div>
     @endif
 
+    @if ($bypassPo)
+        {{-- Bypass popup: the vendor's acceptance + dispatch documents, done by the Store Manager. --}}
+        <div class="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto" style="background: rgba(15, 23, 42, 0.55);" role="dialog" aria-modal="true" aria-labelledby="bypass-title" wire:key="bypass-modal-{{ $bypassPo->id }}">
+            <div class="w-full max-w-2xl rounded-2xl border p-5 space-y-4" style="background: var(--surface-1); border-color: var(--border);">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h2 id="bypass-title" class="text-lg font-bold" style="color: var(--text-primary);">Accept for vendor: {{ $bypassPo->po_number }}</h2>
+                        <p class="text-sm mt-1" style="color: var(--text-secondary);">{{ $bypassPo->vendor_name }} can't use the portal. Upload the documents the vendor would send; the PO then goes to the Guard as usual.</p>
+                    </div>
+                    <button type="button" wire:click="$set('bypassingPoId', null)" class="text-sm" style="color: var(--text-muted);" aria-label="Close">✕</button>
+                </div>
+
+                <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Why are you doing this for the vendor? *</span>
+                    <input wire:model="bypassReason" placeholder="e.g. Vendor confirmed on phone, sent invoice on WhatsApp" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                    @error('bypassReason') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                </label>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Vendor invoice number *</span>
+                        <input wire:model="bypassInvoiceNumber" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                        @error('bypassInvoiceNumber') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Invoice date *</span>
+                        <input wire:model="bypassInvoiceDate" type="date" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                        @error('bypassInvoiceDate') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Vehicle number</span>
+                        <input wire:model="bypassVehicle" placeholder="MH 04 AB 1234" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                    </label>
+                    <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Expected arrival</span>
+                        <input wire:model="bypassArrival" type="datetime-local" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                        @error('bypassArrival') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                    </label>
+                </div>
+
+                <div>
+                    <div class="text-sm font-medium mb-1">Quantity being dispatched</div>
+                    <div class="rounded-lg border divide-y" style="border-color: var(--border);">
+                        @foreach ($bypassPo->lines as $line)
+                            <div class="flex items-center justify-between gap-3 px-3 py-2 text-sm" wire:key="bypass-line-{{ $line->id }}">
+                                <span class="min-w-0 truncate">{{ $line->product }} <span class="text-xs" style="color: var(--text-muted);">· ordered {{ rtrim(rtrim((string) $line->quantity, '0'), '.') }} {{ $line->uom }}</span></span>
+                                <span class="flex flex-col items-end">
+                                    <input wire:model="bypassLines.{{ $line->id }}" type="number" min="0" step="0.001" class="w-28 rounded-lg border px-2 py-1 text-sm text-right" style="border-color: var(--border);">
+                                    @error('bypassLines.'.$line->id) <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                    @error('bypassLines') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                </div>
+
+                <div>
+                    <div class="text-sm font-medium mb-1">Documents <span class="font-normal text-xs" style="color: var(--text-muted);">(at least one, PDF or photo, up to 5 MB each)</span></div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        @foreach (['bypassInvoiceFile' => 'Invoice', 'bypassEwayFile' => 'E-way Bill', 'bypassLrFile' => 'LR / POD'] as $field => $label)
+                            <label class="flex flex-col gap-1 text-xs"><span class="font-semibold">{{ $label }}</span>
+                                <input wire:model="{{ $field }}" type="file" accept=".pdf,.jpg,.jpeg,.png" class="text-xs">
+                                <span wire:loading wire:target="{{ $field }}" style="color: var(--text-muted);">Uploading…</span>
+                                @error($field) <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-2 pt-1">
+                    <button type="button" wire:click="bypassVendorAcceptance" wire:loading.attr="disabled" wire:target="bypassVendorAcceptance,bypassInvoiceFile,bypassEwayFile,bypassLrFile" class="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--brand);">Accept & submit documents for vendor</button>
+                    <button type="button" wire:click="$set('bypassingPoId', null)" class="rounded-lg border px-4 py-2 text-sm font-semibold" style="border-color: var(--border); color: var(--text-primary);">Cancel</button>
+                </div>
+            </div>
+        </div>
+    @endif
     <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
         <input wire:model.live.debounce.400ms="poLookup" type="search" placeholder="Search PO number or vendor" aria-label="Search purchase orders" class="rounded-lg border px-3 py-2 text-sm sm:w-80" style="border-color: var(--border); background: var(--surface-1);" />
         <span class="text-xs" style="color: var(--text-muted);">Showing {{ min($orders->count(), $ordersTotal) }} of {{ $ordersTotal }} POs, newest first</span>
@@ -1407,18 +1568,7 @@ new #[Layout('layouts.app')] class extends Component
                                     <div class="mt-1 font-normal" style="color: var(--status-warning);">Awaiting Vendor</div>
                                 @endif
                                 @if ($po->isReleased() && ! $po->acknowledgement?->accepted)
-                                    @if ($bypassingPoId === $po->id)
-                                        <div class="mt-2 flex flex-col gap-1.5 font-normal" wire:key="bypass-{{ $po->id }}">
-                                            <input wire:model="bypassReason" placeholder="Why? e.g. Vendor confirmed on phone" class="rounded-lg border px-2 py-1 text-xs" style="border-color: var(--border);">
-                                            @error('bypassReason') <span style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                                            <div class="flex gap-2">
-                                                <button type="button" wire:click="bypassVendorAcceptance" class="rounded-lg px-2.5 py-1 text-xs font-semibold text-white" style="background: var(--brand);">Accept for vendor</button>
-                                                <button type="button" wire:click="$set('bypassingPoId', null)" class="text-xs" style="color: var(--text-muted);">Cancel</button>
-                                            </div>
-                                        </div>
-                                    @else
-                                        <button type="button" wire:click="openBypass({{ $po->id }})" class="mt-1 text-xs font-semibold underline" style="color: var(--brand);" title="Vendor can't accept in the portal - accept on their behalf">Bypass: accept for vendor</button>
-                                    @endif
+                                    <button type="button" wire:click="openBypass({{ $po->id }})" class="mt-1 text-xs font-semibold underline" style="color: var(--brand);" title="Vendor can't use the portal - accept and upload their dispatch documents for them">Bypass: accept for vendor</button>
                                 @endif
                                 @if ($po->isReleased())
                                     <div class="mt-1 font-semibold" style="color: var(--status-good);">Released — visible in vendor portal</div>

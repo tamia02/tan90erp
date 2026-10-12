@@ -106,16 +106,39 @@ class StoreManagerRequests20261010Test extends TestCase
         $this->assertDatabaseHas('inventory_items', ['code' => 'NEW-1', 'name' => 'New Item', 'item_type' => 'trading', 'unit' => 'PCS']);
     }
 
+    // 2026-10-12: bypass also needs the vendor's dispatch documents (popup), and
+    // makes the same submission the vendor portal makes, so the Guard can fetch it.
     public function test_store_manager_can_accept_a_po_for_the_vendor(): void
     {
+        \Illuminate\Support\Facades\Storage::fake(config('filesystems.default')); // same disk the vendor portal stores to
         $po = PurchaseOrder::factory()->create(['released_at' => now(), 'vendor_name' => 'Away Vendor']);
-        $page = Volt::test('admin.po-master')->assertSee('Bypass: accept for vendor')->call('openBypass', $po->id);
-        $page->call('bypassVendorAcceptance')->assertHasErrors('bypassReason');
-        $page->set('bypassReason', 'Vendor confirmed on phone')->call('bypassVendorAcceptance')->assertHasNoErrors();
+        $line = $po->lines()->create(['product' => 'Bypass RM', 'quantity' => 100, 'uom' => 'KG', 'list_price' => 10]);
+        $page = Volt::test('admin.po-master')->assertSee('Bypass: accept for vendor')->call('openBypass', $po->id)
+            ->assertSee('Accept for vendor: '.$po->po_number)->assertSet("bypassLines.{$line->id}", 100.0);
+
+        // Reason, invoice number and at least one document are required.
+        $page->set('bypassInvoiceNumber', '')->call('bypassVendorAcceptance')->assertHasErrors(['bypassReason', 'bypassInvoiceNumber']);
+        $page->set('bypassReason', 'Vendor confirmed on phone')->set('bypassInvoiceNumber', 'AWAY-INV-7')
+            ->call('bypassVendorAcceptance')->assertHasErrors('bypassInvoiceFile');
+        $this->assertFalse(PurchaseOrderAcknowledgement::where('po_number', $po->po_number)->exists());
+
+        $page->set("bypassLines.{$line->id}", 60)->set('bypassVehicle', 'MH 04 AB 1234')
+            ->set('bypassInvoiceFile', UploadedFile::fake()->create('invoice.pdf', 20, 'application/pdf'))
+            ->call('bypassVendorAcceptance')->assertHasNoErrors()->assertSet('bypassingPoId', null);
 
         $ack = PurchaseOrderAcknowledgement::where('po_number', $po->po_number)->firstOrFail();
         $this->assertTrue($ack->accepted);
         $this->assertSame($this->manager->id, $ack->acknowledged_by);
         $this->assertStringContainsString('Vendor confirmed on phone', $ack->remarks);
+
+        $submission = \App\Models\VendorSubmission::where('po_number', $po->po_number)->firstOrFail();
+        $this->assertSame(['AWAY-INV-7', 60, 'Away Vendor', 'MH 04 AB 1234', true, 'submitted'], [$submission->invoice_number, (int) $submission->invoice_qty, $submission->vendor_name, $submission->vehicle_number, $submission->has_invoice, $submission->status]);
+        $this->assertSame([$line->id => 60.0], array_map('floatval', $submission->line_quantities));
+        \Illuminate\Support\Facades\Storage::disk('tmp-for-tests')->assertExists($submission->invoice_document_path); // Livewire's test disk, as GuardBillUploadTest
+
+        // The Guard fetches it by invoice number exactly as a vendor-made submission.
+        $this->actingAs(User::factory()->create(['role' => Role::Guard]));
+        Volt::test('guard.bill-scan')->set('invoiceNumber', 'AWAY-INV-7')->call('fetchBillDetails')
+            ->assertHasNoErrors()->assertSet('poNumber', $po->po_number)->assertSet('vendorName', 'Away Vendor');
     }
 }
