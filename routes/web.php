@@ -104,7 +104,7 @@ Route::get('role-login/{role}', function (string $role) {
     Session::regenerate();
 
     return redirect(rtrim(config('app.url'), '/').route($role->homeRouteName(), [], false));
-})->whereIn('role', Role::values())->name('role-login');
+})->whereIn('role', Role::values())->name('role-login')->middleware('demo-logins');
 
 Route::get('tan90-role-login/{roleCode}', function (string $roleCode) {
     $role = App\Models\Tan90\MasterData\Role::where('code', $roleCode)->firstOrFail();
@@ -117,7 +117,7 @@ Route::get('tan90-role-login/{roleCode}', function (string $roleCode) {
     $homeRoute = in_array($roleCode, $bomOnlyCodes, true) ? 'tan90.brc.dashboard' : 'tan90.master-data.dashboard';
 
     return redirect(rtrim(config('app.url'), '/').route($homeRoute, [], false));
-})->name('tan90-role-login');
+})->name('tan90-role-login')->middleware('demo-logins');
 
 Route::get('demo-user-login/{user}', function (User $user) {
     abort_unless($user->is_active, 404);
@@ -142,7 +142,7 @@ Route::get('demo-user-login/{user}', function (User $user) {
     }
 
     return redirect('/login');
-})->name('demo-user-login');
+})->name('demo-user-login')->middleware('demo-logins');
 
 Route::post('demo-login/{user}', function (User $user) {
     abort_unless(str_ends_with($user->email, '@tan90.demo') && $user->access_mode === 'advanced', 403);
@@ -151,7 +151,7 @@ Route::post('demo-login/{user}', function (User $user) {
     Session::regenerate();
 
     return redirect()->route('workspace.index');
-})->name('demo-login');
+})->name('demo-login')->middleware('demo-logins');
 
 Route::get('oauth/claude/initiate', [ClaudeOAuthController::class, 'initiate'])->name('claude.initiate');
 Route::get('oauth/claude/callback', [ClaudeOAuthController::class, 'callback'])->name('claude.callback');

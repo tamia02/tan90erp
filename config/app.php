@@ -15,6 +15,11 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    // One-click demo logins (role / demo-user / Tan90 role) sign in WITHOUT a
+    // password. On for the demo/staging site; production sets DEMO_LOGINS=false,
+    // which hides them on the login page and turns their URLs into 404.
+    'demo_logins' => (bool) env('DEMO_LOGINS', true),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

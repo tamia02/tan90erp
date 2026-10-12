@@ -82,6 +82,7 @@ new #[Layout('layouts.guest')] class extends Component
     <section class="tan90-login-panel">
         <x-auth-session-status class="mb-4" :status="session('status')" />
 
+        @if (config('app.demo_logins'))
         <div class="tan90-panel-heading">
             <p>Secure access</p>
             <h2>Open your role workspace</h2>
@@ -190,6 +191,7 @@ new #[Layout('layouts.guest')] class extends Component
         </div>
 
         <div class="tan90-divider"><span>manual login</span></div>
+        @endif
 
         <form wire:submit="login" class="tan90-manual-form">
             <div>
