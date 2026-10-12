@@ -12,6 +12,13 @@ use Livewire\Volt\Component;
 
 new #[Layout('layouts.app')] class extends Component
 {
+    use \App\Livewire\Concerns\PicksStockSite;
+
+    protected function stockSiteRequired(): bool
+    {
+        return true;
+    }
+
     // New SKU Master items / GRN SKUs appear here automatically.
     public function mount(): void
     {
@@ -46,6 +53,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function produce(InventoryService $inventory): void
     {
+        $inventory = $this->inventory(); // Create Bundle at the chosen / own site
         $this->validate([
             'fgItemId' => ['required', 'exists:inventory_items,id'],
             'qty' => ['required', 'numeric', 'gt:0'],
@@ -99,12 +107,13 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        $inventory = app(InventoryService::class);
+        $inventory = $this->inventory();
         $fgItems = InventoryItem::where('item_type', 'fg')->where('active', true)->with('bomLines.component')->orderBy('sku')->get();
         $selected = $this->fgItemId ? $fgItems->firstWhere('id', (int) $this->fgItemId) : null;
         $components = $selected ? $selected->bomLines->pluck('component')->filter() : collect();
 
         return [
+            ...$this->stockSiteView(),
             'fgItems' => $fgItems,
             'selected' => $selected,
             'componentBalances' => $inventory->balances($components),
@@ -117,6 +126,7 @@ new #[Layout('layouts.app')] class extends Component
 
 <div>
     @include('partials.inventory-tabs', ['current' => 'inventory.production', 'title' => 'Create Bundle (Production)', 'subtitle' => 'Turn Raw Material + Packaging Material into a Finished Good. The quantities per piece start from the recipe - change them if this batch is made differently; add any wastage per material.'])
+    @include('partials.stock-site-picker', ['required' => true])
 
     {{-- Inputs use deferred wire:model so a fast click on "Create Bundle" always sends the typed qty/wastage; the debounced $refresh only redraws the preview. (wire:model.live.debounce lost values typed <400ms before the click.) --}}
     <form wire:submit="produce" class="rounded-2xl border p-5 space-y-4" style="background: var(--surface-3); border-color: var(--border);">

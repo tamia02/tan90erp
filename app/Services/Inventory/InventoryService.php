@@ -20,25 +20,65 @@ use Illuminate\Validation\ValidationException;
 // and never written here, so the vendor -> GRN flow stays exactly as it is.
 class InventoryService
 {
+    // Stock per site (2026-10-12). A person tied to a site sees and moves that
+    // site's stock. Super Admin / people with no site see all sites added up
+    // (the same numbers as before) and their stock changes go to the chosen
+    // site, Bhiwandi (the main warehouse) unless they pick another.
+    private ?int $site = null;
+
+    private bool $siteChosen = false;
+
+    /** A copy working at one site (null = all sites added up, for reading). */
+    public function atSite(?int $site): static
+    {
+        $copy = clone $this;
+        $copy->site = $site;
+        $copy->siteChosen = true;
+
+        return $copy;
+    }
+
+    /** Site whose stock is shown: the chosen one, else the person's site, else all (null). */
+    public function readSite(): ?int
+    {
+        return $this->siteChosen ? $this->site : \App\Support\SiteLocation::current();
+    }
+
+    /** Site a stock change is booked to: never "all". */
+    public function writeSite(): ?int
+    {
+        return $this->readSite() ?? \App\Support\SiteLocation::defaultId();
+    }
+
     /**
      * @param  Collection<int, InventoryItem>  $items
      * @return array<int, array{opening: float, received: float, produced: float, adjusted: float, consumed: float, wastage: float, dispatched: float, final: float}>
      */
     public function balances(Collection $items): array
     {
+        return $this->balancesAt($items, $this->readSite());
+    }
+
+    // $site null = every site added up. Rows recorded before stock had a site
+    // (no site on the movement / GRN gate entry) count at the main site.
+    private function balancesAt(Collection $items, ?int $site): array
+    {
         if ($items->isEmpty()) {
             return [];
         }
+        $main = $site !== null && $site === \App\Support\SiteLocation::defaultId();
+        $atSite = fn ($q, string $column) => $site === null ? $q : $q->where(fn ($w) => $main ? $w->where($column, $site)->orWhereNull($column) : $w->where($column, $site));
 
         $received = LedgerEntry::query()
-            ->where('bucket', 'available')
-            ->whereIn('sku', $items->pluck('sku'))
-            ->groupBy('sku')
-            ->selectRaw('sku, SUM(qty) as total')
+            ->where('ledger_entries.bucket', 'available')
+            ->whereIn('ledger_entries.sku', $items->pluck('sku'))
+            ->when($site !== null, fn ($q) => $atSite($q->leftJoin('gate_entries as site_gate', 'site_gate.id', '=', 'ledger_entries.gate_entry_id'), 'site_gate.location_id'))
+            ->groupBy('ledger_entries.sku')
+            ->selectRaw('ledger_entries.sku as sku, SUM(ledger_entries.qty) as total')
             ->pluck('total', 'sku');
 
-        $moved = InventoryMovement::query()
-            ->whereIn('item_id', $items->pluck('id'))
+        $moved = $atSite(InventoryMovement::query()
+            ->whereIn('item_id', $items->pluck('id')), 'location_id')
             ->groupBy('item_id', 'type')
             ->selectRaw('item_id, type, SUM(qty) as total')
             ->get()
@@ -48,7 +88,8 @@ class InventoryService
         foreach ($items as $item) {
             $byType = ($moved->get($item->id) ?? collect())->pluck('total', 'type');
             $row = [
-                'opening' => (float) $item->opening_qty,
+                // Opening stock has no site: it belongs to the main site (and the all-sites total).
+                'opening' => ($site === null || $main) ? (float) $item->opening_qty : 0.0,
                 'received' => (float) ($received[$item->sku] ?? 0),
                 'produced' => (float) ($byType['produced'] ?? 0),
                 'consumed' => (float) ($byType['consumed'] ?? 0),
@@ -124,9 +165,13 @@ class InventoryService
      */
     public function history(InventoryItem $item): Collection
     {
+        $site = $this->readSite();
+        $main = $site !== null && $site === \App\Support\SiteLocation::defaultId();
         $grn = LedgerEntry::with('gateEntry')->where('sku', $item->sku)->where('bucket', 'available')->get()
+            ->filter(fn ($entry) => $site === null || $entry->gateEntry?->location_id === $site || ($main && ! $entry->gateEntry?->location_id))
             ->map(fn ($entry) => ['at' => $entry->created_at, 'label' => trim('Received (GRN) · '.($entry->gateEntry?->gate_no ?? '').' '.($entry->gateEntry?->po_number ?? '')), 'qty' => (float) $entry->qty, 'kind' => 'received']);
-        $moves = InventoryMovement::with(['production', 'dispatch', 'creator'])->where('item_id', $item->id)->get()
+        $moves = InventoryMovement::with(['production', 'dispatch', 'creator'])->where('item_id', $item->id)
+            ->when($site !== null, fn ($q) => $q->where(fn ($w) => $main ? $w->where('location_id', $site)->orWhereNull('location_id') : $w->where('location_id', $site)))->get()
             ->map(fn ($m) => [
                 'at' => $m->created_at,
                 'label' => match ($m->type) {
@@ -148,6 +193,12 @@ class InventoryService
     public function available(InventoryItem $item): float
     {
         return $this->balances(collect([$item]))[$item->id]['final'];
+    }
+
+    /** Stock at the site a change would be booked to. */
+    private function availableToMove(InventoryItem $item): float
+    {
+        return $this->balancesAt(collect([$item]), $this->writeSite())[$item->id]['final'];
     }
 
     /**
@@ -176,7 +227,7 @@ class InventoryService
 
             // Lock the component rows so two people can't use the same stock at once.
             InventoryItem::whereIn('id', $lines->pluck('component_item_id'))->lockForUpdate()->get();
-            $balances = $this->balances($lines->pluck('component'));
+            $balances = $this->balancesAt($lines->pluck('component'), $this->writeSite());
 
             $errors = [];
             foreach ($lines as $line) {
@@ -193,7 +244,7 @@ class InventoryService
 
             $production = InventoryProduction::create([
                 'number' => 'TMP-'.Str::uuid(), 'fg_item_id' => $fg->id, 'qty_produced' => $qty,
-                'notes' => $notes, 'created_by' => $user->id,
+                'notes' => $notes, 'created_by' => $user->id, 'location_id' => $this->writeSite(),
             ]);
             $production->update(['number' => sprintf('PRD-%05d', $production->id)]);
 
@@ -225,7 +276,7 @@ class InventoryService
 
         return DB::transaction(function () use ($item, $qty, $customer, $reference, $notes, $user) {
             InventoryItem::whereKey($item->id)->lockForUpdate()->first();
-            $have = $this->available($item);
+            $have = $this->availableToMove($item);
             if ($qty > $have + 0.0005) {
                 throw ValidationException::withMessages(['qty' => "Only {$have} {$item->unit} of {$item->displayName()} in stock."]);
             }
@@ -257,13 +308,13 @@ class InventoryService
 
         DB::transaction(function () use ($item, $change, $reason, $user) {
             InventoryItem::whereKey($item->id)->lockForUpdate()->first();
-            $have = $this->available($item);
+            $have = $this->availableToMove($item);
             if ($change < 0 && abs($change) > $have + 0.0005) {
                 throw ValidationException::withMessages(['adjustQty' => "Only {$have} {$item->unit} in stock - can't remove ".abs($change).'.']);
             }
             InventoryMovement::create([
                 'item_id' => $item->id, 'type' => $change > 0 ? 'adjust_in' : 'adjust_out', 'qty' => abs($change),
-                'note' => mb_substr(trim($reason), 0, 250), 'created_by' => $user->id,
+                'note' => mb_substr(trim($reason), 0, 250), 'created_by' => $user->id, 'location_id' => $this->writeSite(),
             ]);
         });
     }
@@ -273,6 +324,7 @@ class InventoryService
         InventoryMovement::create([
             'item_id' => $itemId, 'type' => $type, 'qty' => $qty,
             'production_id' => $production?->id, 'dispatch_id' => $dispatch?->id, 'created_by' => $user->id,
+            'location_id' => $this->writeSite(),
         ]);
     }
 }

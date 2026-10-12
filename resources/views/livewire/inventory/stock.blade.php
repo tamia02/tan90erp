@@ -9,6 +9,8 @@ use Livewire\Volt\Component;
 
 new #[Layout('layouts.app')] class extends Component
 {
+    use \App\Livewire\Concerns\PicksStockSite;
+
     // New SKU Master items / GRN SKUs appear here automatically.
     public function mount(): void
     {
@@ -42,15 +44,16 @@ new #[Layout('layouts.app')] class extends Component
             ->orderByRaw("CASE item_type WHEN 'rm' THEN 1 WHEN 'pm' THEN 2 WHEN 'fg' THEN 3 ELSE 4 END")->orderBy('sku')->get();
 
         // 2,000+ Zoho items: items with any stock or movement first, 100 at a time.
-        $allBalances = app(InventoryService::class)->balances($all);
+        $allBalances = $this->inventory()->balances($all);
         $active = fn ($item) => collect($allBalances[$item->id])->except('final')->contains(fn ($v) => abs($v) > 0.0005);
         $total = $all->count();
         $items = $all->sortBy(fn ($item) => $active($item) ? 0 : 1)->values()->take($this->perPage);
 
         $historyItem = $this->historyItemId ? InventoryItem::find($this->historyItemId) : null;
-        $history = $historyItem ? app(InventoryService::class)->history($historyItem) : collect();
+        $history = $historyItem ? $this->inventory()->history($historyItem) : collect();
 
         return [
+            ...$this->stockSiteView(),
             'items' => $items,
             'total' => $total,
             'balances' => $allBalances,
@@ -58,7 +61,7 @@ new #[Layout('layouts.app')] class extends Component
             'historyItem' => $historyItem,
             'history' => $this->historyKind === '' ? $history : $history->where('kind', $this->historyKind)->values(),
             'kinds' => ['' => 'Everything', 'received' => 'Received (GRN)', 'produced' => 'Produced', 'consumed' => 'Converted', 'wastage' => 'Wastage', 'dispatched' => 'Dispatched', 'adjusted' => 'Adjusted'],
-            'historyBalance' => $historyItem ? $allBalances[$historyItem->id] ?? app(InventoryService::class)->balances(collect([$historyItem]))[$historyItem->id] : null,
+            'historyBalance' => $historyItem ? $allBalances[$historyItem->id] ?? $this->inventory()->balances(collect([$historyItem]))[$historyItem->id] : null,
         ];
     }
 }; ?>
@@ -66,6 +69,7 @@ new #[Layout('layouts.app')] class extends Component
 <div>
     @php $fmt = fn ($n) => rtrim(rtrim(number_format((float) $n, 3, '.', ''), '0'), '.') ?: '0'; @endphp
     @include('partials.inventory-tabs', ['current' => 'inventory.stock', 'title' => 'Inventory Summary', 'subtitle' => 'Final = Current + Received + Produced ± Adjusted − Converted − Wastage − Dispatched. Click any number to see exactly when and how it happened.'])
+    @include('partials.stock-site-picker', ['required' => false])
 
     <div class="flex flex-wrap items-center gap-2 mb-4">
         <select wire:model.live="type" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">

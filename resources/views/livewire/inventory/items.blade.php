@@ -15,6 +15,8 @@ use Livewire\WithFileUploads;
 
 new #[Layout('layouts.app')] class extends Component
 {
+    use \App\Livewire\Concerns\PicksStockSite;
+
     use WithFileUploads;
 
     // New SKU Master items / GRN SKUs appear here automatically.
@@ -86,7 +88,7 @@ new #[Layout('layouts.app')] class extends Component
                 'custom_fields' => $custom ?: null,
             ]);
             if (trim($this->adjustQty) !== '' && (float) $this->adjustQty != 0) {
-                app(InventoryService::class)->adjust($item, (float) $this->adjustQty, $this->adjustReason, auth()->user());
+                $this->inventory()->adjust($item, (float) $this->adjustQty, $this->adjustReason, auth()->user());
             }
         });
         $label = $this->maskedLabel($item);
@@ -377,16 +379,17 @@ new #[Layout('layouts.app')] class extends Component
         $historyItem = $this->historyItemId ? InventoryItem::find($this->historyItemId) : null;
 
         return [
+            ...$this->stockSiteView(),
             'canSeeSku' => $canSeeSku,
             'editingItem' => $this->editingId ? InventoryItem::with(['createdBy', 'updatedBy'])->find($this->editingId) : null,
-            'editingStock' => $this->editingId ? app(InventoryService::class)->balances(InventoryItem::whereKey($this->editingId)->get())[$this->editingId]['final'] ?? 0 : null,
+            'editingStock' => $this->editingId ? $this->inventory()->balances(InventoryItem::whereKey($this->editingId)->get())[$this->editingId]['final'] ?? 0 : null,
             'historyItem' => $historyItem,
-            'history' => $historyItem ? app(InventoryService::class)->history($historyItem) : collect(),
-            'historyStock' => $historyItem ? app(InventoryService::class)->balances(collect([$historyItem]))[$historyItem->id] : null,
+            'history' => $historyItem ? $this->inventory()->history($historyItem) : collect(),
+            'historyStock' => $historyItem ? $this->inventory()->balances(collect([$historyItem]))[$historyItem->id] : null,
             'editingIsZoho' => $this->editingId && SkuMaster::where('sku', $this->sku)->whereNotNull('zoho_item_id')->exists(),
             'items' => $items,
             'total' => $total,
-            'balances' => app(InventoryService::class)->balances($items),
+            'balances' => $this->inventory()->balances($items),
             'types' => InventoryItem::TYPES,
             'units' => \App\Support\Units::options(),
             'customFields' => ItemCustomField::activeFields(),
@@ -404,6 +407,7 @@ new #[Layout('layouts.app')] class extends Component
 
 <div>
     @include('partials.inventory-tabs', ['current' => 'inventory.items', 'title' => 'Items', 'subtitle' => 'The one list of all items - every Zoho item (name and Zoho code) plus anything received through GRN appears here automatically. Click an item to see its stock history. Stock comes in through GRN and Create Bundle. Recipes for Finished Goods are under Composite Items (Recipes).'])
+    @include('partials.stock-site-picker', ['required' => false])
 
     @if ($canManageFields)
         <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);" @if ($errors->hasAny(['newFieldLabel', 'newFieldOptions'])) open @endif>

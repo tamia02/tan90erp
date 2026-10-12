@@ -48,7 +48,7 @@ class OutwardShipmentService
         // Check stock now, before anyone makes an invoice / IRN / E-Way Bill for
         // goods we don't have. Stock already promised to other open shipments
         // counts as used.
-        $stock = $this->stockPicture(array_column($lines, 'item_id'));
+        $stock = $this->stockPicture(array_column($lines, 'item_id'), null, isset($header['from_location_id']) ? (int) $header['from_location_id'] : null); // stock at the site the goods leave from
         $wanted = [];
         foreach ($lines as $i => $line) {
             $wanted[$line['item_id']] = ($wanted[$line['item_id']] ?? 0) + (float) $line['qty'];
@@ -137,8 +137,10 @@ class OutwardShipmentService
         try {
             return DB::transaction(function () use ($shipment, $user) {
                 // All lines leave together, or none do (any stock shortage rolls back).
+                // Stock leaves the site the shipment goes out from.
+                $inventory = $shipment->from_location_id ? $this->inventory->atSite((int) $shipment->from_location_id) : $this->inventory;
                 foreach ($shipment->lines()->with('item')->get() as $line) {
-                    $dispatch = $this->inventory->dispatch($line->item, (float) $line->qty, $shipment->to_name, $shipment->number,
+                    $dispatch = $inventory->dispatch($line->item, (float) $line->qty, $shipment->to_name, $shipment->number,
                         $shipment->purposeLabel().($shipment->challan_number ? " · {$shipment->challan_number}" : '').($shipment->invoice_number ? " · Invoice {$shipment->invoice_number}" : ''),
                         $user, anyItemType: $shipment->purpose !== 'sales');
                     $line->update(['dispatch_id' => $dispatch->id]);
@@ -160,13 +162,15 @@ class OutwardShipmentService
      * @param  array<int, int>  $itemIds
      * @return array<int, array{in_stock: float, reserved: float, free: float}>
      */
-    public function stockPicture(array $itemIds, ?int $exceptShipmentId = null): array
+    // $fromSite: stock and open shipments of that site only (null = as the person sees it).
+    public function stockPicture(array $itemIds, ?int $exceptShipmentId = null, ?int $fromSite = null): array
     {
         $items = InventoryItem::whereIn('id', array_unique($itemIds))->get();
-        $balances = $this->inventory->balances($items);
+        $balances = ($fromSite ? $this->inventory->atSite($fromSite) : $this->inventory)->balances($items);
         $reserved = \App\Models\Outward\OutwardShipmentLine::query()
             ->whereIn('item_id', $items->pluck('id'))
             ->whereHas('shipment', fn ($q) => $q->whereIn('status', ['documents_pending', 'ready'])
+                ->when($fromSite, fn ($q) => $q->where('from_location_id', $fromSite))
                 ->when($exceptShipmentId, fn ($q) => $q->whereKeyNot($exceptShipmentId)))
             ->groupBy('item_id')->selectRaw('item_id, SUM(qty) as total')->pluck('total', 'item_id');
 

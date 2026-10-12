@@ -13,7 +13,7 @@ class InventoryMovement extends Model
 
     public const OUT_TYPES = ['consumed', 'wastage', 'dispatched', 'adjust_out'];
 
-    protected $fillable = ['item_id', 'type', 'qty', 'production_id', 'dispatch_id', 'note', 'created_by'];
+    protected $fillable = ['item_id', 'type', 'qty', 'production_id', 'dispatch_id', 'note', 'created_by', 'location_id'];
 
     protected function casts(): array
     {

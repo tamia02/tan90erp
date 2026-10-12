@@ -190,7 +190,7 @@ new #[Layout('layouts.app')] class extends Component
         // Stock for the items being typed in, so a shortage shows before Create.
         $lineItems = InventoryItem::matchLabels(array_column($this->lines, 'item'));
         $service = app(OutwardShipmentService::class);
-        $lineStock = $service->stockPicture($lineItems->pluck('id')->all());
+        $lineStock = $service->stockPicture($lineItems->pluck('id')->all(), null, $this->fromLocationId ? (int) $this->fromLocationId : null); // stock at the chosen From site
 
         $shipments = OutwardShipment::with(['lines.item', 'gateEntry'])
             ->when($this->statusFilter === 'open', fn ($q) => $q->whereIn('status', ['documents_pending', 'ready']))

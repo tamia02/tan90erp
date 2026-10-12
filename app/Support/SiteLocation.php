@@ -36,6 +36,17 @@ class SiteLocation
         return self::forUser(auth()->user());
     }
 
+    /** The main site (Bhiwandi): stock changes by all-site users and older stock rows land here. */
+    public static function defaultId(): ?int
+    {
+        static $id = false;
+        if ($id === false || app()->runningUnitTests()) {
+            $id = Location::where('code', 'LOC-BHW')->value('id') ?? Location::orderBy('id')->value('id');
+        }
+
+        return $id ? (int) $id : null;
+    }
+
     /** Site id from any name that mentions it (warehouse, location, Guard list name). */
     public static function idForName(?string $name): ?int
     {
