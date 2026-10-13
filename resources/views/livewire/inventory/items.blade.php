@@ -50,6 +50,15 @@ new #[Layout('layouts.app')] class extends Component
 
     public string $search = '';
     public string $typeFilter = '';
+
+    // Bulk delete (2026-10-13): ticked item ids.
+    public array $selected = [];
+
+    // Export with filters + chosen columns (2026-10-13).
+    public array $exportTypes = [];
+    public string $exportStatus = 'active';
+    public bool $exportOnlyStock = false;
+    public array $exportColumns = ['code', 'name', 'type', 'unit', 'stock'];
     public int $perPage = 100;
 
     public function updatedSearch(): void
@@ -277,23 +286,82 @@ new #[Layout('layouts.app')] class extends Component
     public function removeItem(int $id): void
     {
         $item = InventoryItem::findOrFail($id);
+        $name = $item->displayName();
+        session()->flash('success', $this->removeOne($item) === 'archived'
+            ? "Archived {$name} - it has stock history or is used in a recipe, so it is hidden instead of deleted."
+            : "Deleted {$name}.");
+    }
+
+    // Same rule for one item or many: unused -> deleted, has history / in a recipe -> archived.
+    private function removeOne(InventoryItem $item): string
+    {
         $inUse = $item->movements()->exists()
             || InventoryBomLine::where('component_item_id', $item->id)->exists();
-
         if ($inUse) {
             $item->update(['active' => false]);
             AuditLogger::log('Inventory item archived', $item->sku, $item);
-            session()->flash('success', "Archived {$item->displayName()} - it has stock history or is used in a recipe, so it is hidden instead of deleted.");
+            $result = 'archived';
         } else {
             $item->bomLines()->delete();
             AuditLogger::log('Inventory item deleted', $item->sku);
             $item->delete();
-            session()->flash('success', "Deleted {$item->displayName()}.");
+            $result = 'deleted';
         }
-
-        if ($this->editingId === $id) {
+        if ($this->editingId === $item->id) {
             $this->resetForm();
         }
+
+        return $result;
+    }
+
+    public function bulkRemove(): void
+    {
+        $done = ['deleted' => 0, 'archived' => 0];
+        foreach (InventoryItem::whereIn('id', array_map('intval', $this->selected))->where('active', true)->get() as $item) {
+            $done[$this->removeOne($item)]++;
+        }
+        $this->selected = [];
+        session()->flash('success', "Selected items: {$done['deleted']} deleted, {$done['archived']} archived (they have stock history or are in a recipe, so they are hidden instead of deleted).");
+    }
+
+    // Excel export of the items that match the chosen filters, with the chosen columns.
+    public function exportFiltered()
+    {
+        $fields = ItemCustomField::activeFields();
+        $all = ['code' => 'SKU Code', 'name' => 'Display Name', 'sku' => 'Chemical name', 'type' => 'Type', 'unit' => 'Unit', 'stock' => 'Stock (final)', 'source' => 'Source']
+            + $fields->mapWithKeys(fn ($f) => ['cf_'.$f->field_key => $f->label])->all();
+        if (! InventoryItem::canSeeSkuName(auth()->user())) {
+            unset($all['sku']);
+        }
+        $columns = array_values(array_intersect(array_keys($all), $this->exportColumns)) ?: ['name'];
+        $term = '%'.trim($this->search).'%';
+        $items = InventoryItem::query()
+            ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', $term)->orWhere('code', 'like', $term)->orWhere('sku', 'like', $term)))
+            ->when($this->exportTypes, fn ($q) => $q->whereIn('item_type', $this->exportTypes))
+            ->when($this->exportStatus !== 'all', fn ($q) => $q->where('active', $this->exportStatus === 'active'))
+            ->orderBy('item_type')->orderBy('sku')->get();
+        $balances = $this->inventory()->balances($items);
+        if ($this->exportOnlyStock) {
+            $items = $items->filter(fn ($i) => abs($balances[$i->id]['final'] ?? 0) > 0.0005)->values();
+        }
+        $codes = SkuMaster::whereNotNull('product_code')->pluck('product_code', 'sku')->mapWithKeys(fn ($c, $sku) => [mb_strtolower($sku) => $c]);
+        $zoho = SkuMaster::whereNotNull('zoho_item_id')->pluck('sku')->map(fn ($v) => mb_strtolower($v))->flip();
+        $rows = [array_map(fn ($c) => $all[$c], $columns)];
+        foreach ($items as $item) {
+            $rows[] = array_map(fn ($c) => match ($c) {
+                'code' => $item->code ?: ($codes[mb_strtolower($item->sku)] ?? ''),
+                'name' => $item->displayName(),
+                'sku' => $item->sku,
+                'type' => $item->typeLabel(),
+                'unit' => $item->unit,
+                'stock' => (string) round($balances[$item->id]['final'] ?? 0, 3),
+                'source' => $zoho->has(mb_strtolower($item->sku)) ? 'Zoho' : 'ERP',
+                default => (string) \App\Support\CustomFields::display($fields->firstWhere('field_key', substr($c, 3)), $item->custom_fields[substr($c, 3)] ?? null),
+            }, $columns);
+        }
+        $bytes = \App\Support\HtmlToXlsx::fromRows($rows);
+
+        return response()->streamDownload(fn () => print ($bytes), 'items-export-'.now()->format('Ymd-His').'.xlsx', ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
     }
 
     public function restoreItem(int $id): void
@@ -503,6 +571,30 @@ new #[Layout('layouts.app')] class extends Component
         </div>
     @endif
 
+    <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);">
+        <summary class="text-base font-semibold cursor-pointer" style="color: var(--text-primary);">Export items (choose filters and columns)</summary>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-3 text-sm">
+            <div>
+                <div class="text-xs font-semibold mb-1" style="color: var(--text-muted);">Types (none ticked = all)</div>
+                @foreach ($types as $value => $label)<label class="flex items-center gap-2"><input type="checkbox" wire:model="exportTypes" value="{{ $value }}"> {{ $label }}</label>@endforeach
+            </div>
+            <div class="space-y-2">
+                <div class="text-xs font-semibold" style="color: var(--text-muted);">Status</div>
+                <select wire:model="exportStatus" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);"><option value="active">Active only</option><option value="archived">Archived only</option><option value="all">Active and archived</option></select>
+                <label class="flex items-center gap-2"><input type="checkbox" wire:model="exportOnlyStock"> Only items with stock</label>
+                <div class="text-xs" style="color: var(--text-muted);">The search box above and the Site choice also apply.</div>
+            </div>
+            <div>
+                <div class="text-xs font-semibold mb-1" style="color: var(--text-muted);">Columns</div>
+                @foreach (['code' => 'SKU Code', 'name' => 'Display Name', 'sku' => 'Chemical name', 'type' => 'Type', 'unit' => 'Unit', 'stock' => 'Stock (final)', 'source' => 'Source'] as $key => $label)
+                    @if ($key !== 'sku' || $canSeeSku)<label class="flex items-center gap-2"><input type="checkbox" wire:model="exportColumns" value="{{ $key }}"> {{ $label }}</label>@endif
+                @endforeach
+                @foreach ($customFields as $field)<label class="flex items-center gap-2"><input type="checkbox" wire:model="exportColumns" value="cf_{{ $field->field_key }}"> {{ $field->label }}</label>@endforeach
+            </div>
+        </div>
+        <button type="button" wire:click="exportFiltered" wire:loading.attr="disabled" wire:target="exportFiltered" class="mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--brand);">Download Excel</button>
+    </details>
+
     <details class="rounded-2xl border p-4 mb-5" style="background: var(--surface-3); border-color: var(--border);" @if ($importErrors) open @endif>
         <summary class="text-base font-semibold cursor-pointer" style="color: var(--text-primary);">Import items (CSV)</summary>
         <p class="text-xs mt-1 mb-3" style="color: var(--text-muted);">1. Download the items CSV (ID, SKU Code, Display Name, Type, Unit and your custom fields). 2. Edit it in Excel - change items, or add new rows without an ID for new items (Display Name, Type = RM / PM / FG / Trading, Unit needed). 3. Upload it. Blank cells are left as they are. Every row is checked first - if anything is wrong, nothing is imported and you see the rows to fix.</p>
@@ -563,12 +655,20 @@ new #[Layout('layouts.app')] class extends Component
                 </select>
                 <span class="text-xs" style="color: var(--text-muted);">Showing {{ $items->count() }} of {{ $total }}</span>
             </div>
+            @if ($selected)
+                <div class="flex flex-wrap items-center gap-3 mb-3 rounded-lg border px-3 py-2 text-sm" style="border-color: var(--status-warning); background: var(--status-warning-bg);">
+                    <span class="font-semibold">{{ count($selected) }} selected</span>
+                    <button type="button" wire:click="bulkRemove" wire:confirm="Remove {{ count($selected) }} items? Items with stock history or in a recipe are archived instead of deleted." class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style="background: var(--status-critical);">Delete selected</button>
+                    <button type="button" wire:click="$set('selected', [])" class="text-xs underline">Clear</button>
+                </div>
+            @endif
             <div class="rounded-2xl border overflow-x-auto" style="background: var(--surface-3); border-color: var(--border);">
                 <table class="w-full text-sm min-w-[760px]">
-                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="px-4 py-3">Item</th><th class="px-4 py-3">Code</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">In stock now</th>@foreach ($customFields as $field)<th class="px-4 py-3">{{ $field->label }}</th>@endforeach<th class="px-4 py-3"></th></tr></thead>
+                    <thead><tr class="text-left text-xs uppercase" style="color: var(--text-muted);"><th class="pl-4 py-3 w-8"><input type="checkbox" aria-label="Select all shown" x-on:change="$wire.set('selected', $event.target.checked ? @js($items->where('active', true)->pluck('id')->map(fn ($id) => (string) $id)->values()) : [])"></th><th class="px-4 py-3">Item</th><th class="px-4 py-3">Code</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Unit</th><th class="px-4 py-3">Source</th><th class="px-4 py-3 text-right">In stock now</th>@foreach ($customFields as $field)<th class="px-4 py-3">{{ $field->label }}</th>@endforeach<th class="px-4 py-3"></th></tr></thead>
                     <tbody>
                         @forelse ($items as $item)
                             <tr wire:key="inv-item-{{ $item->id }}" style="border-top: 1px solid var(--border);{{ $item->active ? "" : " opacity: .55;" }}">
+                                <td class="pl-4 py-3">@if ($item->active)<input type="checkbox" wire:model.live="selected" value="{{ $item->id }}" aria-label="Select {{ $item->displayName() }}">@endif</td>
                                 <td class="px-4 py-3"><button type="button" wire:click="$set('historyItemId', {{ $item->id }})" class="text-left font-medium hover:underline" style="color: var(--text-primary);" title="See stock history">{{ $item->displayName() }}</button></td>
                                 <td class="px-4 py-3 text-xs font-mono" style="color: var(--text-secondary);">{{ $item->code ?: ($codes[mb_strtolower($item->sku)] ?? '') }}</td>
                                 <td class="px-4 py-3">{{ $item->typeLabel() }}</td>
@@ -587,7 +687,7 @@ new #[Layout('layouts.app')] class extends Component
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="{{ 7 + $customFields->count() }}" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
+                            <tr><td colspan="{{ 8 + $customFields->count() }}" class="px-4 py-8 text-center" style="color: var(--text-muted);">No items yet. Add items in SKU Master (Admin &gt; SKU Master) or receive them through GRN - they will appear here automatically.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
