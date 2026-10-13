@@ -378,6 +378,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('bins', 'grn.shelf-bin')->name('bins');
     });
 
+    // Vendor bill file tagged to a GRN (2026-10-13).
+    Route::middleware('role:admin,storeManager,finance')->get('grn/{grn}/vendor-bill', function (\App\Models\GrnRecord $grn) {
+        abort_unless($grn->vendor_bill_path && \Illuminate\Support\Facades\Storage::exists($grn->vendor_bill_path), 404);
+
+        return \Illuminate\Support\Facades\Storage::response($grn->vendor_bill_path);
+    })->name('grn.vendor-bill');
+
     Route::middleware('role:admin,storeManager')->prefix('grn')->name('grn.')->group(function () {
         Volt::route('po-control-tower', 'shared.po-control-tower')->name('po-control-tower');
     });

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'suggested_bin', 'posted',
     'vendor_response', 'vendor_response_note', 'vendor_cn_dn_path', 'vendor_responded_at', 'vendor_responded_by',
     'vendor_notified_at', 'vendor_notified_by',
+    'vendor_bill_number', 'vendor_bill_date', 'vendor_bill_amount', 'vendor_bill_path', 'vendor_bill_tagged_by', 'vendor_bill_tagged_at',
 ])]
 class GrnRecord extends Model
 {
@@ -21,6 +22,9 @@ class GrnRecord extends Model
     protected function casts(): array
     {
         return [
+            'vendor_bill_date' => 'date',
+            'vendor_bill_tagged_at' => 'datetime',
+            'vendor_bill_amount' => 'decimal:2',
             'posted' => 'boolean',
             'vendor_responded_at' => 'datetime',
             'vendor_notified_at' => 'datetime',

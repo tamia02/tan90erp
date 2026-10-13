@@ -122,6 +122,10 @@ new #[Layout('layouts.app')] class extends Component
                     @endif
                     <div><div style="color: var(--text-muted);">Final Payable</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->final_payable, 2) }}</div></div>
                 </div>
+                @php $taggedBill = $r->gateEntry?->grnRecord; @endphp
+                @if ($taggedBill?->vendor_bill_number)
+                    <div class="mt-2 text-xs" style="color: var(--status-good);">Vendor bill tagged to GRN: <strong>{{ $taggedBill->vendor_bill_number }}</strong> · {{ $taggedBill->vendor_bill_date?->format('d M Y') }}@if ($taggedBill->vendor_bill_amount !== null) · ₹{{ number_format((float) $taggedBill->vendor_bill_amount, 2) }}@endif @if ($taggedBill->vendor_bill_path)· <a href="{{ route('grn.vendor-bill', $taggedBill) }}" target="_blank" class="underline">view</a>@endif</div>
+                @endif
                 @php $brPo = $r->gateEntry?->purchaseOrder; @endphp
                 @if ($brPo)
                     {{-- Taxable value and GST shown separately (split the way the PO lines are taxed). --}}
