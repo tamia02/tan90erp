@@ -890,6 +890,38 @@ new #[Layout('layouts.app')] class extends Component
         $this->reset(['bypassingPoId', 'bypassReason', 'bypassInvoiceNumber', 'bypassInvoiceDate', 'bypassVehicle', 'bypassArrival', 'bypassLines', 'bypassInvoiceFile', 'bypassEwayFile', 'bypassLrFile']);
     }
 
+    // Virtual GRN: Trading goods the vendor ships straight to the customer.
+    public ?int $virtualPoId = null;
+
+    public string $virtualCustomer = '';
+
+    public string $virtualInvoice = '';
+
+    public string $virtualInvoiceDate = '';
+
+    public array $virtualLines = [];
+
+    public function openVirtual(int $id): void
+    {
+        $po = PurchaseOrder::with('lines')->findOrFail($id);
+        $this->virtualPoId = $po->id;
+        $this->virtualCustomer = '';
+        $this->virtualInvoice = '';
+        $this->virtualInvoiceDate = now()->toDateString();
+        $this->virtualLines = $po->lines->mapWithKeys(fn ($l) => [$l->id => (float) $l->quantity])->all();
+        $this->resetValidation();
+    }
+
+    public function saveVirtual(): void
+    {
+        abort_unless(auth()->user()?->isAdmin() || auth()->user()?->holdsRole(Role::StoreManager), 403);
+        $po = PurchaseOrder::findOrFail($this->virtualPoId);
+        $this->validate(['virtualInvoiceDate' => ['required', 'date'], 'virtualLines.*' => ['nullable', 'numeric', 'min:0']], [], ['virtualInvoiceDate' => 'invoice date']);
+        $gate = app(\App\Services\VirtualGrnService::class)->create($po, array_map('floatval', $this->virtualLines), $this->virtualCustomer, $this->virtualInvoice, $this->virtualInvoiceDate, auth()->user());
+        session()->flash('success', "Virtual GRN {$gate->gate_no} done for {$po->po_number}: stock received and dispatched to ".trim($this->virtualCustomer).' in one go.');
+        $this->reset(['virtualPoId', 'virtualCustomer', 'virtualInvoice', 'virtualInvoiceDate', 'virtualLines']);
+    }
+
     // A vendor with no address saved (most Zoho vendors have none) keeps the one
     // typed on its PO, so the next PO fills it. ERP only: written without model
     // events, so nothing is pushed to Zoho. A saved address is never overwritten.
@@ -1037,6 +1069,7 @@ new #[Layout('layouts.app')] class extends Component
                 ->when($this->skuCategoryPattern(), fn ($q, $pattern) => $q->where('category', 'like', $pattern))
                 ->orderBy('sku')->get(['sku', 'zoho_hsn']),
             'bypassPo' => $this->bypassingPoId ? PurchaseOrder::with('lines')->find($this->bypassingPoId) : null,
+            'virtualPo' => $this->virtualPoId ? PurchaseOrder::with('lines')->find($this->virtualPoId) : null,
             'ordersTotal' => PurchaseOrder::when(trim($this->poLookup) !== '', fn ($query) => $query->where(fn ($q) => $q
                 ->where('po_number', 'like', '%'.trim($this->poLookup).'%')
                 ->orWhere('vendor_name', 'like', '%'.trim($this->poLookup).'%')))->count(),
@@ -1452,6 +1485,53 @@ new #[Layout('layouts.app')] class extends Component
         </div>
     @endif
 
+    @if ($virtualPo)
+        <div class="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto" style="background: rgba(15, 23, 42, 0.55);" role="dialog" aria-modal="true" aria-labelledby="virtual-title" wire:key="virtual-modal-{{ $virtualPo->id }}">
+            <div class="w-full max-w-2xl rounded-2xl border p-5 space-y-4" style="background: var(--surface-1); border-color: var(--border);">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h2 id="virtual-title" class="text-lg font-bold" style="color: var(--text-primary);">Virtual GRN: {{ $virtualPo->po_number }}</h2>
+                        <p class="text-sm mt-1" style="color: var(--text-secondary);">{{ $virtualPo->vendor_name }} ships these goods straight to the customer. The ERP books them in (GRN, vendor bill for Finance) and out to the customer at the same time, marked "Virtual GRN".</p>
+                    </div>
+                    <button type="button" wire:click="$set('virtualPoId', null)" class="text-sm" style="color: var(--text-muted);" aria-label="Close">✕</button>
+                </div>
+                @error('virtual') <div role="alert" class="rounded-lg border px-3 py-2 text-xs" style="border-color: var(--status-critical); background: var(--status-critical-bg); color: var(--status-critical);">{{ $message }}</div> @enderror
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <label class="flex flex-col gap-1 text-sm sm:col-span-3"><span class="font-medium">Customer the vendor shipped to *</span>
+                        <input wire:model="virtualCustomer" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                        @error('virtualCustomer') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-sm sm:col-span-2"><span class="font-medium">Vendor invoice number *</span>
+                        <input wire:model="virtualInvoice" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                        @error('virtualInvoice') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-sm"><span class="font-medium">Invoice date *</span>
+                        <input wire:model="virtualInvoiceDate" type="date" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                        @error('virtualInvoiceDate') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                    </label>
+                </div>
+                <div>
+                    <div class="text-sm font-medium mb-1">Quantity shipped direct</div>
+                    <div class="rounded-lg border divide-y" style="border-color: var(--border);">
+                        @foreach ($virtualPo->lines as $line)
+                            <div class="flex items-center justify-between gap-3 px-3 py-2 text-sm" wire:key="virtual-line-{{ $line->id }}">
+                                <span class="min-w-0 truncate">{{ $line->product }} <span class="text-xs" style="color: var(--text-muted);">· ordered {{ rtrim(rtrim((string) $line->quantity, '0'), '.') }} {{ $line->uom }}</span></span>
+                                <span class="flex flex-col items-end">
+                                    <input wire:model="virtualLines.{{ $line->id }}" type="number" min="0" step="1" class="w-28 rounded-lg border px-2 py-1 text-sm text-right" style="border-color: var(--border);">
+                                    @error('virtualLines.'.$line->id) <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                    @error('virtualLines') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
+                </div>
+                <div class="flex flex-wrap gap-2 pt-1">
+                    <button type="button" wire:click="saveVirtual" wire:loading.attr="disabled" wire:target="saveVirtual" class="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--brand);">Create Virtual GRN</button>
+                    <button type="button" wire:click="$set('virtualPoId', null)" class="rounded-lg border px-4 py-2 text-sm font-semibold" style="border-color: var(--border); color: var(--text-primary);">Cancel</button>
+                </div>
+            </div>
+        </div>
+    @endif
     @if ($bypassPo)
         {{-- Bypass popup: the vendor's acceptance + dispatch documents, done by the Store Manager. --}}
         <div class="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto" style="background: rgba(15, 23, 42, 0.55);" role="dialog" aria-modal="true" aria-labelledby="bypass-title" wire:key="bypass-modal-{{ $bypassPo->id }}">
@@ -1583,6 +1663,9 @@ new #[Layout('layouts.app')] class extends Component
                             <td class="px-4 py-2.5 text-right">
                                 <div class="flex items-center justify-end gap-3">
                                     <a href="{{ route('admin.po.pdf', $po->po_number) }}" target="_blank" class="font-medium" style="color: var(--brand);">Download PDF</a>
+                                    @if ($po->purchase_nature === 'Trading' && $po->isReleased())
+                                        <button type="button" wire:click="openVirtual({{ $po->id }})" class="font-medium" style="color: var(--brand);" title="Vendor ships straight to the customer: GRN in and dispatch out in one step">Virtual GRN</button>
+                                    @endif
                                     @unless ($po->isReleased())
                                         <button type="button" wire:click="openAddressEdit({{ $po->id }})" class="font-medium" style="color: var(--brand);">Edit address</button>
                                         <button wire:click="releasePo({{ $po->id }})" wire:loading.attr="disabled" wire:target="releasePo({{ $po->id }})" wire:confirm="Release {{ $po->po_number }} to {{ $po->vendor_name }}? They'll be able to see and acknowledge it in their portal." class="font-medium disabled:opacity-50" style="color: var(--brand);">Release to vendor</button>

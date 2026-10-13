@@ -102,6 +102,7 @@ new #[Layout('layouts.app')] class extends Component
                             <td class="px-4 py-2.5 font-medium">
                                 @if ($r->gateEntry)
                                     <a href="{{ route('gate-entries.show', $r->gateEntry) }}" wire:navigate style="color: var(--brand);">{{ $r->gateEntry->gate_no }}</a>
+                                    @if (str_starts_with((string) $r->gateEntry->gate_no, 'VGRN-'))<div class="mt-0.5"><span class="text-[11px] font-semibold px-1.5 py-0.5 rounded-full" style="background: var(--status-warning-bg); color: var(--status-warning);" title="Shipped by the vendor directly to the customer">Virtual GRN</span></div>@endif
                                 @else
                                     <span style="color: var(--text-primary);">—</span>
                                 @endif
