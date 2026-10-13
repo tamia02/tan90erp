@@ -122,6 +122,14 @@ new #[Layout('layouts.app')] class extends Component
                     @endif
                     <div><div style="color: var(--text-muted);">Final Payable</div><div class="font-medium" style="color: var(--text-primary);">₹{{ number_format($r->final_payable, 2) }}</div></div>
                 </div>
+                @php $brPo = $r->gateEntry?->purchaseOrder; @endphp
+                @if ($brPo)
+                    {{-- Taxable value and GST shown separately (split the way the PO lines are taxed). --}}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 rounded-lg border p-3" style="border-color: var(--border); background: var(--surface-2);">
+                        <div><div class="text-xs font-semibold mb-1" style="color: var(--text-muted);">Invoice value - breakdown</div><x-amount-breakdown :b="app(\App\Services\AmountBreakdown::class)->splitTotal((float) $r->invoice_value, $brPo)" /></div>
+                        <div><div class="text-xs font-semibold mb-1" style="color: var(--text-muted);">Accepted value - breakdown</div><x-amount-breakdown :b="app(\App\Services\AmountBreakdown::class)->splitTotal((float) $r->accepted_value, $brPo)" /></div>
+                    </div>
+                @endif
                 @if ($r->deduction_hold > 0)
                     <p class="text-xs mt-2" style="color: var(--text-muted);">Invoice value − deductions − held = final payable. The held amount is withheld pending QC's hold being resolved, not a confirmed loss — it isn't part of Deductions above.</p>
                 @endif

@@ -144,7 +144,8 @@ new #[Layout('layouts.app')] class extends Component
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div><span style="color: var(--text-muted);">PO qty</span> · <span style="color: var(--text-primary);">{{ $poLine->quantity }}</span></div>
                             <div><span style="color: var(--text-muted);">List price</span> · <span style="color: var(--text-primary);">₹{{ number_format($poLine->list_price, 2) }}</span></div>
-                            <div><span style="color: var(--text-muted);">Accepted value</span> · <span style="color: var(--status-good);">₹{{ number_format(($qc?->accepted_qty ?? 0) * $poLine->list_price, 2) }}</span></div>
+                            <div><span style="color: var(--text-muted);">Accepted value</span> · <span style="color: var(--status-good);">₹{{ number_format(($qc?->accepted_qty ?? 0) * $poLine->list_price, 2) }}</span> <span style="color: var(--text-muted);">+ GST</span></div>
+                            <div class="col-span-2 sm:col-span-4"><x-amount-breakdown :b="app(\App\Services\AmountBreakdown::class)->forPo($poLine->purchaseOrder ?? \App\Models\PurchaseOrder::find($poLine->purchase_order_id), [$poLine->id => (float) ($qc?->accepted_qty ?? 0)])" /></div>
                             <div><span style="color: var(--text-muted);">Qty variance</span> · <span style="color: {{ ($qc?->accepted_qty ?? 0) < $poLine->quantity ? 'var(--status-warning)' : 'var(--status-good)' }};">{{ ($qc?->accepted_qty ?? 0) - $poLine->quantity }}</span></div>
                         </div>
                     </div>

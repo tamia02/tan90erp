@@ -1577,7 +1577,9 @@ new #[Layout('layouts.app')] class extends Component
                                     <div class="mt-1 font-semibold" style="color: var(--status-warning);">Draft — vendor cannot see this yet</div>
                                 @endif
                             </td>
-                            <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">₹{{ number_format($po->grandTotal(), 2) }}</td>
+                            <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">₹{{ number_format($po->grandTotal(), 2) }}
+                                <x-amount-breakdown :b="app(\App\Services\AmountBreakdown::class)->forPo($po)" compact class="font-normal mt-0.5" />
+                            </td>
                             <td class="px-4 py-2.5 text-right">
                                 <div class="flex items-center justify-end gap-3">
                                     <a href="{{ route('admin.po.pdf', $po->po_number) }}" target="_blank" class="font-medium" style="color: var(--brand);">Download PDF</a>
@@ -1622,6 +1624,7 @@ new #[Layout('layouts.app')] class extends Component
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Nature of PO</div><div style="color: var(--text-primary);">{{ $po->purchase_nature ?? '—' }}</div></div>
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">PO category</div><div style="color: var(--text-primary);">{{ $po->material_type ?? '—' }}</div></div>
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Payment terms</div><div style="color: var(--text-primary);">{{ $po->payment_terms ?? '—' }}</div></div>
+                                        <div class="col-span-2 sm:col-span-4"><div class="font-semibold mb-1" style="color: var(--text-muted);">Amount breakdown</div><x-amount-breakdown :b="app(\App\Services\AmountBreakdown::class)->forPo($po)" /></div>
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Billing address</div><div style="color: var(--text-primary);">{{ collect([$po->billing_building, $po->billing_street, $po->billing_city, $po->billing_state, $po->billing_zip])->filter()->join(', ') ?: '—' }}</div></div>
                                     </div>
                                     <div class="overflow-x-auto rounded-lg border" style="border-color: var(--border);">
