@@ -31,4 +31,3 @@ class OutwardShipmentLine extends Model
         return $this->belongsTo(PackagingType::class, 'packaging_type_id');
     }
 }
-

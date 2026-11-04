@@ -54,7 +54,7 @@ class OutwardTaxService
 
             if ($missingState && $requireStates) {
                 throw ValidationException::withMessages([
-                    'toState' => 'Enter the receiver state to calculate this item’s GST correctly.',
+                    'toState' => 'Enter the receiver state to calculate this itemâ€™s GST correctly.',
                 ]);
             }
 
@@ -176,4 +176,3 @@ class OutwardTaxService
         return $this->states->stateCode($state);
     }
 }
-
