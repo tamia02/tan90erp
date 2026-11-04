@@ -2,8 +2,13 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         <meta charset="utf-8">
+        <link rel="icon" type="image/svg+xml" sizes="any" href="{{ asset('brand/tan90-favicon.svg') }}?v=20261027a">
+        <link rel="shortcut icon" type="image/svg+xml" href="{{ asset('brand/tan90-favicon.svg') }}?v=20261027a">
+        <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('brand/tan90-logo.webp') }}?v=20261027a">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        <meta name="session-user" content="{{ auth()->id() }}">
+        <meta name="session-check-url" content="{{ route('session.check') }}">
 
         <title>{{ config('app.name', 'Tan90 ERP') }}</title>
 
@@ -15,6 +20,11 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body class="font-sans antialiased" style="background: var(--surface-2);">
+        @if (\App\Support\DeploymentIdentity::isStaging())
+            <div role="status" class="bg-amber-200 px-4 py-2 text-center text-sm font-bold text-amber-950">
+                STAGING · Test environment
+            </div>
+        @endif
         <div class="min-h-screen flex">
             <livewire:layout.navigation />
 
@@ -29,7 +39,7 @@
                 @endif
 
                 <!-- Page Content -->
-                <main class="flex-1 p-6">
+                <main class="flex-1 min-w-0 p-3 sm:p-6">
                     {{ $slot }}
                 </main>
             </div>

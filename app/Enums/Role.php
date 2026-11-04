@@ -2,9 +2,8 @@
 
 namespace App\Enums;
 
-// Seven roles, kept fully separate per the client — nothing here merges.
-// Mirrors the React prototype's roleMeta (src/lib/auth.ts) so screens and
-// business logic translate 1:1.
+// Core application roles. Keep the persisted `admin` value for backward
+// compatibility while presenting the single canonical Super Admin profile.
 enum Role: string
 {
     case Guard = 'guard';
@@ -24,7 +23,7 @@ enum Role: string
             self::Qc => 'QC User',
             self::StoreManager => 'Store Manager',
             self::Finance => 'Finance User',
-            self::Admin => 'Administrator',
+            self::Admin => 'Super Admin',
         };
     }
 
@@ -52,6 +51,15 @@ enum Role: string
             self::Finance => 'finance.dashboard',
             self::Admin => 'admin.dashboard',
         };
+    }
+
+    // Roles one person can combine (main role + extra roles). Vendor is an
+    // outside company's login and Admin is the Super Admin, so neither is
+    // ever an extra hat an employee wears.
+    /** @return array<self> */
+    public static function combinable(): array
+    {
+        return [self::Guard, self::StoreExec, self::Qc, self::StoreManager, self::Finance];
     }
 
     /** @return array<string> */

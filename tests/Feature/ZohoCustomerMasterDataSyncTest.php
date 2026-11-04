@@ -105,4 +105,20 @@ class ZohoCustomerMasterDataSyncTest extends TestCase
         $this->assertSame(1, $result['vendors']);
         $this->assertSame(1, $result['customers']);
     }
+
+    public function test_pull_all_contacts_reads_every_page_of_vendors(): void
+    {
+        $vendor = fn ($n) => ['contact_id' => "v{$n}", 'contact_name' => "Paged Vendor {$n}", 'status' => 'active'];
+        Http::fake([
+            '*contacts*contact_type=vendor*page=1&*' => Http::response(['contacts' => [$vendor(1), $vendor(2)], 'page_context' => ['has_more_page' => true]], 200),
+            '*contacts*contact_type=vendor*page=2&*' => Http::response(['contacts' => [$vendor(3)], 'page_context' => ['has_more_page' => false]], 200),
+            '*contacts*contact_type=customer*' => Http::response(['contacts' => [], 'page_context' => ['has_more_page' => false]], 200),
+        ]);
+
+        $result = app(ZohoInventoryService::class)->pullAllContacts();
+
+        $this->assertSame(['vendors' => 3, 'customers' => 0], $result);
+        $this->assertSame(3, \App\Models\VendorMaster::where('vendor_name', 'like', 'Paged Vendor %')->count());
+        Http::assertNotSent(fn ($request) => $request->method() !== 'GET');
+    }
 }

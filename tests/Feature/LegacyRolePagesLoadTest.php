@@ -41,9 +41,17 @@ class LegacyRolePagesLoadTest extends TestCase
     {
         $user = User::where('email', 'storeexec@tan90.test')->firstOrFail();
 
-        foreach (['unloading.dashboard', 'unloading.loading-desk', 'unloading.desk', 'unloading.history', 'unloading.dock-scheduling'] as $route) {
+        foreach (['unloading.dashboard', 'unloading.desk', 'unloading.history', 'unloading.dock-scheduling'] as $route) {
             $this->actingAs($user)->get(route($route))->assertOk();
         }
+    }
+
+    public function test_legacy_loading_desk_url_redirects_to_the_single_unloading_desk(): void
+    {
+        $user = User::where('email', 'storeexec@tan90.test')->firstOrFail();
+
+        $this->actingAs($user)->get(route('unloading.loading-desk'))
+            ->assertRedirect(route('unloading.desk'));
     }
 
     public function test_qc_pages_load(): void

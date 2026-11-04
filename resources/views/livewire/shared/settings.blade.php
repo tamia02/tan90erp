@@ -52,8 +52,9 @@ new #[Layout('layouts.app')] class extends Component
     <div class="rounded-lg border p-4 flex flex-col gap-4" style="background: var(--surface-3); border-color: var(--border);">
         <label class="flex items-center gap-2 text-sm">
             <input wire:model="emailNotifications" type="checkbox" class="w-4 h-4" />
-            <span style="color: var(--text-primary);">Email notifications</span>
+            <span style="color: var(--text-primary);">Business event email notifications</span>
         </label>
+        <p class="-mt-3 text-xs" style="color: var(--text-muted);">Login codes and password reset emails are security messages and are not disabled by this preference.</p>
         <label class="flex items-center gap-2 text-sm">
             <input wire:model="smsAlerts" type="checkbox" class="w-4 h-4" />
             <span style="color: var(--text-primary);">SMS alerts</span>

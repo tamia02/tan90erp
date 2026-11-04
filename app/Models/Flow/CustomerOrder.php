@@ -20,7 +20,7 @@ class CustomerOrder extends Model
 
     protected $fillable = [
         'order_number', 'customer_name', 'destination', 'temperature_requirement',
-        'min_shelf_life_days', 'requested_date', 'status', 'created_by',
+        'min_shelf_life_days', 'requested_date', 'status', 'created_by', 'site_id', 'fg_warehouse_id',
     ];
 
     protected function casts(): array

@@ -7,8 +7,10 @@ use App\Http\Controllers\Tan90\MasterData\ChangeRequestController;
 use App\Http\Controllers\Tan90\MasterData\DashboardController;
 use App\Http\Controllers\Tan90\MasterData\DataImportController;
 use App\Http\Controllers\Tan90\MasterData\DataQualityController;
+use App\Http\Controllers\Tan90\MasterData\ExternalMasterDataController;
 use App\Http\Controllers\Tan90\MasterData\GstVerificationController;
 use App\Http\Controllers\Tan90\MasterData\IntegrationConnectionController;
+use App\Http\Controllers\Tan90\MasterData\LocationWorkspaceController;
 use App\Http\Controllers\Tan90\MasterData\MasterDataController;
 use App\Http\Controllers\Tan90\MasterData\ModuleSettingsController;
 use App\Http\Controllers\Tan90\MasterData\PermissionMatrixController;
@@ -27,6 +29,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['web', 'auth'])->prefix('tan90/master-data')->name('tan90.master-data.')->group(function () {
 
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+
+    Route::get('locations', [LocationWorkspaceController::class, 'index'])->name('locations.index');
+    Route::get('locations/create', [LocationWorkspaceController::class, 'create'])->name('locations.create');
 
     Route::get('approval-queue', [ApprovalQueueController::class, 'index'])->name('approval-queue');
 
@@ -48,6 +53,8 @@ Route::middleware(['web', 'auth'])->prefix('tan90/master-data')->name('tan90.mas
     Route::get('import/{job}', [DataImportController::class, 'show'])->name('import.show');
     Route::post('import/{job}/commit', [DataImportController::class, 'commit'])->name('import.commit');
     Route::get('import/{job}/rejected.csv', [DataImportController::class, 'rejectedCsv'])->name('import.rejected-csv');
+
+    Route::get('source-data', [ExternalMasterDataController::class, 'index'])->middleware('role:admin')->name('source-data');
 
     Route::get('data-quality', [DataQualityController::class, 'index'])->name('data-quality.index');
     Route::post('data-quality/scan', [DataQualityController::class, 'scan'])->name('data-quality.scan');

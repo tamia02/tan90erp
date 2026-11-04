@@ -41,8 +41,9 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        $role = auth()->user()->role;
-        $vendorName = auth()->user()->name;
+        $user = auth()->user();
+        $role = $user->role ?? ($user->isAdmin() ? Role::Admin : Role::Guard);
+        $vendorName = $user->name;
 
         $keywords = match ($role) {
             Role::Guard => ['Gate entry', 'Security Guard'],
@@ -59,7 +60,7 @@ new #[Layout('layouts.app')] class extends Component
             $keywords,
             $role === Role::Vendor ? fn ($row) => $row->vendorName() === $vendorName : null,
             60,
-            $role === Role::Admin,
+            $user->isAdmin(),
         );
 
         return [
@@ -274,7 +275,7 @@ new #[Layout('layouts.app')] class extends Component
     <section class="rounded-2xl border p-4 sm:p-5" style="background: var(--surface-3); border-color: var(--border);">
         <h2 class="text-lg font-semibold" style="color: var(--text-primary);">System Audit Trail</h2>
         <p class="text-sm mb-4" style="color: var(--text-secondary);">
-            {{ $role === \App\Enums\Role::Admin ? 'Live audit entries from every role, including access and role changes.' : 'Live audit entries related to this role.' }}
+            {{ auth()->user()?->isAdmin() ? 'Live audit entries from every role, including access and role changes.' : 'Live audit entries related to this role.' }}
         </p>
 
         <div class="flex flex-col divide-y rounded-xl border overflow-hidden" style="border-color: var(--border); background: var(--surface-2);">

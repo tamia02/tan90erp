@@ -30,7 +30,7 @@ class DataImportController extends Controller
 
     public function upload(Request $request)
     {
-        abort_unless($this->permissions->can($request->user(), 'create'), 403);
+        abort_unless($this->permissions->isSuperAdmin($request->user()), 403);
 
         $data = $request->validate([
             'entity' => 'required|string',
@@ -56,7 +56,7 @@ class DataImportController extends Controller
 
     public function commit(Request $request, DataImportJob $job)
     {
-        abort_unless($this->permissions->can($request->user(), 'create'), 403);
+        abort_unless($this->permissions->isSuperAdmin($request->user()), 403);
         abort_unless($job->result === 'previewed', 422, 'Only a previewed job can be imported.');
 
         $job = $this->importer->commit($job, $request->user());

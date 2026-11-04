@@ -43,6 +43,13 @@ class MasterDataController extends Controller
 
     public function index(Request $request, string $entity)
     {
+        // One item list: Inventory > Items (all Zoho items + codes). This older
+        // tan90_items copy stays in the database but its list sends people there.
+        $user = $request->user();
+        if ($entity === 'items' && ($user->isAdmin() || $user->holdsRole(\App\Enums\Role::StoreManager))) {
+            return redirect()->route('inventory.items');
+        }
+
         $config = $this->registry->get($entity);
         $this->authorize('viewAny', $config['model']);
 
@@ -70,6 +77,8 @@ class MasterDataController extends Controller
             'config' => $config,
             'record' => new $config['model'],
             'mode' => 'create',
+            'customFields' => \App\Support\CustomFields::fields(\App\Support\CustomFields::masterEntity($entity)),
+            'customValues' => [],
             'hasNumberSeries' => NumberSeries::where('module', $config['title'])->where('status', 'active')->exists(),
         ]);
     }
@@ -77,11 +86,13 @@ class MasterDataController extends Controller
     public function store(StoreMasterDataRequest $request, string $entity)
     {
         $config = $this->registry->get($entity);
+        $custom = $this->validatedCustomFields($request, $entity);
         $data = $request->validated();
         $data['status'] = 'active';
         $data['approval_status'] = empty($config['no_approval']) ? 'draft' : 'active';
 
         $record = $config['model']::create($data);
+        \App\Support\CustomFields::save(\App\Support\CustomFields::masterEntity($entity), $record->id, $custom);
 
         return redirect()
             ->route('tan90.master-data.show', [$entity, $record->id])
@@ -130,6 +141,8 @@ class MasterDataController extends Controller
             'documentRule' => $documentRule,
             'attachments' => $attachments,
             'missingDocuments' => $missingDocuments,
+            'customFields' => \App\Support\CustomFields::fields(\App\Support\CustomFields::masterEntity($entity)),
+            'customValues' => \App\Support\CustomFields::values(\App\Support\CustomFields::masterEntity($entity), $record->id),
         ]);
     }
 
@@ -144,6 +157,8 @@ class MasterDataController extends Controller
             'config' => $config,
             'record' => $record,
             'mode' => 'edit',
+            'customFields' => \App\Support\CustomFields::fields(\App\Support\CustomFields::masterEntity($entity)),
+            'customValues' => \App\Support\CustomFields::values(\App\Support\CustomFields::masterEntity($entity), $record->id),
         ]);
     }
 
@@ -151,7 +166,10 @@ class MasterDataController extends Controller
     {
         $config = $this->registry->get($entity);
         $record = $config['model']::findOrFail($id);
+        $custom = $this->validatedCustomFields($request, $entity);
         $data = $request->validated();
+        // Team-added fields are not critical fields: saved straight away.
+        \App\Support\CustomFields::save(\App\Support\CustomFields::masterEntity($entity), $record->id, $custom);
 
         $dirtyFields = array_keys(array_filter(
             $data,
@@ -180,6 +198,18 @@ class MasterDataController extends Controller
         return redirect()
             ->route('tan90.master-data.show', [$entity, $record->id])
             ->with('status', "{$config['singular']} updated.");
+    }
+
+    /** Validated values of the fields the team added to this table (Custom Fields). */
+    private function validatedCustomFields(Request $request, string $entity): array
+    {
+        $fields = \App\Support\CustomFields::fields(\App\Support\CustomFields::masterEntity($entity));
+        if ($fields->isEmpty()) {
+            return [];
+        }
+        $request->validate(\App\Support\CustomFields::rules($fields, 'custom'), [], \App\Support\CustomFields::attributeNames($fields, 'custom'));
+
+        return \App\Support\CustomFields::clean($fields, (array) $request->input('custom', []));
     }
 
     public function destroy(string $entity, int $id)

@@ -3,6 +3,8 @@
 namespace Tests\Feature\Tan90\MasterData;
 
 use App\Models\Tan90\MasterData\Customer;
+use App\Models\User;
+use App\Enums\Role;
 use App\Support\Tan90ModuleNavigation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Feature\Tan90\MasterData\Concerns\SeedsTan90Access;
@@ -52,5 +54,19 @@ class CustomerNavigationTest extends TestCase
         $this->actingAs($user)->get(route('tan90.master-data.index', 'customers'))
             ->assertOk()
             ->assertSee('TATA 1MG Technologies Private Limited');
+    }
+
+    public function test_legacy_admin_can_manage_master_data_entities(): void
+    {
+        $admin = User::factory()->create(['role' => Role::Admin]);
+
+        $this->actingAs($admin)->get(route('tan90.master-data.index', 'vendors'))
+            ->assertOk()
+            ->assertSee('Vendor Master')
+            ->assertSee('Add Vendor');
+
+        $this->actingAs($admin)->get(route('tan90.master-data.create', 'vendors'))
+            ->assertOk()
+            ->assertSee('Create a new governed vendor record.');
     }
 }

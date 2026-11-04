@@ -37,8 +37,20 @@ class ZohoService
 {
     private ?string $lastLookupError = null;
 
+    // CRM credentials present? Without them every CRM call is skipped quietly
+    // instead of hitting Zoho's token endpoint and logging a failure each time.
+    public function isConfigured(): bool
+    {
+        return filled(config('services.zoho.client_id')) && filled(config('services.zoho.client_secret'))
+            && filled(config('services.zoho.refresh_token'));
+    }
+
     private function accessToken(): ?string
     {
+        if (! $this->isConfigured()) {
+            return null;
+        }
+
         return Cache::remember('zoho_access_token', 3300, function () {
             $accountsBase = config('services.zoho.accounts_base_url');
 
@@ -361,7 +373,7 @@ class ZohoService
 
     public function pushRfq(Rfq $rfq): bool
     {
-        if (! $this->apiDomain() || trim($rfq->sku) === '') {
+        if (! config('services.zoho.write_enabled', true) || ! $this->isConfigured() || ! $this->apiDomain() || trim($rfq->sku) === '') {
             return false;
         }
 
@@ -388,7 +400,7 @@ class ZohoService
 
     public function pushVendorSubmission(VendorSubmission $submission): bool
     {
-        if (! $this->apiDomain() || trim($submission->invoice_number) === '') {
+        if (! config('services.zoho.write_enabled', true) || ! $this->isConfigured() || ! $this->apiDomain() || trim($submission->invoice_number) === '') {
             return false;
         }
 
@@ -417,7 +429,7 @@ class ZohoService
 
     public function pushFinanceRecord(FinanceRecord $record): bool
     {
-        if (! $this->apiDomain() || trim($record->invoice_number) === '') {
+        if (! config('services.zoho.write_enabled', true) || ! $this->isConfigured() || ! $this->apiDomain() || trim($record->invoice_number) === '') {
             return false;
         }
 
@@ -577,6 +589,10 @@ class ZohoService
 
     public function pushBom(Bom $bom): bool
     {
+        if (! config('services.zoho.write_enabled', true) || ! $this->isConfigured()) {
+            return false;
+        }
+
         $product = $this->findOrCreateZohoRecord('Products', 'Product_Name', $bom->finishedGood?->name ?: $bom->code);
 
         if (! $product) {
@@ -591,6 +607,10 @@ class ZohoService
 
     public function pushRecipe(Recipe $recipe): bool
     {
+        if (! config('services.zoho.write_enabled', true) || ! $this->isConfigured()) {
+            return false;
+        }
+
         $product = $this->findOrCreateZohoRecord('Products', 'Product_Name', $recipe->finishedGood?->name ?: $recipe->name);
 
         if (! $product) {
@@ -604,6 +624,10 @@ class ZohoService
 
     public function pushCostSheet(CostSheet $sheet): bool
     {
+        if (! config('services.zoho.write_enabled', true) || ! $this->isConfigured()) {
+            return false;
+        }
+
         $product = $this->findOrCreateZohoRecord('Products', 'Product_Name', $sheet->finishedGood?->name ?: $sheet->code);
 
         if (! $product) {
@@ -748,6 +772,12 @@ class ZohoService
             ];
         }
 
+        if (! config('services.zoho.create_enabled', false)) {
+            $this->lastLookupError = "Zoho {$module} create is disabled; no existing {$nameField} matched {$name}.";
+
+            return null;
+        }
+
         $created = $this->zohoRequest()
             ->post("{$apiDomain}/crm/v3/{$module}", ['data' => [[$nameField => $name]]]);
 
@@ -799,7 +829,8 @@ class ZohoService
     {
         $apiDomain = $this->apiDomain();
 
-        if (! $apiDomain || trim($parentId) === '' || trim($title) === '') {
+        if (! config('services.zoho.write_enabled', true) || ! $this->isConfigured()
+            || ! $apiDomain || trim($parentId) === '' || trim($title) === '') {
             return false;
         }
 

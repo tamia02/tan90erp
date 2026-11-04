@@ -23,7 +23,51 @@
                 <div class="access-muted text-sm">Work Orders (all statuses)</div>
                 <div class="workspace-metric">{{ $statusCounts->sum() }}</div>
             </div>
+            <div class="access-card p-4">
+                <div class="access-muted text-sm">Wastage logged today</div>
+                <div class="workspace-metric">{{ $wastageTodayCount }}</div>
+                <div class="access-muted text-xs">{{ $wastageTodayByUnit->isEmpty() ? 'No wastage logged' : $wastageTodayByUnit->values()->join(' · ') }}</div>
+            </div>
         </div>
+
+        @if ($canViewMachineTime)
+        <div class="access-card p-5">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                    <h2 class="font-bold">Machine working time today</h2>
+                    <p class="access-muted text-sm">Recorded job time minus breakdowns and other logged stops during that time.</p>
+                </div>
+                <a class="access-btn" href="{{ route('forge.machines.index') }}">Machine log</a>
+            </div>
+            <div class="access-grid mb-4">
+                @foreach (['scheduled_seconds' => 'Recorded job time', 'stopped_seconds' => 'Breakdown / stop time', 'working_seconds' => 'Actual working time'] as $key => $label)
+                    <div class="border rounded p-3" style="border-color:#dfe7e2">
+                        <div class="access-muted text-sm">{{ $label }}</div>
+                        <div class="font-bold text-lg">{{ intdiv($machineTotals[$key], 3600) }}h {{ intdiv($machineTotals[$key] % 3600, 60) }}m</div>
+                    </div>
+                @endforeach
+            </div>
+            <div style="overflow-x:auto">
+                <table class="access-table">
+                    <thead><tr><th>Machine</th><th>State</th><th>Job time</th><th>Stops</th><th>Working time</th></tr></thead>
+                    <tbody>
+                        @forelse ($machineTimes as $row)
+                            <tr>
+                                <td><strong>{{ $row['machine']->name }}</strong><div class="access-muted text-xs">{{ $row['machine']->code }}</div></td>
+                                <td>{{ str($row['machine']->state)->headline() }}</td>
+                                @foreach (['scheduled_seconds', 'stopped_seconds', 'working_seconds'] as $key)
+                                    <td>{{ intdiv($row['time'][$key], 3600) }}h {{ intdiv($row['time'][$key] % 3600, 60) }}m</td>
+                                @endforeach
+                            </tr>
+                        @empty
+                            <tr><td colspan="5" class="access-muted text-center py-6">No machines configured.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <p class="access-muted text-xs mt-3">Tracking starts when a job card is started with a machine selected or when a machine is selected on a timed filling/sealing record. Earlier job cards have no reliable pause history, so they are not included.</p>
+        </div>
+        @endif
 
         <div class="access-card p-5">
             <h2 class="font-bold mb-3">Work Orders by Status</h2>

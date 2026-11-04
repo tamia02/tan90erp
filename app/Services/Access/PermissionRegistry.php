@@ -4,6 +4,42 @@ namespace App\Services\Access;
 
 class PermissionRegistry
 {
+    // [key, module, screen, category, action, label, route]. Vendor portal
+    // pages are left out on purpose: they show the logged-in vendor's own data.
+    public const SCREEN_PAGES = [
+        ['guard.dashboard.view', 'Guard', 'Dashboard', 'page', 'view', 'View Guard Dashboard', 'guard.dashboard'],
+        ['guard.scan.view', 'Guard', 'New Gate Pass', 'page', 'view', 'View New Gate Pass', 'guard.scan'],
+        ['guard.inside.view', 'Guard', 'Vehicles Inside', 'page', 'view', 'View Vehicles Inside (Truck Out)', 'guard.inside'],
+        ['guard.entries.view', 'Guard', 'Past Gate Entries', 'page', 'view', 'View Past Gate Entries', 'guard.entries'],
+        ['unloading.dashboard.view', 'Unloading', 'Dashboard', 'page', 'view', 'View Unloading Dashboard', 'unloading.dashboard'],
+        ['unloading.desk.view', 'Unloading', 'Loading & Unloading', 'page', 'view', 'View Loading & Unloading', 'unloading.desk'],
+        ['unloading.putaway.view', 'Unloading', 'Putaway', 'page', 'view', 'View Putaway', 'unloading.putaway'],
+        ['unloading.dock_scheduling.view', 'Unloading', 'Dock Scheduling', 'page', 'view', 'View Dock Scheduling', 'unloading.dock-scheduling'],
+        ['unloading.history.view', 'Unloading', 'History', 'page', 'view', 'View Unloading History', 'unloading.history'],
+        ['qc.history.view', 'QC', 'History', 'page', 'view', 'View QC History', 'qc.history'],
+        ['grn.po_control_tower.view', 'GRN', 'PO Control Tower', 'page', 'view', 'View PO Control Tower', 'grn.po-control-tower'],
+        ['grn.entry_approvals.view', 'GRN', 'Entry Approvals', 'page', 'view', 'View Entry Approvals', 'store-manager.entry-approvals'],
+        ['grn.purchase_orders.view', 'GRN', 'Purchase Orders', 'page', 'view', 'View Purchase Orders (PO Master)', 'admin.po'],
+        ['grn.bins.view', 'GRN', 'Shelf & Bin', 'page', 'view', 'View Shelf & Bin', 'grn.bins'],
+        ['grn.validation_issues.view', 'GRN', 'Validation Issues', 'page', 'view', 'View Validation Issues', 'validation.issues'],
+        ['inventory.stock.view', 'Inventory', 'Inventory Summary', 'page', 'view', 'View Inventory Summary', 'inventory.stock'],
+        ['inventory.items.view', 'Inventory', 'Items', 'page', 'view', 'View Items', 'inventory.items'],
+        ['inventory.recipes.view', 'Inventory', 'Composite Items', 'page', 'view', 'View Composite Items (Recipes)', 'inventory.recipes'],
+        ['inventory.production.view', 'Inventory', 'Create Bundle', 'page', 'view', 'View Create Bundle', 'inventory.production'],
+        ['inventory.dispatch.view', 'Inventory', 'Outward Shipment', 'page', 'view', 'View Outward Shipment', 'inventory.dispatch'],
+        ['finance.dashboard.view', 'Finance', 'Dashboard', 'page', 'view', 'View Finance Dashboard', 'finance.dashboard'],
+        ['finance.reports.view', 'Finance', 'Reports', 'page', 'view', 'View Finance Reports', 'finance.reports'],
+        ['admin.command_center.view', 'Admin', 'Command Center', 'page', 'view', 'View Command Center', 'command-center'],
+        ['admin.overview.view', 'Admin', 'Overview', 'page', 'view', 'View Admin Overview', 'admin.dashboard'],
+        ['admin.vendors.view', 'Admin', 'Vendors', 'page', 'view', 'View Vendors', 'admin.vendors'],
+        ['admin.vendor_scorecard.view', 'Admin', 'Supplier Scorecards', 'page', 'view', 'View Supplier Scorecards', 'admin.vendor-scorecard'],
+        ['admin.supplier_claims.view', 'Admin', 'Supplier Claims', 'page', 'view', 'View Supplier Claims', 'admin.supplier-claims'],
+        ['admin.rfq.view', 'Admin', 'RFQs', 'page', 'view', 'View RFQs', 'admin.rfq'],
+        ['admin.quote_comparison.view', 'Admin', 'Quote Comparison', 'page', 'view', 'View Quote Comparison', 'admin.quote-comparison'],
+        ['admin.integrations.view', 'Admin', 'Integrations', 'page', 'view', 'View Integrations', 'admin.integrations'],
+        ['admin.reports.view', 'Admin', 'Reports', 'page', 'view', 'View Admin Reports', 'admin.reports'],
+    ];
+
     public function permissions(): array
     {
         $base = [
@@ -16,7 +52,6 @@ class PermissionRegistry
             ['key' => 'admin.module.access', 'module' => 'Admin', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Admin module'],
             ['key' => 'master_data.module.access', 'module' => 'Master Data', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Master Data module'],
             ['key' => 'brc.module.access', 'module' => 'BOM Recipe Costing', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access BRC module'],
-            ['key' => 'access_control.module.access', 'module' => 'Access Control', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Control module'],
             ['key' => 'workspace.module.access', 'module' => 'Workspace', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Workspace module'],
             ['key' => 'forge.module.access', 'module' => 'Forge', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Forge module'],
             ['key' => 'flow.module.access', 'module' => 'Flow', 'screen' => null, 'category' => 'module', 'action' => 'access', 'label' => 'Access Flow module'],
@@ -95,14 +130,17 @@ class PermissionRegistry
 
             ['forge.dashboard.view', 'Forge', 'Command Centre', 'page', 'view', 'View Manufacturing Command Centre', 'forge.dashboard'],
             ['forge.plan.view', 'Forge', 'Production Plans', 'page', 'view', 'View production plans', 'forge.plans.index'],
+            ['forge.plan.export', 'Forge', 'Production Plans', 'action', 'export', 'Export production plans', 'forge.plans.export'],
             ['forge.plan.create', 'Forge', 'Production Plans', 'action', 'create', 'Create production plans', 'forge.plans.store'],
             ['forge.plan.approve', 'Forge', 'Production Plans', 'action', 'approve', 'Approve and freeze production plans', 'forge.plans.approve'],
             ['forge.workorder.view', 'Forge', 'Work Orders', 'page', 'view', 'View work orders', 'forge.workorders.index'],
+            ['forge.workorder.export', 'Forge', 'Work Orders', 'action', 'export', 'Export work orders', 'forge.workorders.export'],
             ['forge.workorder.create', 'Forge', 'Work Orders', 'action', 'create', 'Create work orders', 'forge.workorders.store'],
             ['forge.workorder.release', 'Forge', 'Work Orders', 'action', 'release', 'Release work orders', 'forge.workorders.release'],
             ['forge.material.issue', 'Forge', 'Work Orders', 'action', 'issue', 'Reserve and issue material to work orders', 'forge.workorders.issue-material'],
             ['forge.jobcard.record', 'Forge', 'Job Cards', 'action', 'record', 'Start, pause and complete job cards', 'forge.workorders.show'],
             ['forge.machine.view', 'Forge', 'Machines', 'page', 'view', 'View machines and OEE', 'forge.machines.index'],
+            ['forge.machine.export', 'Forge', 'Machines', 'action', 'export', 'Export machine usage', 'forge.machines.export'],
             ['forge.machine.downtime', 'Forge', 'Machines', 'action', 'downtime', 'Log and close machine downtime', 'forge.machines.downtime'],
             ['forge.freezer.view', 'Forge', 'Blast Freezers', 'page', 'view', 'View blast freezer occupancy and temperature', 'forge.freezers.index'],
             ['forge.freezer.monitor', 'Forge', 'Blast Freezers', 'action', 'monitor', 'Record readings, assign and release batches', 'forge.freezers.readings.store'],
@@ -110,14 +148,25 @@ class PermissionRegistry
             ['forge.production.record', 'Forge', 'Production Entry', 'action', 'record', 'Record production output', 'forge.production.store'],
             ['forge.production.approve', 'Forge', 'Production Entry', 'action', 'approve', 'Approve production entries', 'forge.production.approve'],
             ['forge.wastage.record', 'Forge', 'Wastage & Scrap', 'page', 'record', 'Record and view wastage', 'forge.wastage.index'],
+            ['forge.wastage.export', 'Forge', 'Wastage & Scrap', 'action', 'export', 'Export wastage records', 'forge.wastage.export'],
             ['forge.wastage.approve', 'Forge', 'Wastage & Scrap', 'action', 'approve', 'Approve wastage disposition', 'forge.wastage.approve'],
             ['forge.ipqc.record', 'Forge', 'In-Process Quality', 'page', 'record', 'Record IPQC checkpoints', 'forge.quality-holds.index'],
             ['forge.ipqc.release', 'Forge', 'In-Process Quality', 'action', 'release', 'Release process holds', 'forge.quality-holds.release'],
             ['forge.finalqc.record', 'Forge', 'Final Quality & FG Release', 'page', 'record', 'Record final QC results', 'forge.final-qc.index'],
+            ['forge.finalqc.export', 'Forge', 'Final Quality & FG Release', 'action', 'export', 'Export final QC records', 'forge.final-qc.export'],
             ['forge.finalqc.release', 'Forge', 'Final Quality & FG Release', 'action', 'release', 'Release finished batches', 'forge.final-qc.release'],
             ['forge.deviation.view', 'Forge', 'Deviation, Rework & CAPA', 'page', 'view', 'View deviations and CAPA', 'forge.deviations.index'],
             ['forge.deviation.manage', 'Forge', 'Deviation, Rework & CAPA', 'action', 'manage', 'Open, disposition and close deviations/CAPA', 'forge.deviations.store'],
             ['forge.batch.trace', 'Forge', 'Batch Genealogy', 'page', 'view', 'Trace batch genealogy', 'forge.batches.index'],
+            ['forge.batch.export', 'Forge', 'Batch Genealogy', 'action', 'export', 'Export finished goods batch records', 'forge.batches.export'],
+
+            ['inventory.custom_fields.manage', 'Inventory', 'Items', 'action', 'manage', 'Add / turn off custom item fields (e.g. Cost Price)', null],
+            ['custom_fields.manage', 'Master Data', 'Custom Fields', 'page', 'manage', 'Add custom fields to any table (Items, Vendors, Customers, ...) and choose their data type', 'custom-fields.index'],
+            ['inventory.chemical_names.view', 'Inventory', 'Items', 'field', 'view', 'See real chemical names (SKU Name) - otherwise only Display Name / Code', null],
+
+            // 2026-10-10: one "view" switch per GRN-era staff screen, so a custom
+            // access role can open it (before, these opened only by job role).
+            ...self::SCREEN_PAGES,
 
             ['flow.dashboard.view', 'Flow', 'Command Centre', 'page', 'view', 'View Fulfilment Command Centre', 'flow.dashboard'],
             ['flow.inventory.view', 'Flow', 'FG Inventory', 'page', 'view', 'View FG inventory and ledger', 'flow.inventory.index'],
@@ -134,6 +183,7 @@ class PermissionRegistry
             ['flow.return.manage', 'Flow', 'Returns & Claims', 'page', 'manage', 'Manage RMA, inspection and claims', 'flow.returns.index'],
         ];
 
+        $routes = [...$routes, ...\App\Services\Forge\WorkerProduction::permissionRows()];
         foreach ($routes as [$key, $module, $screen, $category, $action, $label, $route]) {
             $base[] = compact('key', 'module', 'screen', 'category', 'action', 'label') + ['route_name' => $route];
         }

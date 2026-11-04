@@ -8,6 +8,7 @@
             </div>
             <span class="access-chip">{{ str($order->status)->replace('_', ' ')->headline() }}</span>
         </div>
+        @if($order->site_id)<a class="access-btn access-btn-primary" href="{{ route('forge.production-flow', ['order'=>$order->id]) }}">View live sales → production flow</a>@endif
 
         @if(session('status'))<div class="access-card p-3 text-sm">{{ session('status') }}</div>@endif
         @if($errors->any())<div class="access-card p-3 text-sm text-red-700">{{ $errors->first() }}</div>@endif
@@ -44,18 +45,19 @@
             <h2 class="font-bold mb-3">Lines</h2>
             <div style="overflow-x:auto">
                 <table class="access-table">
-                    <thead><tr><th>Finished Good</th><th>Ordered</th><th>Allocated</th><th>Picked</th><th>Packed</th></tr></thead>
+                    <thead><tr><th>Finished Good</th>@if($order->site_id)<th>Inventory SKU</th>@endif<th>Ordered</th><th>Allocated</th><th>Picked</th><th>Packed</th></tr></thead>
                     <tbody>
                         @forelse ($order->lines as $line)
                             <tr>
                                 <td>{{ $line->finishedGood?->name }}</td>
+                                @if($order->site_id)<td>SKU #{{ $line->inventory_fg_item_id }}</td>@endif
                                 <td>{{ $line->qty_ordered }} {{ $line->uom }}</td>
                                 <td>{{ $line->qty_allocated }}</td>
                                 <td>{{ $line->qty_picked }}</td>
                                 <td>{{ $line->qty_packed }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="access-muted text-center py-6">No lines yet.</td></tr>
+                            <tr><td colspan="{{ $order->site_id ? 6 : 5 }}" class="access-muted text-center py-6">No lines yet.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

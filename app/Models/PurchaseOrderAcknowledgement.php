@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['po_number', 'vendor_name', 'accepted', 'remarks', 'acknowledged_by', 'acknowledged_at'])]
+#[Fillable(['po_number', 'vendor_name', 'accepted', 'remarks', 'acknowledged_by', 'acknowledged_at', 'production_started_at'])]
 class PurchaseOrderAcknowledgement extends Model
 {
     protected function casts(): array
@@ -14,6 +14,7 @@ class PurchaseOrderAcknowledgement extends Model
         return [
             'accepted' => 'boolean',
             'acknowledged_at' => 'datetime',
+            'production_started_at' => 'datetime',
         ];
     }
 

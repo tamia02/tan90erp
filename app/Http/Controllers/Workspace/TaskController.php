@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Workspace;
 use App\Http\Controllers\Controller;
 use App\Models\Workspace\WorkspaceTask;
 use App\Services\Access\AccessControlService;
+use App\Support\SiteLocation;
 use Illuminate\Http\Request;
 
 class TaskController extends Controller
@@ -18,9 +19,18 @@ class TaskController extends Controller
 
         $scope = $this->access->teamScopedUserIds($user);
         $status = $request->query('status', 'open');
+        $permissions = WorkspaceTask::whereNotNull('target_permission')->distinct()->pluck('target_permission')
+            ->filter(fn ($key) => $this->access->can($user, $key))->values()->all();
+        $site = SiteLocation::forUser($user);
 
         $tasks = WorkspaceTask::with(['assignee', 'creator'])
-            ->when($scope, fn ($q) => $q->whereIn('assigned_to', $scope)->orWhereIn('created_by', $scope))
+            ->when($site !== null, fn ($q) => $q->where(fn ($s) => $s->whereNull('site_id')->orWhere('site_id', $site)))
+            ->where(function ($q) use ($scope, $permissions) {
+                $q->where(function ($legacy) use ($scope) {
+                    $legacy->whereNull('event_key');
+                    if ($scope) $legacy->where(fn ($s) => $s->whereIn('assigned_to', $scope)->orWhereIn('created_by', $scope));
+                })->orWhere(fn ($production) => $production->whereNotNull('event_key')->whereIn('target_permission', $permissions));
+            })
             ->when($status !== 'all', fn ($q) => $q->where('status', $status))
             ->orderByRaw("field(priority,'critical','high','medium','low')")
             ->orderBy('due_at')
@@ -53,6 +63,7 @@ class TaskController extends Controller
     {
         $user = $request->user();
         abort_unless($this->access->can($user, 'workspace.tasks.complete'), 403);
+        abort_if($task->event_key !== null, 422, 'Production tasks close when the linked ERP action is completed.');
         $this->authorizeScope($user, $task->assigned_to ?? $task->created_by);
 
         $task->update(['assigned_to' => $user->id, 'status' => 'in_progress']);
@@ -65,6 +76,7 @@ class TaskController extends Controller
     {
         $user = $request->user();
         abort_unless($this->access->can($user, 'workspace.tasks.complete'), 403);
+        abort_if($task->event_key !== null, 422, 'Production tasks close when the linked ERP action is completed.');
         $this->authorizeScope($user, $task->assigned_to ?? $task->created_by);
 
         $task->update(['status' => 'completed', 'completed_at' => now()]);

@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\DebitNote;
+use App\Enums\Role;
 use App\Models\FinanceRecord;
 use App\Models\GateEntry;
 use App\Models\PurchaseOrder;
@@ -36,6 +36,60 @@ class ThreeWayMatchTest extends TestCase
 
         $record = FinanceRecord::where('gate_entry_id', $gate->id)->firstOrFail();
         $this->assertSame('matched', $record->match_status);
+    }
+
+    public function test_tax_inclusive_invoice_matches_gst_saved_on_the_po_line(): void
+    {
+        $po = PurchaseOrder::create(['po_number' => 'PO-GST-4956', 'vendor_name' => 'Acme Vendor']);
+        $line = $po->lines()->create([
+            'product' => 'Widget', 'quantity' => 100, 'list_price' => 42, 'discount' => 0, 'tax' => 756, 'gst_rate' => 18,
+        ]);
+
+        $gate = GateEntry::factory()->create([
+            'po_number' => 'PO-GST-4956', 'vendor_name' => 'Acme Vendor',
+            'rate' => 42, 'invoice_qty' => 100, 'invoice_amount' => 4956, 'status' => 'qc_done',
+            'material' => 'Widget',
+            'product_lines' => [['po_line_id' => $line->id, 'sku' => 'Widget', 'qty' => 100, 'unit_price' => 42]],
+        ]);
+        QcResult::create([
+            'gate_entry_id' => $gate->id, 'sku' => 'Widget', 'po_qty' => 100, 'invoice_qty' => 100,
+            'physical_received' => 100, 'accepted_qty' => 100, 'qc_hold_qty' => 0,
+            'defective_qty' => 0, 'rejected_qty' => 0, 'missing_qty' => 0,
+        ]);
+
+        app(GrnPostingService::class)->post($gate, 'BIN-A1');
+
+        $record = FinanceRecord::where('gate_entry_id', $gate->id)->firstOrFail();
+        $this->assertSame('matched', $record->match_status);
+    }
+
+    public function test_finance_can_recheck_a_previously_false_tax_exception_without_clearing_payment(): void
+    {
+        $po = PurchaseOrder::create(['po_number' => 'PO-GST-RECHECK', 'vendor_name' => 'Acme Vendor']);
+        $line = $po->lines()->create([
+            'product' => 'Widget', 'quantity' => 100, 'list_price' => 42, 'discount' => 0, 'tax' => 756, 'gst_rate' => 18,
+        ]);
+        $gate = GateEntry::factory()->create([
+            'po_number' => $po->po_number, 'vendor_name' => 'Acme Vendor',
+            'rate' => 42, 'invoice_qty' => 100, 'invoice_amount' => 4956, 'status' => 'closed',
+            'material' => 'Widget',
+            'product_lines' => [['po_line_id' => $line->id, 'sku' => 'Widget', 'qty' => 100, 'unit_price' => 42]],
+        ]);
+        $record = FinanceRecord::create([
+            'gate_entry_id' => $gate->id, 'vendor_name' => 'Acme Vendor', 'invoice_number' => 'GST-RECHECK-001',
+            'rate_per_unit' => 42, 'invoice_value' => 4956, 'accepted_value' => 4956, 'final_payable' => 4956,
+            'match_status' => 'exception', 'match_notes' => 'Old matcher used net amount only.', 'vendor_status' => 'pending',
+        ]);
+        $finance = User::factory()->create(['role' => Role::Finance]);
+
+        $this->actingAs($finance);
+        Volt::test('finance.review')
+            ->call('recheckMatch', $record->id)
+            ->assertHasNoErrors()
+            ->assertSee('now matches the PO and gate receipt');
+
+        $this->assertSame('matched', $record->fresh()->match_status);
+        $this->assertSame('pending', $record->fresh()->vendor_status);
     }
 
     public function test_grn_posting_flags_an_exception_when_invoice_rate_differs_from_po(): void
@@ -104,7 +158,7 @@ class ThreeWayMatchTest extends TestCase
 
     public function test_an_unmatched_invoice_cannot_be_cleared_for_payment(): void
     {
-        $finance = User::factory()->create(['role' => \App\Enums\Role::Finance]);
+        $finance = User::factory()->create(['role' => Role::Finance]);
         $record = FinanceRecord::create([
             'gate_entry_id' => GateEntry::factory()->create()->id, 'vendor_name' => 'Acme Vendor',
             'rate_per_unit' => 10, 'invoice_value' => 1000, 'accepted_value' => 1000, 'final_payable' => 1000,

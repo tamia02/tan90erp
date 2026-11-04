@@ -7,6 +7,7 @@ use App\Models\Forge\Deviation;
 use App\Models\Forge\WorkOrder;
 use App\Services\Access\AccessControlService;
 use App\Services\AuditLogger;
+use App\Support\SiteLocation;
 use Illuminate\Http\Request;
 
 class DeviationController extends Controller
@@ -16,10 +17,14 @@ class DeviationController extends Controller
     public function index(Request $request)
     {
         abort_unless($this->access->can($request->user(), 'forge.deviation.view'), 403);
+        $site = SiteLocation::forUser($request->user());
 
         return view('forge.deviations.index', [
-            'deviations' => Deviation::with(['workOrder.finishedGood', 'capaOwner'])->latest()->paginate(20),
-            'workOrders' => WorkOrder::orderByDesc('id')->limit(50)->get(),
+            'deviations' => Deviation::with(['workOrder.finishedGood', 'capaOwner'])
+                ->when($site !== null, fn ($query) => $query->whereHas('workOrder', fn ($workOrder) => $workOrder->where('site_id', $site)))
+                ->latest()->paginate(20),
+            'workOrders' => WorkOrder::when($site !== null, fn ($query) => $query->where('site_id', $site))
+                ->orderByDesc('id')->limit(50)->get(),
         ]);
     }
 
@@ -35,6 +40,7 @@ class DeviationController extends Controller
             'uom' => ['nullable', 'string', 'max:20'],
             'containment' => ['nullable', 'string', 'max:2000'],
         ]);
+        $this->assertSite($request, isset($data['work_order_id']) ? WorkOrder::findOrFail($data['work_order_id']) : null);
 
         $deviation = Deviation::create($data + ['status' => 'open', 'opened_by' => $request->user()->id]);
         AuditLogger::log('Deviation opened', $deviation->source_type.' — '.str($deviation->description)->limit(60), $deviation);
@@ -45,6 +51,7 @@ class DeviationController extends Controller
     public function update(Request $request, Deviation $deviation)
     {
         abort_unless($this->access->can($request->user(), 'forge.deviation.manage'), 403);
+        $this->assertSite($request, $deviation->workOrder);
 
         $data = $request->validate([
             'root_cause' => ['nullable', 'string', 'max:2000'],
@@ -77,6 +84,7 @@ class DeviationController extends Controller
     public function createReworkOrder(Request $request, Deviation $deviation)
     {
         abort_unless($this->access->can($request->user(), 'forge.workorder.create'), 403);
+        $this->assertSite($request, $deviation->workOrder);
         abort_unless($deviation->disposition === 'rework', 422, 'Only a deviation dispositioned to rework can spawn a rework order.');
         abort_if($deviation->reworkWorkOrder()->exists(), 422, 'A rework order already exists for this deviation.');
 
@@ -92,6 +100,11 @@ class DeviationController extends Controller
             'recipe_id' => $source->recipe_id,
             'routing_id' => $source->routing_id,
             'plant' => $source->plant,
+            'inventory_fg_item_id' => $source->inventory_fg_item_id,
+            'reusable_pcm_item_id' => $source->reusable_pcm_item_id,
+            'site_id' => $source->site_id,
+            'rm_warehouse_id' => $source->rm_warehouse_id,
+            'fg_warehouse_id' => $source->fg_warehouse_id,
             'target_qty' => $deviation->qty,
             'uom' => $deviation->uom ?: $source->uom,
             'status' => 'draft',
@@ -115,5 +128,11 @@ class DeviationController extends Controller
         AuditLogger::log('Rework work order created', "{$wo->wo_number} from deviation #{$deviation->id}", $wo);
 
         return redirect()->route('forge.workorders.show', $wo)->with('status', "Rework work order {$wo->wo_number} created.");
+    }
+
+    private function assertSite(Request $request, ?WorkOrder $workOrder): void
+    {
+        $site = SiteLocation::forUser($request->user());
+        abort_if($site !== null && (! $workOrder || $workOrder->site_id === null || (int) $workOrder->site_id !== $site), 403);
     }
 }

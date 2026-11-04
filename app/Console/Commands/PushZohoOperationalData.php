@@ -13,6 +13,14 @@ class PushZohoOperationalData extends Command
 
     public function handle(ZohoService $zoho): int
     {
+        // Zoho CRM not connected: nothing to push - skip cleanly instead of
+        // reporting every record as failed every 30 minutes.
+        if (! $zoho->isConfigured()) {
+            $this->info('Skipped: Zoho CRM is not configured.');
+
+            return self::SUCCESS;
+        }
+
         $result = $zoho->pushOperationalData();
 
         $this->info("Zoho operational push complete: {$result['gate_entries']} gate entries, {$result['qc_results']} QC results, {$result['grn_records']} GRN records, {$result['bom_records']} BOM/Recipe/Costing records, {$result['failed']} failed.");

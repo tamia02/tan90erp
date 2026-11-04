@@ -6,7 +6,9 @@
                 <div class="text-sm access-muted">Workspace</div>
                 <h1 class="text-2xl font-bold">Command Center</h1>
             </div>
-            <a class="access-btn access-btn-primary" href="{{ route('workspace.customise') }}">Customise</a>
+            @if ($canCustomize && $widgets->isNotEmpty())
+                <a class="access-btn access-btn-primary" href="{{ route('workspace.customise') }}">Customise</a>
+            @endif
         </div>
 
         @php($queueLabels = ['tasks' => ['My Work', 'open task'], 'approvals' => ['Approval Center', 'pending request'], 'exceptions' => ['Alerts & Exceptions', 'open exception']])
@@ -24,8 +26,20 @@
         @endif
 
         @if ($widgets->isEmpty())
-            <div class="access-card p-6 text-sm access-muted text-center">
-                No widgets are available for your account yet.
+            <div class="access-card p-6 space-y-3">
+                <div>
+                    <h2 class="font-bold text-lg">Your role workspace</h2>
+                    <p class="access-muted text-sm mt-1">No dashboard cards are configured for this role yet. Open one of your permitted modules to continue.</p>
+                </div>
+                @if ($shortcuts->isNotEmpty())
+                    <nav class="flex flex-wrap gap-2" aria-label="Your permitted modules">
+                        @foreach ($shortcuts as $shortcut)
+                            <a class="access-btn" href="{{ route($shortcut['route']) }}">{{ $shortcut['label'] }} <span aria-hidden="true">→</span></a>
+                        @endforeach
+                    </nav>
+                @else
+                    <p class="access-muted text-sm">Your module access is shown in the navigation menu.</p>
+                @endif
             </div>
         @else
             <div class="workspace-grid">

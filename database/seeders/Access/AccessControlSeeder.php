@@ -384,8 +384,14 @@ class AccessControlSeeder extends Seeder
     private function seedReferenceRoles(array $verticals): void
     {
         foreach (LegacyRole::cases() as $role) {
+            // The canonical super role is created and fully granted above.
+            // Do not recreate a second LEGACY-ADMIN role after consolidation.
+            if ($role === LegacyRole::Admin) {
+                continue;
+            }
+
             AccessRole::updateOrCreate(['code' => 'LEGACY-'.strtoupper($role->value)], [
-                'name' => $role->label(), 'label' => 'Legacy '.$role->label(), 'level' => $role === LegacyRole::Admin ? 1 : 4,
+                'name' => $role->label(), 'label' => $role === LegacyRole::Admin ? 'Admin' : 'Legacy '.$role->label(), 'level' => $role === LegacyRole::Admin ? 1 : 4,
                 'hierarchy_level' => $role === LegacyRole::Admin ? 1 : 4, 'vertical_id' => $role === LegacyRole::Finance ? $verticals['FINANCE']->id : $verticals['STORE']->id,
                 'role_kind' => 'system', 'is_system' => true, 'status' => 'active',
                 'description' => 'Reference role mirroring users.role without replacing legacy behavior.',

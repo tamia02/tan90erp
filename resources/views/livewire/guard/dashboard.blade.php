@@ -16,17 +16,23 @@ new #[Layout('layouts.app')] class extends Component
 
     public function with(): array
     {
-        $today = GateEntry::whereDate('created_at', today())->get();
-
         $activity = CombinedActivityFeed::forUser(auth()->user(), self::ACTIVITY_KEYWORDS);
 
         return [
-            'todayCount' => $today->count(),
+            // Keep the dashboard cheap even on a busy gate day. The previous
+            // implementation hydrated every today's row just to count it and
+            // then sorted that collection to display five entries.
+            'todayCount' => GateEntry::whereDate('created_at', today())->count(),
             'pendingCount' => GateEntry::where('status', 'pending_validation')->count(),
             'breachedCount' => GateEntry::where('status', '!=', 'closed')->where('sla_deadline', '<', now())->count(),
-            // Scoped to today, not just "most recent 5 ever" — this panel
-            // sits under the "Today's Entries" stat and is meant to mirror it.
-            'recent' => $today->sortByDesc('created_at')->take(5)->values(),
+            'insideCount' => GateEntry::query()->where(function ($q) {
+                $q->where(fn ($i) => $i->where('entry_type', 'inward')->whereNull('exited_at')->where('created_at', '>=', now()->subDays(2)->startOfDay()))
+                    ->orWhere(fn ($o) => $o->where('entry_type', 'outward')->whereNull('exited_at')->where('status', '!=', 'dispatched'))
+                    ->orWhere(fn ($v) => $v->where('entry_type', 'visitor')->where('status', 'checked_in'));
+            })->count(),
+            'visitorsOnSite' => GateEntry::where('entry_type', 'visitor')->where('status', 'checked_in')->count(),
+            // Scoped to today, not just "most recent 5 ever".
+            'recent' => GateEntry::whereDate('created_at', today())->latest('created_at')->limit(5)->get(),
             'activityTotal' => $activity->count(),
             'recentActivity' => $this->showAllActivity ? $activity : $activity->take(5),
         ];
@@ -38,9 +44,16 @@ new #[Layout('layouts.app')] class extends Component
         <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Guard Module</div>
         <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Dashboard</h1>
         <p class="text-sm mt-1" style="color: var(--text-secondary);">Today's gate activity at a glance.</p>
+        <div class="flex flex-wrap gap-2 mt-4">
+            <a href="{{ route('guard.scan') }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold text-white" style="background: var(--brand);">Create gate entry</a>
+            <a href="{{ route('guard.inside') }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold text-white" style="background: var(--status-good);">Truck Out ({{ $insideCount }} inside)</a>
+            <a href="{{ route('guard.entries', ['type' => 'inward']) }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Inward log</a>
+            <a href="{{ route('guard.entries', ['type' => 'outward']) }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Outward log</a>
+            <a href="{{ route('guard.entries', ['type' => 'visitor']) }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Visitor log</a>
+        </div>
     </section>
 
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <a href="{{ route('guard.entries', ['today' => 1]) }}" wire:navigate class="rounded-2xl border p-4 flex items-center gap-3.5 transition-colors hover:border-[var(--brand)]" style="background: var(--surface-3); border-color: var(--border);">
             <div class="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style="background: var(--brand-bg); color: var(--brand);">
                 <x-icon name="clipboard-list" class="w-6 h-6" />
@@ -66,6 +79,15 @@ new #[Layout('layouts.app')] class extends Component
             <div class="min-w-0">
                 <div class="text-2xl font-bold" style="color: var(--status-critical);">{{ $breachedCount }}</div>
                 <div class="text-xs" style="color: var(--text-muted);">SLA Breached</div>
+            </div>
+        </a>
+        <a href="{{ route('guard.entries', ['type' => 'visitor']) }}" wire:navigate class="rounded-2xl border p-4 flex items-center gap-3.5 transition-colors hover:border-[var(--status-good)]" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="w-11 h-11 shrink-0 rounded-xl grid place-items-center" style="background: var(--status-good-bg); color: var(--status-good);">
+                <x-icon name="users" class="w-6 h-6" />
+            </div>
+            <div class="min-w-0">
+                <div class="text-2xl font-bold" style="color: var(--status-good);">{{ $visitorsOnSite }}</div>
+                <div class="text-xs" style="color: var(--text-muted);">Visitors on site · view log</div>
             </div>
         </a>
     </div>

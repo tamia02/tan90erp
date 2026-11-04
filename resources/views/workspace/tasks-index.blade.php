@@ -34,11 +34,14 @@
                             <td>{{ $task->due_at?->format('d M, H:i') ?? '—' }}</td>
                             <td>{{ ucfirst(str_replace('_', ' ', $task->status)) }}</td>
                             <td class="space-x-2">
+                                @if($task->event_key && $task->target_permission === 'finance.review.view' && $task->status !== 'completed')
+                                    <form class="inline" method="post" action="{{ route('flow.finance-tasks.review', $task) }}">@csrf<button class="access-btn access-btn-primary">Acknowledge finance review</button></form>
+                                @endif
                                 @if ($canComplete && $task->status !== 'completed')
-                                    @if (! $task->assigned_to || $task->assigned_to !== auth()->id())
+                                    @if (!$task->event_key && (! $task->assigned_to || $task->assigned_to !== auth()->id()))
                                         <form class="inline" method="post" action="{{ route('workspace.tasks.claim', $task) }}">@csrf<button class="access-btn">Claim</button></form>
                                     @endif
-                                    <form class="inline" method="post" action="{{ route('workspace.tasks.complete', $task) }}">@csrf<button class="access-btn access-btn-primary">Complete</button></form>
+                                    @if(!$task->event_key)<form class="inline" method="post" action="{{ route('workspace.tasks.complete', $task) }}">@csrf<button class="access-btn access-btn-primary">Complete</button></form>@endif
                                 @endif
                             </td>
                         </tr>

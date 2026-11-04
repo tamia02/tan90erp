@@ -15,6 +15,70 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    // One-click demo logins (role / demo-user / Tan90 role) sign in WITHOUT a
+    // password. Explicitly enable for staging only; middleware also blocks
+    // these shortcuts outside local/staging/testing environments.
+    'demo_logins' => (bool) env('DEMO_LOGINS', false),
+
+    // Password-less staging access is limited to synthetic production and
+    // fulfilment accounts. Never include copied ERP users or Super Admin.
+    'demo_login_emails' => [
+        'head.manufacturing@tan90.demo',
+        'manager.production@tan90.demo',
+        'manager.quality.mfg@tan90.demo',
+        'manager.maintenance@tan90.demo',
+        'planner@tan90.demo',
+        'supervisor@tan90.demo',
+        'operator@tan90.demo',
+        'qc.executive.mfg@tan90.demo',
+        'technician@tan90.demo',
+        'head.fulfilment@tan90.demo',
+        'manager.warehouse@tan90.demo',
+        'manager.logistics@tan90.demo',
+        'manager.customer@tan90.demo',
+        'fgstore@tan90.demo',
+        'pickpack@tan90.demo',
+        'dispatch@tan90.demo',
+        'transport@tan90.demo',
+        'closure@tan90.demo',
+        // Existing synthetic Stage accounts from the shared Access Control,
+        // GRN, Quality, Master Data, Procurement, and BRC seed sets.
+        'executive.finance@tan90.demo',
+        'executive.grn@tan90.demo',
+        'executive.grnqc@tan90.demo',
+        'executive.masterdata@tan90.demo',
+        'executive.qc@tan90.demo',
+        'executive.readonly@tan90.demo',
+        'executive.vendor@tan90.demo',
+        'head.finance@tan90.demo',
+        'head.masterdata@tan90.demo',
+        'head.procurement@tan90.demo',
+        'head.quality@tan90.demo',
+        'head.store@tan90.demo',
+        'manager.finance@tan90.demo',
+        'manager.grn@tan90.demo',
+        'manager.masterdata@tan90.demo',
+        'manager.qc@tan90.demo',
+        'manager.vendor@tan90.demo',
+        'stage-demo-finance@tan90.demo',
+        'stage-demo-guard@tan90.demo',
+        'stage-demo-qc@tan90.demo',
+        'stage-demo-role-audit@tan90.demo',
+        'stage-demo-role-costing@tan90.demo',
+        'stage-demo-role-finance@tan90.demo',
+        'stage-demo-role-formulation@tan90.demo',
+        'stage-demo-role-mdm@tan90.demo',
+        'stage-demo-role-plant@tan90.demo',
+        'stage-demo-role-procurement@tan90.demo',
+        'stage-demo-role-production-eng@tan90.demo',
+        'stage-demo-role-qa-approver@tan90.demo',
+        'stage-demo-role-qc@tan90.demo',
+        'stage-demo-role-rnd@tan90.demo',
+        'stage-demo-storeexec@tan90.demo',
+        'stage-demo-storemanager@tan90.demo',
+        'stage-demo-vendor@tan90.demo',
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

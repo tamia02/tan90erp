@@ -12,7 +12,7 @@ class ProductionEntry extends Model
 
     protected $fillable = [
         'work_order_id', 'job_card_id', 'good_qty', 'rework_qty', 'rejected_qty', 'uom',
-        'status', 'recorded_by', 'approved_by', 'approved_at',
+        'status', 'recorded_by', 'approved_by', 'approved_at', 'cycle_no',
     ];
 
     protected function casts(): array

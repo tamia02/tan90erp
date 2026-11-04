@@ -47,12 +47,15 @@ return [
         'field_product_details' => env('ZOHO_FIELD_PRODUCT_DETAILS', 'Purchase_Items'),
         'webhook_secret' => env('ZOHO_WEBHOOK_SECRET'),
         'sync_minutes' => env('ZOHO_SYNC_MINUTES', 30),
+        // Staging shares the client's Zoho organization, so its scheduler is
+        // opt-in even after credentials are installed.
+        'staging_sync_enabled' => env('ZOHO_STAGING_SYNC_ENABLED', false),
         'write_enabled' => env('ZOHO_WRITE_ENABLED', true),
         'create_enabled' => env('ZOHO_CREATE_ENABLED', false),
         'write_vendor_name' => env('ZOHO_WRITE_VENDOR_NAME', false),
         'write_product_details' => env('ZOHO_WRITE_PRODUCT_DETAILS', false),
 
-        // Zoho Inventory â€” the operational sync target (Items, Vendors,
+        // Zoho Inventory — the operational sync target (Items, Vendors,
         // Purchase Orders, Bills, Purchase Receives). Separate refresh token
         // because it needs Inventory-scoped access; same OAuth client as CRM
         // above unless the client registers a dedicated one. Inactive (and
@@ -66,8 +69,22 @@ return [
             'api_base_url' => env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1'),
             'write_enabled' => env('ZOHO_INVENTORY_WRITE_ENABLED', true),
 
+            // 'zoho' = Zoho is the source of truth for Items: the ERP never
+            // creates or updates items in Zoho (it pulls them instead) and a PO
+            // line must match an existing Zoho item. 'erp' = legacy behaviour.
+            'items_master' => env('ZOHO_ITEMS_MASTER', 'erp'),
+
+            // Moment the ERP was switched to this Zoho organization: records
+            // created earlier (old tests, data pulled from a previous org) are
+            // never pushed. e.g. ZOHO_PUSH_CUTOVER_AT="2026-10-08 18:00:00"
+            'push_cutover_at' => env('ZOHO_PUSH_CUTOVER_AT'),
+
+            // true = data only comes FROM Zoho; nothing is ever written to Zoho
+            // (blocked in every push method and again at the HTTP layer).
+            'read_only' => env('ZOHO_READ_ONLY', false),
+
             // Master kill switch. Set false to make every Zoho Inventory call a
-            // no-op without removing credentials â€” the fastest way to stop a
+            // no-op without removing credentials — the fastest way to stop a
             // runaway quota drain in production.
             'sync_enabled' => env('ZOHO_INVENTORY_SYNC_ENABLED', true),
 
@@ -78,7 +95,7 @@ return [
 
             // --- Rate limiting / quota budget (see App\Services\Zoho\ZohoApiGate) ---
             // Every Inventory HTTP call is gated by all three of these. Confirm the
-            // real numbers against the org's Zoho subscription page â€” Zoho reports
+            // real numbers against the org's Zoho subscription page — Zoho reports
             // both a short-window rate and a per-day cap, and both surface as code 45.
             'rate_limit' => [
                 // Per-minute ceiling, smoothed with GCRA so calls are spaced evenly
@@ -89,7 +106,7 @@ return [
                 // Working daily budget. Deliberately below the real plan cap so there
                 // is headroom for webhooks, manual retries and OAuth refreshes.
                 'per_day' => (int) env('ZOHO_INVENTORY_CALLS_PER_DAY', 800),
-                // Zoho resets the daily counter on its own clock â€” match it or the
+                // Zoho resets the daily counter on its own clock — match it or the
                 // ceiling will be wrong either side of midnight.
                 'day_timezone' => env('ZOHO_INVENTORY_QUOTA_TIMEZONE', 'Asia/Kolkata'),
                 // Max calls a single cron run may spend, so one run cannot drain the
@@ -117,7 +134,7 @@ return [
             // its line items) collapses into one push instead of one per save.
             'coalesce_seconds' => (int) env('ZOHO_INVENTORY_COALESCE_SECONDS', 30),
 
-            // HTTP timeouts â€” without these a hung Zoho connection blocks a queue
+            // HTTP timeouts — without these a hung Zoho connection blocks a queue
             // worker or a web request indefinitely.
             'timeout' => (int) env('ZOHO_INVENTORY_HTTP_TIMEOUT', 15),
             'connect_timeout' => (int) env('ZOHO_INVENTORY_HTTP_CONNECT_TIMEOUT', 5),

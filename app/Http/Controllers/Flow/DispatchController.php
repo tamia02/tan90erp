@@ -8,6 +8,7 @@ use App\Models\Flow\Shipment;
 use App\Models\Flow\TemperatureEvent;
 use App\Services\Access\AccessControlService;
 use App\Services\Flow\FulfillmentService;
+use App\Support\SiteLocation;
 use Illuminate\Http\Request;
 
 class DispatchController extends Controller
@@ -23,7 +24,8 @@ class DispatchController extends Controller
 
         return view('flow.dispatch.index', [
             'shipments' => Shipment::with('handlingUnits.order', 'temperatureEvents')->latest()->paginate(20),
-            'sealedUnits' => HandlingUnit::where('status', 'sealed')->whereNull('shipment_id')->with('order')->get(),
+            'sealedUnits' => HandlingUnit::where('status', 'sealed')->whereNull('shipment_id')->with('order')
+                ->when(SiteLocation::forUser($request->user()), fn ($q, $site) => $q->whereHas('order', fn ($o) => $o->where('site_id', $site)))->get(),
         ]);
     }
 
@@ -49,7 +51,7 @@ class DispatchController extends Controller
     public function loadUnit(Request $request, Shipment $shipment, HandlingUnit $handlingUnit)
     {
         abort_unless($this->access->can($request->user(), 'flow.dispatch.manage'), 403);
-        $this->service->loadHandlingUnit($shipment, $handlingUnit);
+        $this->service->loadHandlingUnit($shipment, $handlingUnit, $request->user());
 
         return back()->with('status', "{$handlingUnit->hu_number} loaded onto {$shipment->shipment_number}.");
     }

@@ -34,18 +34,20 @@ new #[Layout('layouts.app')] class extends Component
     </section>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <a href="{{ route('finance.review') }}" wire:navigate class="rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Pending Review</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--status-warning);">{{ $pending }}</div>
-        </div>
+            <div class="text-xs mt-1 font-semibold" style="color: var(--brand);">Open review queue →</div>
+        </a>
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Cleared</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--status-good);">{{ $cleared }}</div>
         </div>
-        <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
+        <a href="{{ route('finance.review') }}" wire:navigate class="rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">On Hold</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--status-critical);">{{ $onHold }}</div>
-        </div>
+            <div class="text-xs mt-1 font-semibold" style="color: var(--brand);">Review holds →</div>
+        </a>
         <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <div class="text-xs" style="color: var(--text-muted);">Pending Payable</div>
             <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">₹{{ number_format($totalPayable, 0) }}</div>

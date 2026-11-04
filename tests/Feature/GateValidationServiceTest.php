@@ -68,7 +68,7 @@ class GateValidationServiceTest extends TestCase
         $this->assertContains('RATE_MISMATCH', array_column($issues, 'code'));
     }
 
-    public function test_quantity_mismatch_against_real_po_master(): void
+    public function test_partial_quantity_is_allowed_for_split_delivery(): void
     {
         $po = PurchaseOrder::factory()->create(['po_number' => 'PO TEST 003', 'vendor_name' => 'Test Vendor']);
         $po->lines()->create(['product' => 'Test Material', 'quantity' => 100, 'list_price' => 50]);
@@ -78,6 +78,44 @@ class GateValidationServiceTest extends TestCase
             'po_number' => 'PO TEST 003',
             'material' => 'Test Material',
             'invoice_qty' => 1,
+        ]));
+
+        $this->assertNotContains('QTY_MISMATCH', array_column($issues, 'code'));
+        $this->assertNotContains('QTY_OVER_RECEIPT', array_column($issues, 'code'));
+    }
+
+    public function test_gst_included_invoice_matches_tax_stored_on_the_po_line(): void
+    {
+        $po = PurchaseOrder::factory()->create(['po_number' => 'PO GST 4956', 'vendor_name' => 'Test Vendor']);
+        $line = $po->lines()->create([
+            'product' => 'Taxed Material', 'quantity' => 100, 'list_price' => 42, 'discount' => 0, 'tax' => 756, 'gst_rate' => 18,
+        ]);
+        SkuMaster::factory()->create(['sku' => 'Taxed Material', 'mapped' => true]);
+
+        $issues = app(GateValidationService::class)->validate($this->baseForm([
+            'po_number' => 'PO GST 4956',
+            'vendor_name' => 'Test Vendor',
+            'material' => 'Taxed Material',
+            'invoice_qty' => 100,
+            'rate' => 42,
+            'invoice_amount' => 4956,
+            'product_lines' => [['po_line_id' => $line->id, 'sku' => 'Taxed Material', 'qty' => 100]],
+        ]));
+
+        $this->assertNotContains('INVOICE_AMOUNT_MISMATCH', array_column($issues, 'code'));
+        $this->assertNotContains('PO_LINE_ALLOCATION_MISSING', array_column($issues, 'code'));
+    }
+
+    public function test_quantity_above_po_raises_mismatch_against_real_po_master(): void
+    {
+        $po = PurchaseOrder::factory()->create(['po_number' => 'PO TEST 003 OVER', 'vendor_name' => 'Test Vendor']);
+        $po->lines()->create(['product' => 'Test Material', 'quantity' => 100, 'list_price' => 50]);
+        SkuMaster::factory()->create(['sku' => 'Test Material', 'mapped' => true]);
+
+        $issues = app(GateValidationService::class)->validate($this->baseForm([
+            'po_number' => 'PO TEST 003 OVER',
+            'material' => 'Test Material',
+            'invoice_qty' => 101,
         ]));
 
         $this->assertContains('QTY_MISMATCH', array_column($issues, 'code'));

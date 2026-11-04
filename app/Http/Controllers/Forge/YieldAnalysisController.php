@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Forge\WastageRecord;
 use App\Models\Forge\WorkOrder;
 use App\Services\Access\AccessControlService;
+use App\Support\SiteLocation;
 use Illuminate\Http\Request;
 
 class YieldAnalysisController extends Controller
@@ -17,6 +18,7 @@ class YieldAnalysisController extends Controller
         abort_unless($this->access->can($request->user(), 'forge.yield.view'), 403);
 
         $workOrders = WorkOrder::with('finishedGood')
+            ->when(SiteLocation::forUser($request->user()), fn ($query, $site) => $query->where('site_id', $site))
             ->where('target_qty', '>', 0)
             ->whereIn('status', ['reconciliation', 'final_qc_pending', 'released_to_fg', 'rework', 'rejected', 'closed'])
             ->latest('updated_at')
@@ -39,6 +41,7 @@ class YieldAnalysisController extends Controller
         $reasonBreakdown = WastageRecord::query()
             ->selectRaw('reason, count(*) as records, sum(qty) as total_qty')
             ->groupBy('reason')
+            ->when(SiteLocation::forUser($request->user()), fn ($query, $site) => $query->whereIn('work_order_id', WorkOrder::where('site_id', $site)->select('id')))
             ->orderByDesc('total_qty')
             ->limit(10)
             ->get();

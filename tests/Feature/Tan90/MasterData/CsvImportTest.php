@@ -5,6 +5,7 @@ namespace Tests\Feature\Tan90\MasterData;
 use App\Models\Tan90\MasterData\DataImportJob;
 use App\Models\Tan90\MasterData\Item;
 use App\Models\Tan90\MasterData\ItemCategory;
+use App\Models\Tan90\MasterData\MasterChangeRequest;
 use App\Models\Tan90\MasterData\Uom;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -85,5 +86,46 @@ class CsvImportTest extends TestCase
         $this->actingAs($user)->post(route('tan90.master-data.import.upload'), ['entity' => 'items', 'file' => $this->csvFile($csv)]);
 
         $this->assertSame(1, DataImportJob::where('entity_type', 'items')->count(), 'Same file + entity must resolve to a single job.');
+    }
+
+    public function test_import_updates_existing_item_values_and_keeps_blank_columns_unchanged(): void
+    {
+        Storage::fake('local');
+        $item = Item::factory()->create(['sku' => 'CSV-UPD-01', 'code' => 'CSV-UPD-01', 'name' => 'Old Name', 'storage' => 'Keep this', 'reorder_level' => '5']);
+        $user = $this->masterDataManager();
+        $csv = "sku,code,name,tan90_item_category_id,tan90_uom_id,qc_required,batch_tracking,storage,reorder_level\n"
+            ."CSV-UPD-01,CSV-UPD-01,Updated Name,{$item->tan90_item_category_id},{$item->tan90_uom_id},Yes,Optional,,12\n";
+
+        $this->actingAs($user)->post(route('tan90.master-data.import.upload'), ['entity' => 'items', 'file' => $this->csvFile($csv)]);
+        $job = DataImportJob::firstOrFail();
+        $this->assertSame(1, $job->valid_rows);
+        $this->assertSame(1, $job->updated_rows);
+        $this->assertSame('update', $job->rows()->first()->status);
+
+        $this->actingAs($user)->post(route('tan90.master-data.import.commit', $job->id))->assertRedirect();
+        $item->refresh();
+        $this->assertSame('Updated Name', $item->name);
+        $this->assertSame('Keep this', $item->storage, 'Blank CSV cells leave existing fields unchanged.');
+        $this->assertSame('12', (string) $item->reorder_level);
+        $this->assertSame('approved', $item->approval_status);
+        $this->assertSame('imported', $job->rows()->first()->fresh()->status);
+    }
+
+    public function test_import_sends_approved_critical_field_changes_to_maker_checker(): void
+    {
+        Storage::fake('local');
+        $item = Item::factory()->create(['sku' => 'CSV-CRIT-01', 'code' => 'CSV-CRIT-01', 'name' => 'Original', 'hsn' => '0101', 'approval_status' => 'approved']);
+        $user = $this->masterDataManager();
+        $csv = "sku,code,name,tan90_item_category_id,tan90_uom_id,qc_required,batch_tracking,hsn\n"
+            ."CSV-CRIT-01,CSV-CRIT-01,Updated,{$item->tan90_item_category_id},{$item->tan90_uom_id},Yes,Optional,0202\n";
+
+        $this->actingAs($user)->post(route('tan90.master-data.import.upload'), ['entity' => 'items', 'file' => $this->csvFile($csv)]);
+        $job = DataImportJob::firstOrFail();
+        $this->actingAs($user)->post(route('tan90.master-data.import.commit', $job->id))->assertRedirect();
+
+        $this->assertSame('0101', $item->fresh()->hsn, 'Approved critical values remain unchanged until maker-checker approval.');
+        $this->assertSame('Updated', $item->fresh()->name);
+        $request = MasterChangeRequest::where('entity_type', 'items')->where('entity_id', $item->id)->firstOrFail();
+        $this->assertSame('0202', $request->proposed_changes['hsn']);
     }
 }

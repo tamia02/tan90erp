@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Forge;
 use App\Http\Controllers\Controller;
 use App\Models\Forge\Batch;
 use App\Services\Access\AccessControlService;
+use App\Support\SiteLocation;
 use Illuminate\Http\Request;
 
 // Backward trace: finished batch -> final QC -> production entries -> job
@@ -20,13 +21,16 @@ class BatchController extends Controller
         abort_unless($this->access->can($request->user(), 'forge.batch.trace'), 403);
 
         return view('forge.batches.index', [
-            'batches' => Batch::with('workOrder.finishedGood')->latest()->paginate(20),
+            'batches' => Batch::with('workOrder.finishedGood')
+                ->when(SiteLocation::forUser($request->user()), fn ($query, $site) => $query->whereHas('workOrder', fn ($workOrder) => $workOrder->where('site_id', $site)))
+                ->latest()->paginate(20),
         ]);
     }
 
     public function show(Request $request, Batch $batch)
     {
         abort_unless($this->access->can($request->user(), 'forge.batch.trace'), 403);
+        SiteLocation::assertCanAccessSiteRecord($request->user(), $batch->workOrder?->site_id === null ? null : (int) $batch->workOrder->site_id);
 
         $batch->load([
             'workOrder.finishedGood', 'workOrder.bom', 'workOrder.recipe', 'workOrder.routing',

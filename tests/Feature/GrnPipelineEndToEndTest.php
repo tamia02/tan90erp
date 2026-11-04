@@ -8,6 +8,7 @@ use App\Models\GateEntry;
 use App\Models\User;
 use App\Models\ValidationIssue;
 use App\Models\VendorSubmission;
+use Illuminate\Http\UploadedFile;
 use Livewire\Volt\Volt;
 use Tests\TestCase;
 
@@ -35,38 +36,61 @@ class GrnPipelineEndToEndTest extends TestCase
         ];
     }
 
+    private function approveInward(array $users, GateEntry $gate): void
+    {
+        $this->actingAs($users['storeManager']);
+        Volt::test('store-manager.entry-approvals')
+            ->call('approve', $gate->id)
+            ->assertHasNoErrors();
+        $this->assertSame('validated', $gate->fresh()->status);
+    }
+
     /** Drives a gate entry from 'validated' through to 'closed' via the real
-     * loading-desk / unloading-desk / QC / GRN-check components. */
+     * Store Manager dock assignment, unloading, QC and GRN-check components. */
     private function driveToClose(array $users, GateEntry $gate, array $qcSplit, string $bin): void
     {
-        $this->actingAs($users['storeExec']);
-        Volt::test('unloading.loading-desk')
-            ->call('openAssign', $gate->id)
-            ->call('assignDock', $gate->id);
+        $this->actingAs($users['storeManager']);
+        Volt::test('store-manager.entry-approvals')
+            ->call('openInwardDock', $gate->id)
+            ->call('assignInwardDock', $gate->id)
+            ->assertHasNoErrors();
         $this->assertSame('dock_assigned', $gate->fresh()->status);
 
+        $this->actingAs($users['storeExec']);
         Volt::test('unloading.desk')->call('allot', $gate->id);
         $this->assertSame('allotted', $gate->fresh()->status);
 
-        Volt::test('unloading.desk')->call('startUnloading', $gate->id);
+        Volt::test('unloading.desk')
+            ->set('manpowerCount', '3')
+            ->call('startUnloading', $gate->id);
         $this->assertSame('unloading', $gate->fresh()->status);
 
         Volt::test('unloading.desk')
             ->set('boxCount', '10')
             ->set('podLrRef', 'LR-TEST')
+            ->set('podFile', UploadedFile::fake()->image('pod-proof.png'))
             ->call('completeUnloading', $gate->id);
         $this->assertSame('grn', $gate->fresh()->status);
 
         $this->actingAs($users['qc']);
-        Volt::test('qc.queue')
+        $qcCheck = Volt::test('qc.queue')
             ->call('openCheck', $gate->id)
             ->set('accepted', (string) $qcSplit['accepted'])
             ->set('qcHold', (string) $qcSplit['qcHold'])
             ->set('defective', (string) $qcSplit['defective'])
             ->set('rejected', (string) $qcSplit['rejected'])
             ->set('qcReasons', $qcSplit['reasons'] ?? '')
-            ->set('holdReason', $qcSplit['qcHold'] > 0 ? ($qcSplit['holdReason'] ?? 'On hold pending inspection.') : '')
-            ->call('submitCheck')
+            ->set('holdReason', $qcSplit['qcHold'] > 0 ? ($qcSplit['holdReason'] ?? 'On hold pending inspection.') : '');
+
+        if (($qcSplit['qcHold'] + $qcSplit['defective'] + $qcSplit['rejected']) > 0) {
+            $qcCheck
+                ->set('evidenceImages.0', UploadedFile::fake()->image('qc-defect-1.png'))
+                ->set('evidenceImageTypes.0', 'Defective Image')
+                ->set('evidenceImages.1', UploadedFile::fake()->image('qc-reject-2.png'))
+                ->set('evidenceImageTypes.1', 'Rejected Image');
+        }
+
+        $qcCheck->call('submitCheck')
             ->assertHasNoErrors();
 
         $expectedStatus = ($qcSplit['accepted'] === 0 && $qcSplit['qcHold'] === 0 && $qcSplit['defective'] === 0 && $qcSplit['rejected'] > 0)
@@ -79,7 +103,19 @@ class GrnPipelineEndToEndTest extends TestCase
                 ->call('openPost', $gate->id)
                 ->set('suggestedBin', $bin)
                 ->call('post');
+            $this->assertSame('grn_posted', $gate->fresh()->status);
+
+            // Putaway is intentionally a separate Store Executive step:
+            // GRN posts stock, then the physical bin confirmation closes the
+            // inward entry. Keep the end-to-end test aligned with that
+            // production state machine instead of treating GRN as closure.
+            $this->actingAs($users['storeExec']);
+            Volt::test('unloading.putaway')
+                ->call('startConfirm', $gate->id)
+                ->call('confirmPutaway', $gate->id);
             $this->assertSame('closed', $gate->fresh()->status);
+            $this->assertSame($users['storeExec']->id, $gate->fresh()->store_exec_verified_by);
+            $this->assertNotNull($gate->fresh()->store_exec_verified_at);
         }
     }
 
@@ -94,6 +130,12 @@ class GrnPipelineEndToEndTest extends TestCase
     {
         $users = $this->users();
         $invoiceNumber = 'SAG/INV/E2E-'.now()->format('His').random_int(100, 999);
+
+        // The persistent demo seed also contains a deliberately pending,
+        // unresolved 300-unit Sagar gate. It is useful on the live dashboard,
+        // but would make this clean-delivery scenario look like an accidental
+        // over-receipt. Remove only that fixture from the isolated test DB.
+        GateEntry::where('gate_no', 'GATE-1009')->delete();
 
         // Real-world precondition this scenario is modeling: the vendor
         // pre-filed their delivery (with LR/POD) via the Vendor Portal
@@ -123,8 +165,9 @@ class GrnPipelineEndToEndTest extends TestCase
             ->call('saveEntry');
 
         $gate = GateEntry::where('invoice_number', $invoiceNumber)->firstOrFail();
-        $this->assertSame('validated', $gate->status, 'Clean entry against matching PO/vendor/GST should not be blocked.');
+        $this->assertSame('pending_validation', $gate->status, 'Every inward entry must wait for Store Manager approval.');
         $this->assertSame(0, ValidationIssue::where('gate_entry_id', $gate->id)->count());
+        $this->approveInward($users, $gate);
 
         $this->driveToClose($users, $gate, ['accepted' => 300, 'qcHold' => 0, 'defective' => 0, 'rejected' => 0], 'SAG-PPE-A1');
 
@@ -149,6 +192,10 @@ class GrnPipelineEndToEndTest extends TestCase
         $users = $this->users();
         $invoiceNumber = 'KIS/INV/E2E-'.now()->format('His').random_int(100, 999);
 
+        // Keep the scenario focused on rate/POD validation rather than the
+        // separate seeded duplicate-delivery fixtures for this PO.
+        GateEntry::whereIn('gate_no', ['GATE-1014', 'GATE-1015'])->delete();
+
         $this->actingAs($users['guard']);
         Volt::test('guard.bill-scan')
             ->set('entryType', 'inward')
@@ -172,23 +219,22 @@ class GrnPipelineEndToEndTest extends TestCase
         $rateIssue = ValidationIssue::where('gate_entry_id', $gate->id)->where('code', 'RATE_MISMATCH')->firstOrFail();
         $this->assertSame('redFlag', $rateIssue->severity);
         $podIssue = ValidationIssue::where('gate_entry_id', $gate->id)->where('code', 'POD_LR_EARLY')->firstOrFail();
-        $this->assertSame('redFlag', $podIssue->severity, 'No vendor submission exists for this PO yet, so this flag stacks alongside the rate mismatch.');
+        $this->assertSame('warning', $podIssue->severity, 'POD/LR can be completed at unloading, so it warns without blocking approval.');
 
         // Store Exec's loading desk must refuse to move a still-blocked entry.
         $this->actingAs($users['storeExec']);
-        Volt::test('unloading.loading-desk')
-            ->call('openAssign', $gate->id)
-            ->call('assignDock', $gate->id);
+        $this->actingAs($users['storeExec'])->get(route('unloading.desk'))
+            ->assertOk()
+            ->assertSee('Unloading Desk')
+            ->assertDontSee('Confirm dock assignment');
         $this->assertSame('pending_validation', $gate->fresh()->status, 'Store Exec must not be able to advance a blocked entry.');
 
-        // Clearing only ONE of the two open flags must not be enough.
+        // Clearing the red flag removes the hard stop, but the entry still
+        // needs the explicit Store Manager approval step.
         $this->actingAs($users['storeManager']);
         Volt::test('validation-issues')->call('updateStatus', $rateIssue->id, 'resolved');
-        $this->assertSame('pending_validation', $gate->fresh()->status, 'A second open flag (POD_LR_EARLY) must keep the entry blocked.');
-
-        // Clearing the second (and last) open flag unblocks it.
-        Volt::test('validation-issues')->call('updateStatus', $podIssue->id, 'resolved');
-        $this->assertSame('validated', $gate->fresh()->status, 'Resolving every open blocking issue must auto-unblock the gate entry.');
+        $this->assertSame('pending_validation', $gate->fresh()->status);
+        $this->approveInward($users, $gate);
 
         $this->driveToClose($users, $gate, ['accepted' => 450, 'qcHold' => 0, 'defective' => 0, 'rejected' => 0], 'KIS-WM-A2');
 
@@ -255,7 +301,8 @@ class GrnPipelineEndToEndTest extends TestCase
 
         $this->assertSame('resolved', $issue->fresh()->status);
         $this->assertNotEmpty($issue->fresh()->note, 'The written reason must be persisted on the issue.');
-        $this->assertSame('validated', $gate->fresh()->status, 'Once the reason is recorded, the hard-fail clears and the gate entry unblocks.');
+        $this->assertSame('pending_validation', $gate->fresh()->status, 'The hard-fail is cleared, but manager approval is still required.');
+        $this->approveInward($users, $gate);
     }
 
     /**
@@ -268,6 +315,8 @@ class GrnPipelineEndToEndTest extends TestCase
     {
         $users = $this->users();
         $invoiceNumber = 'KIS/INV/E2E4-'.now()->format('His').random_int(100, 999);
+
+        GateEntry::whereIn('gate_no', ['GATE-1014', 'GATE-1015'])->delete();
 
         // Same PO/rate as scenario 2 (₹18/unit) but its own pre-filed vendor
         // submission, so this scenario isolates QC/GRN math only — no
@@ -295,7 +344,8 @@ class GrnPipelineEndToEndTest extends TestCase
             ->call('saveEntry');
 
         $gate = GateEntry::where('invoice_number', $invoiceNumber)->firstOrFail();
-        $this->assertSame('validated', $gate->status);
+        $this->assertSame('pending_validation', $gate->status);
+        $this->approveInward($users, $gate);
 
         $this->driveToClose($users, $gate, [
             'accepted' => 300, 'qcHold' => 50, 'defective' => 70, 'rejected' => 30,

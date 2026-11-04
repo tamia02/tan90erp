@@ -1,116 +1,34 @@
 <?php
 
 use App\Models\GateEntry;
-use App\Services\AuditLogger;
-use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
+// Compatibility view for saved URLs: inward dock assignment now belongs to
+// Store Manager on Entry Approvals; Store Executive sees only the handoff.
 new #[Layout('layouts.app')] class extends Component
 {
-    public ?int $assigning = null;
-    public string $dock = '';
-
-    public array $docks = ['Dock 1', 'Dock 2', 'Dock 3', 'Dock 4'];
-
-    private function occupiedDocks(): array
-    {
-        return GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->pluck('loading_dock')->filter()->all();
-    }
-
-    private function availableDocks(): array
-    {
-        return array_values(array_diff($this->docks, $this->occupiedDocks()));
-    }
-
-    // Confirmed live: a vendor's pre-arrival dock (set on Dock Scheduling,
-    // free text against their VendorSubmission) never carried over here --
-    // Store Exec had to pick again from scratch once the truck actually
-    // showed up, even though a dock had already been scheduled for it.
-    private function preScheduledDock(?string $poNumber): ?string
-    {
-        if (! $poNumber) {
-            return null;
-        }
-
-        $raw = \App\Models\VendorSubmission::where('po_number', $poNumber)->whereNotNull('dock_number')->value('dock_number');
-        if (! $raw) {
-            return null;
-        }
-
-        $candidate = ctype_digit(trim($raw)) ? 'Dock '.trim($raw) : trim($raw);
-
-        return in_array($candidate, $this->availableDocks(), true) ? $candidate : null;
-    }
-
-    public function openAssign(int $gateId): void
-    {
-        $gate = GateEntry::find($gateId);
-        $this->assigning = $gateId;
-        $this->dock = $this->preScheduledDock($gate?->po_number) ?? $this->availableDocks()[0] ?? '';
-    }
-
-    public function assignDock(int $gateId): void
-    {
-        $gate = GateEntry::findOrFail($gateId);
-
-        // Guards against a double-click re-submitting an already-assigned
-        // gate before the UI has re-rendered.
-        if ($gate->status !== 'validated') {
-            $this->reset(['assigning', 'dock']);
-
-            return;
-        }
-
-        $this->validate(['dock' => ['required', 'string', Rule::in($this->availableDocks())]]);
-
-        $gate->update([
-            'status' => 'dock_assigned',
-            'loading_dock' => $this->dock,
-            'dock_assigned_at' => now(),
-        ]);
-
-        AuditLogger::log('Assigned to loading dock', "{$gate->gate_no} · {$this->dock}", $gate);
-
-        $this->reset(['assigning', 'dock']);
-    }
-
     public function with(): array
     {
-        $occupied = $this->occupiedDocks();
-
-        // Confirmed live: Guard sets status=validated for inward, outward,
-        // AND visitor entries alike -- a visitor here for a meeting or an
-        // outward dispatch has no dock to assign, but without this filter
-        // they piled up in this queue with an "Assign dock" button anyway
-        // (7 of 8 waiting entries in one real test were visitor/outward).
         return [
-            // Confirmed live (Entry Approvals had the same bug): oldest-first
-            // buries a just-approved entry under weeks-old, never-actioned
-            // test data instead of surfacing it first.
-            'toAssign' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->orderByDesc('created_at')->get(),
-            'assigned' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->orderByDesc('dock_assigned_at')->get(),
-            'availableDocks' => $this->availableDocks(),
-            'totalDocks' => count($this->docks),
-            'occupiedCount' => count($occupied),
+            'toAssign' => GateEntry::where('status', 'pending_validation')->where('entry_type', 'inward')->orderByDesc('created_at')->get(),
+            'assigned' => GateEntry::whereIn('status', ['dock_assigned', 'allotted', 'unloading'])->where('entry_type', 'inward')->orderByDesc('dock_assigned_at')->get(),
             'history' => GateEntry::whereNotNull('dock_assigned_at')->where('entry_type', 'inward')->orderByDesc('dock_assigned_at')->limit(10)->get(),
         ];
     }
 }; ?>
 
 <div>
+    @if (session('success'))
+        <div class="rounded-xl border px-4 py-3 text-sm font-medium" style="background: var(--status-good-bg); border-color: var(--status-good); color: var(--status-good);">{{ session('success') }}</div>
+    @endif
     <section class="rounded-2xl border p-5 mb-5" style="background: var(--surface-3); border-color: var(--border);">
         <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Store Executive Module</div>
-        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Loading Desk</h1>
-        <p class="text-sm mt-1" style="color: var(--text-secondary);">Assign a loading dock to cleared vehicles before they move to the Unloading Desk.</p>
+        <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Inward Handoff Status</h1>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Store Manager assigns the operational dock. Store Executive uses the Unloading Desk for physical count, POD capture and unloading.</p>
     </section>
 
-    <div class="rounded-lg border p-4 mb-6" style="background: var(--surface-3); border-color: var(--border);">
-        <div class="text-xs" style="color: var(--text-muted);">Loading Docks</div>
-        <div class="text-2xl font-semibold mt-1" style="color: var(--text-primary);">{{ $occupiedCount }} / {{ $totalDocks }} occupied</div>
-    </div>
-
-    <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">To assign</h2>
+    <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">Awaiting Store Manager approval and dock assignment</h2>
     <div class="flex flex-col gap-2 mb-6">
         @forelse ($toAssign as $g)
             <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
@@ -119,38 +37,30 @@ new #[Layout('layouts.app')] class extends Component
                         <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
                         <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }}</div>
                     </a>
-                    @if ($assigning !== $g->id)
-                        <button wire:click="openAssign({{ $g->id }})" class="rounded-lg px-3 py-1.5 text-sm font-medium text-white" style="background: var(--brand);" @if (empty($availableDocks)) disabled @endif>Assign dock</button>
-                    @endif
-                </div>
-                @if ($assigning === $g->id)
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                        <label class="flex flex-col gap-1.5 text-sm">
-                            <span class="font-medium" style="color: var(--text-primary);">Loading dock</span>
-                            <select wire:model="dock" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
-                                @foreach ($availableDocks as $d) <option value="{{ $d }}">{{ $d }}</option> @endforeach
-                            </select>
-                            @error('dock') <span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span> @enderror
-                        </label>
-                        <button wire:click="assignDock({{ $g->id }})" wire:loading.attr="disabled" wire:target="assignDock({{ $g->id }})" class="self-end rounded-lg px-3.5 py-2 text-sm font-medium text-white disabled:opacity-50" style="background: var(--brand);">Confirm dock assignment</button>
+                    <div class="flex flex-wrap justify-end gap-2">
+                        <span class="rounded-lg px-3 py-2 text-xs font-semibold" style="background: var(--status-warning-bg); color: var(--status-warning);">Pending approval · no gate entry yet</span>
                     </div>
-                @endif
+                </div>
             </div>
         @empty
             <p class="text-sm py-2" style="color: var(--text-muted);">Nothing waiting for a dock.</p>
         @endforelse
     </div>
 
-    <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">Currently on a dock</h2>
+    <h2 class="font-semibold text-sm mb-2" style="color: var(--text-primary);">Dock assigned — ready for physical unloading</h2>
     <div class="flex flex-col gap-2">
         @forelse ($assigned as $g)
-            <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
+            <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between gap-3">
-                    <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }} · {{ $g->loading_dock }}</div>
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="text-sm font-medium hover:opacity-80" style="color: var(--text-primary);">{{ $g->gate_no }} · {{ $g->loading_dock }}</a>
                     <span class="text-xs" style="color: var(--text-muted);">Since {{ $g->dock_assigned_at?->format('d M, H:i') }}</span>
                 </div>
-                <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }} · waiting on Unloading Desk to allot a staging area</div>
-            </a>
+                <div class="text-xs mt-1" style="color: var(--text-secondary);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }} · {{ ucfirst($g->status) }}</div>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <a href="{{ route('unloading.desk') }}" wire:navigate class="rounded-lg px-3 py-2 text-xs font-semibold text-white" style="background: var(--brand);">Open Unloading Desk →</a>
+                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="rounded-lg px-3 py-2 text-xs font-semibold border" style="border-color: var(--border); color: var(--text-primary);">View entry details</a>
+                </div>
+            </div>
         @empty
             <p class="text-sm py-2" style="color: var(--text-muted);">No vehicles on a dock right now.</p>
         @endforelse

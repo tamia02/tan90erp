@@ -12,12 +12,13 @@ class FinalQcResult extends Model
 
     protected $fillable = [
         'work_order_id', 'accepted_qty', 'rejected_qty', 'rework_qty', 'specification_results',
-        'result', 'inspected_by', 'released_by', 'released_at',
+        'result', 'inspected_by', 'released_by', 'released_at', 'leak_test', 'pressure_test', 'physical_check', 'recovered_pcm_qty',
+        'started_at', 'ended_at', 'manpower', 'cycle_no', 'cycle_accepted_qty', 'cycle_rejected_qty', 'cycle_rework_qty',
     ];
 
     protected function casts(): array
     {
-        return ['released_at' => 'datetime'];
+        return ['released_at' => 'datetime', 'started_at' => 'datetime', 'ended_at' => 'datetime'];
     }
 
     public function workOrder(): BelongsTo

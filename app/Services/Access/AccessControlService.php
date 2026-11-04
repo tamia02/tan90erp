@@ -23,7 +23,13 @@ class AccessControlService
 
     public function hasNewAccess(User $user): bool
     {
-        return $user->access_mode !== 'legacy' && ($this->activeRoles($user)->isNotEmpty() || $this->activeAssignments($user)->isNotEmpty());
+        if ($user->access_mode === 'legacy') {
+            return $this->hasConfiguredJobRolePolicy($user);
+        }
+
+        return $this->activeRoles($user)->isNotEmpty()
+            || $this->activeAssignments($user)->isNotEmpty()
+            || $this->hasConfiguredJobRolePolicy($user);
     }
 
     public function can(User $user, string $permissionKey, mixed $record = null): bool
@@ -43,7 +49,7 @@ class AccessControlService
             return new AccessDecision(true, 'super_admin', 'all', reason: 'super admin bypass');
         }
 
-        if ($user->access_mode === 'legacy') {
+        if ($user->access_mode === 'legacy' && ! $this->hasConfiguredJobRolePolicy($user)) {
             return new AccessDecision(false, 'legacy', reason: 'advanced engine disabled for legacy user');
         }
 
@@ -67,7 +73,7 @@ class AccessControlService
         return Cache::remember("access:permissions:{$user->id}", 300, function () use ($user) {
             $effective = [];
 
-            foreach ($this->activeRoles($user)->merge($this->activeAssignments($user)->pluck('role')) as $role) {
+            foreach ($this->permissionRoles($user) as $role) {
                 foreach ($role->permissions as $permission) {
                     $effect = $permission->pivot->effect ?? ($permission->pivot->allowed ? 'allow' : 'inherit');
                     if ($effect === 'deny') {
@@ -136,6 +142,13 @@ class AccessControlService
 
     public function canDelegate(User $actor, string $permissionKey, array|RequestedGrant $requestedScope): bool
     {
+        // Super Admin passes every can() check, so it may give any permission.
+        // Without this, Allow ticks for permissions added after the
+        // ACCESS-SUPER-ADMIN role was seeded were silently dropped on save.
+        if ($this->isSuperAdmin($actor)) {
+            return true;
+        }
+
         $permission = $this->effectivePermissions($actor)[$permissionKey] ?? null;
 
         if (! $permission || ! $permission['delegable']) {
@@ -263,7 +276,9 @@ class AccessControlService
             ->orderBy('sort_order')
             ->get()
             ->filter(fn (AccessPermission $permission) => str_ends_with($permission->key, '.view') && $this->can($user, $permission->key))
-            ->map(fn (AccessPermission $permission) => ['label' => $permission->label, 'route' => $permission->route_name, 'icon' => 'shield'])
+            // Menu shows the screen name ("Inventory Summary"), not "View Inventory Summary".
+            ->map(fn (AccessPermission $permission) => ['label' => preg_replace('/^View /', '', $permission->label), 'route' => $permission->route_name, 'icon' => 'shield'])
+            ->unique('route')
             ->values()
             ->all();
     }
@@ -300,6 +315,26 @@ class AccessControlService
     public function permissionForRoute(?string $routeName): ?AccessPermission
     {
         return $routeName ? AccessPermission::where('route_name', $routeName)->first() : null;
+    }
+
+    // A page can carry several permissions (e.g. GRN Register: "View GRN
+    // records", "View GRN register", "Post", "Export"). Ticking ANY of them
+    // in a role opens the page - checking only the first one silently ignored
+    // the others.
+    public function canOpenRoute(User $user, ?string $routeName): bool
+    {
+        if (! $routeName || ! $this->hasNewAccess($user)) {
+            return false;
+        }
+
+        // A detail page / download (guard.entries.show, admin.po.pdf) opens
+        // with its parent screen when it has no permission of its own.
+        $keys = AccessPermission::where('route_name', $routeName)->pluck('key');
+        if ($keys->isEmpty() && str_contains($routeName, '.')) {
+            $keys = AccessPermission::where('route_name', substr($routeName, 0, strrpos($routeName, '.')))->pluck('key');
+        }
+
+        return $keys->contains(fn ($key) => $this->can($user, $key));
     }
 
     public function audit(?User $actor, string $action, mixed $target = null, ?array $before = null, ?array $after = null): void
@@ -340,6 +375,53 @@ class AccessControlService
                 $query->whereNull('access_user_roles.expires_at')->orWhere('access_user_roles.expires_at', '>', now());
             })
             ->get();
+    }
+
+    /**
+     * Legacy operational roles have matching Access Control reference roles
+     * (for example LEGACY-STOREMANAGER). Treat that role's explicit grants as
+     * additive module access for everyone holding the corresponding job role.
+     * This keeps existing job-role workflows intact while making grants edited
+     * on the reference role visible to real accounts without per-user linking.
+     */
+    public function jobRoleReference(User $user): ?AccessRole
+    {
+        if (! $user->role) {
+            return null;
+        }
+
+        return AccessRole::query()
+            ->where('code', 'LEGACY-'.strtoupper($user->role->value))
+            ->where('status', 'active')
+            ->first();
+    }
+
+    /** @return Collection<int, AccessRole> */
+    public function permissionRoles(User $user): Collection
+    {
+        $jobRole = $this->jobRoleReference($user);
+        if ($user->access_mode === 'legacy') {
+            return collect([$jobRole])->filter()->values();
+        }
+
+        return $this->activeRoles($user)
+            ->merge($this->activeAssignments($user)->pluck('role'))
+            ->push($jobRole)
+            ->filter()
+            ->unique('id')
+            ->values();
+    }
+
+    private function hasConfiguredJobRolePolicy(User $user): bool
+    {
+        $role = $this->jobRoleReference($user);
+
+        return $role?->permissions()
+            ->where(fn ($query) => $query
+                ->where('access_role_permissions.effect', 'allow')
+                ->orWhere('access_role_permissions.effect', 'deny')
+                ->orWhere('access_role_permissions.allowed', true))
+            ->exists() ?? false;
     }
 
     private function isSuperAdmin(User $user): bool

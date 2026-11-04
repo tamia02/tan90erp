@@ -16,7 +16,7 @@
         </form>
         <div class="access-card overflow-hidden">
             <table class="access-table">
-                <thead><tr><th>Name</th><th>Label</th><th>Hierarchy Level</th><th>Parent / Vertical</th><th>Permissions</th><th>Users</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Name</th><th>Label</th><th>Hierarchy Level</th><th>Parent / Vertical</th><th>Allowed grants</th><th>Users</th><th>Actions</th></tr></thead>
                 <tbody>
                     @foreach($roles as $role)
                         <tr>

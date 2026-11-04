@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Enums\Role;
 use App\Services\Access\AccessControlService;
 use Closure;
 use Illuminate\Http\Request;
@@ -20,14 +19,15 @@ class EnsureRole
     {
         $user = $request->user();
 
-        if ($user && $user->role && ($user->role === Role::Admin || in_array($user->role->value, $roles, true))) {
+        // Main role or any extra role (user_extra_roles) opens the module.
+        $holdsAllowedRole = $user && collect($user->operationalRoles())
+            ->contains(fn ($role) => in_array($role->value, $roles, true));
+
+        if ($user && ($user->isAdmin() || $holdsAllowedRole)) {
             return $next($request);
         }
 
-        $access = app(AccessControlService::class);
-        $permission = $access->permissionForRoute($request->route()?->getName());
-
-        if ($user && $permission && $access->hasNewAccess($user) && $access->can($user, $permission->key)) {
+        if ($user && app(AccessControlService::class)->canOpenRoute($user, $request->route()?->getName())) {
             return $next($request);
         }
 

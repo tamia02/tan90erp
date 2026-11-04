@@ -15,6 +15,7 @@ use App\Models\ValidationIssue;
 use App\Models\VendorMaster;
 use App\Models\VendorStockUpdate;
 use App\Models\VendorSubmission;
+use App\Services\Access\SuperAdminAccessSync;
 use Database\Seeders\Access\AccessControlSeeder;
 use Database\Seeders\Flow\FlowAccessSeeder;
 use Database\Seeders\Forge\ForgeAccessSeeder;
@@ -41,6 +42,7 @@ class DatabaseSeeder extends Seeder
         $this->seedPurchaseOrders();
         $this->seedGateEntriesAndDownstream();
         $this->seedVendorStockUpdates();
+        $this->call(SharpPolymerPoSeeder::class);
 
         // Tan90 module merge: house role registry first (reference-only rows
         // for the 7 GRN roles above), then each module's own roles/users/domain
@@ -53,6 +55,10 @@ class DatabaseSeeder extends Seeder
         $this->call(AccessControlSeeder::class);
         $this->call(ForgeAccessSeeder::class);
         $this->call(FlowAccessSeeder::class);
+
+        // Last, once ACCESS-SUPER-ADMIN exists: give the GRN Super Admin
+        // (Priya Admin) full Access Control / Forge / Flow access too.
+        app(SuperAdminAccessSync::class)->syncAll();
     }
 
     private function seedUsers(): void
@@ -60,6 +66,7 @@ class DatabaseSeeder extends Seeder
         $users = [
             ['name' => 'Ramesh Yadav', 'email' => 'guard@tan90.test', 'phone' => '+91 98200 11223', 'role' => Role::Guard, 'description' => 'Gate 1, day shift'],
             ['name' => 'Thermocore Materials Pvt Ltd', 'email' => 'vendor@tan90.test', 'phone' => '+91 22 6712 4400', 'role' => Role::Vendor, 'description' => 'Primary PCM compound vendor'],
+            ['name' => 'Thermocol Material Private Ltd', 'email' => 'vendor.thermocol@tan90.test', 'phone' => '+91 22 6712 4401', 'role' => Role::Vendor, 'description' => 'Thermocol material vendor flow demo'],
             ['name' => 'Vikram Rao', 'email' => 'storeexec@tan90.test', 'phone' => '+91 98200 33445', 'role' => Role::StoreExec, 'description' => 'Unloading bay 3-4'],
             ['name' => 'Arjun Mehta', 'email' => 'qc@tan90.test', 'phone' => '+91 98200 55667', 'role' => Role::Qc, 'description' => 'QC — PCM compound line'],
             ['name' => 'Priya Deshmukh', 'email' => 'storemanager@tan90.test', 'phone' => '+91 98200 77889', 'role' => Role::StoreManager, 'description' => 'Bhiwandi warehouse'],
@@ -124,6 +131,16 @@ class DatabaseSeeder extends Seeder
 
     private function seedVendorMaster(): void
     {
+        VendorMaster::updateOrCreate(['vendor_name' => 'Thermocol Material Private Ltd'], [
+            'gst_number' => '27AACCT1234K1Z6',
+            'contact_phone' => '+91 22 6712 4401', 'contact_email' => 'accounts@thermocolmaterial.example',
+            'category' => 'Raw Material — Thermocol', 'active' => true,
+            'vendor_owner' => 'Priya Admin', 'website' => 'www.thermocolmaterial.example',
+            'gl_account' => 'Raw Materials — COGS', 'email_opt_out' => false,
+            'address_country' => 'India', 'address_city' => 'Thane', 'address_state' => 'Maharashtra', 'address_zip' => '400604',
+            'description' => 'Vendor portal demo account for the inward PO-to-putaway journey.',
+        ]);
+
         VendorMaster::updateOrCreate(['vendor_name' => 'Thermocore Materials Pvt Ltd'], [
             'gst_number' => '27AACCH1234K1Z5',
             'contact_phone' => '+91 22 6712 4400', 'contact_email' => 'accounts@thermocorematerials.example',
@@ -164,7 +181,7 @@ class DatabaseSeeder extends Seeder
             'po_owner' => 'Priya Admin',
             'subject' => 'Raw material — PCM Raw Compound (TN-1 Grade) restock',
             'vendor_name' => 'Thermocore Materials Pvt Ltd',
-            'po_date' => '2026-06-20', 'due_date' => '2026-06-26', 'status' => 'Delivered',
+            'po_date' => '2026-06-20', 'due_date' => '2026-06-26', 'status' => 'Delivered', 'released_at' => '2026-06-20 10:00:00',
         ]);
         $po1->lines()->updateOrCreate(['product' => 'PCM Raw Compound (TN-1 Grade)'], ['quantity' => 700, 'list_price' => 42]);
 
@@ -172,7 +189,7 @@ class DatabaseSeeder extends Seeder
             'po_owner' => 'Priya Admin',
             'subject' => 'Raw material — Wire Mesh — Structural Packaging',
             'vendor_name' => 'Konkan Insulation Systems',
-            'po_date' => '2026-06-24', 'due_date' => '2026-06-30', 'status' => 'Approved',
+            'po_date' => '2026-06-24', 'due_date' => '2026-06-30', 'status' => 'Approved', 'released_at' => '2026-06-24 10:00:00',
         ]);
         $po2->lines()->updateOrCreate(['product' => 'Wire Mesh — Structural Packaging'], ['quantity' => 450, 'list_price' => 18]);
 
@@ -180,7 +197,7 @@ class DatabaseSeeder extends Seeder
             'po_owner' => 'Priya Admin',
             'subject' => 'Raw material — Hand Gloves (PPE) — Bulk Pack',
             'vendor_name' => 'Sagar Safety & Industrial Supplies',
-            'po_date' => '2026-06-22', 'due_date' => '2026-06-28', 'status' => 'Approved',
+            'po_date' => '2026-06-22', 'due_date' => '2026-06-28', 'status' => 'Approved', 'released_at' => '2026-06-22 10:00:00',
         ]);
         $po3->lines()->updateOrCreate(['product' => 'Hand Gloves (PPE) — Bulk Pack'], ['quantity' => 300, 'list_price' => 26]);
 

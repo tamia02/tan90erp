@@ -21,6 +21,7 @@ class EntityValidator
 
             $set[] = match ($field['type']) {
                 'number' => 'numeric',
+                'checkbox' => 'boolean',
                 'email' => 'email',
                 'date' => 'date',
                 default => 'string',

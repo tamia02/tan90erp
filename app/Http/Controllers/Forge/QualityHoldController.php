@@ -7,7 +7,9 @@ use App\Models\Forge\QualityHold;
 use App\Models\Forge\WorkOrder;
 use App\Services\Access\AccessControlService;
 use App\Services\AuditLogger;
+use App\Support\SiteLocation;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 // In-process quality (IPQC): routing checkpoints create an inspection task;
@@ -20,10 +22,15 @@ class QualityHoldController extends Controller
     public function index(Request $request)
     {
         abort_unless($this->access->can($request->user(), 'forge.ipqc.record'), 403);
+        $site = SiteLocation::forUser($request->user());
 
         return view('forge.quality-holds.index', [
-            'holds' => QualityHold::with(['workOrder.finishedGood', 'jobCard'])->latest()->paginate(20),
-            'workOrders' => WorkOrder::whereIn('status', ['in_progress', 'reconciliation'])->with('jobCards')->orderByDesc('id')->limit(50)->get(),
+            'holds' => QualityHold::with(['workOrder.finishedGood', 'jobCard'])
+                ->when($site !== null, fn ($query) => $query->whereHas('workOrder', fn ($workOrder) => $workOrder->where('site_id', $site)))
+                ->latest()->paginate(20),
+            'workOrders' => WorkOrder::whereIn('status', ['in_progress', 'reconciliation'])
+                ->when($site !== null, fn ($query) => $query->where('site_id', $site))
+                ->with('jobCards')->orderByDesc('id')->limit(50)->get(),
         ]);
     }
 
@@ -33,11 +40,13 @@ class QualityHoldController extends Controller
 
         $data = $request->validate([
             'work_order_id' => ['required', 'exists:forge_work_orders,id'],
-            'job_card_id' => ['nullable', 'exists:forge_job_cards,id'],
+            'job_card_id' => ['nullable', Rule::exists('forge_job_cards', 'id')->where(fn ($query) => $query->where('work_order_id', $request->input('work_order_id')))],
             'checkpoint' => ['required', 'string', 'max:255'],
             'result' => ['required', 'in:pass,fail'],
             'evidence' => ['nullable', 'string', 'max:2000'],
         ]);
+        $workOrder = WorkOrder::findOrFail($data['work_order_id']);
+        $this->assertSite($request, $workOrder);
 
         $hold = QualityHold::create($data + [
             'status' => $data['result'] === 'fail' ? 'open' : 'released',
@@ -54,6 +63,7 @@ class QualityHoldController extends Controller
     public function release(Request $request, QualityHold $qualityHold)
     {
         abort_unless($this->access->can($request->user(), 'forge.ipqc.release'), 403);
+        $this->assertSite($request, $qualityHold->workOrder);
 
         if ($qualityHold->status !== 'open') {
             throw ValidationException::withMessages(['status' => 'Hold is not open.']);
@@ -65,5 +75,10 @@ class QualityHoldController extends Controller
         AuditLogger::log('Process hold released', $qualityHold->checkpoint, $qualityHold);
 
         return back()->with('status', 'Hold released.');
+    }
+
+    private function assertSite(Request $request, WorkOrder $workOrder): void
+    {
+        SiteLocation::assertCanAccessSiteRecord($request->user(), $workOrder->site_id === null ? null : (int) $workOrder->site_id);
     }
 }

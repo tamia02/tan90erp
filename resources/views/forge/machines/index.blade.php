@@ -1,9 +1,10 @@
 <x-app-layout>
     @include('access-control._style')
-    <div class="access-shell max-w-7xl mx-auto space-y-5">
+    <div class="access-shell max-w-7xl mx-auto space-y-5" data-listing-ignore>
         <div class="access-top p-5">
             <div class="text-sm access-muted">Forge / Machines</div>
             <h1 class="text-2xl font-bold">Machines, OEE & Downtime</h1>
+            @include('forge._exports', ['permission'=>'forge.machine.export', 'exportRoute'=>'forge.machines.export'])
         </div>
 
         @if(session('status'))<div class="access-card p-3 text-sm">{{ session('status') }}</div>@endif
@@ -16,7 +17,15 @@
                         <strong>{{ $machine->name }}</strong>
                         <span class="access-chip">{{ str($machine->state)->headline() }}</span>
                     </div>
-                    <div class="access-muted text-sm">{{ $machine->code }} · {{ $machine->workCenter?->name ?? 'No work centre' }} · {{ $machine->plant }}</div>
+                    <div class="access-muted text-sm">{{ $machine->code }} · {{ $machine->workCenter?->name ?? 'No work centre' }} · {{ $machine->site?->name ?? $machine->plant.' · Site mapping required' }}</div>
+
+                    @if (!$machine->site_id)
+                        <form method="post" action="{{ route('forge.machines.site', $machine) }}" class="flex gap-2">
+                            @csrf
+                            <select class="access-input" name="site_id" required><option value="">Assign site…</option>@foreach($sites as $location)<option value="{{ $location->id }}">{{ $location->name }}</option>@endforeach</select>
+                            <button class="access-btn">Assign</button>
+                        </form>
+                    @else
 
                     @if ($machine->state !== 'down')
                         <details>
@@ -26,6 +35,7 @@
                                 <select class="access-input" name="category" required>
                                     <option value="breakdown">Breakdown</option>
                                     <option value="planned_stop">Planned Stop</option>
+                                    <option value="idle">Idle / waiting</option>
                                     <option value="changeover">Changeover</option>
                                     <option value="material_shortage">Material Shortage</option>
                                     <option value="quality_hold">Quality Hold</option>
@@ -60,9 +70,10 @@
                         </select>
                         <button class="access-btn">Set</button>
                     </form>
+                    @endif
                 </div>
             @empty
-                <p class="access-muted">No machines configured yet.</p>
+                <p class="access-muted">{{ $site ? 'No machines are assigned to your site yet. Ask an all-site administrator to map the legacy assets.' : 'No machines configured yet.' }}</p>
             @endforelse
         </div>
 

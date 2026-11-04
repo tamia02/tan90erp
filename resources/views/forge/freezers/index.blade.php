@@ -18,7 +18,14 @@
                         <strong>{{ $freezer->name }}</strong>
                         <span class="access-chip" @if($latest?->is_alert) style="background:#fee2e2;color:#b91c1c" @endif>{{ str($freezer->state)->headline() }}</span>
                     </div>
-                    <div class="access-muted text-sm">{{ $freezer->code }} · {{ $freezer->plant }} · Capacity {{ $freezer->capacity }}</div>
+                    <div class="access-muted text-sm">{{ $freezer->code }} · {{ $freezer->site?->name ?? $freezer->plant.' · Site mapping required' }} · Capacity {{ $freezer->capacity }}</div>
+                    @if (!$freezer->site_id)
+                        <form method="post" action="{{ route('forge.freezers.site', $freezer) }}" class="flex gap-2">
+                            @csrf
+                            <select class="access-input" name="site_id" required><option value="">Assign site…</option>@foreach($sites as $location)<option value="{{ $location->id }}">{{ $location->name }}</option>@endforeach</select>
+                            <button class="access-btn">Assign</button>
+                        </form>
+                    @else
                     <div class="access-muted text-sm">Range {{ $freezer->threshold_temp_min }}°C to {{ $freezer->threshold_temp_max }}°C</div>
 
                     <div class="text-lg font-semibold" @if($latest?->is_alert) style="color:#b91c1c" @endif>
@@ -37,7 +44,7 @@
                             @csrf
                             <select class="access-input" name="batch_id" required>
                                 <option value="">Assign batch…</option>
-                                @foreach ($availableBatches as $batch)
+                                @foreach ($availableBatches->filter(fn ($batch) => (int) $batch->workOrder?->site_id === (int) $freezer->site_id) as $batch)
                                     <option value="{{ $batch->id }}">{{ $batch->batch_number }}</option>
                                 @endforeach
                             </select>
@@ -51,9 +58,10 @@
                         <input class="access-input" type="number" step="0.01" name="humidity" placeholder="Humidity %">
                         <button class="access-btn access-btn-primary">Log Reading</button>
                     </form>
+                    @endif
                 </div>
             @empty
-                <p class="access-muted">No freezers configured yet.</p>
+                <p class="access-muted">{{ $site ? 'No freezers are assigned to your site yet. Ask an all-site administrator to map the legacy assets.' : 'No freezers configured yet.' }}</p>
             @endforelse
         </div>
 
