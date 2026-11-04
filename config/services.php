@@ -52,7 +52,7 @@ return [
         'write_vendor_name' => env('ZOHO_WRITE_VENDOR_NAME', false),
         'write_product_details' => env('ZOHO_WRITE_PRODUCT_DETAILS', false),
 
-        // Zoho Inventory — the operational sync target (Items, Vendors,
+        // Zoho Inventory â€” the operational sync target (Items, Vendors,
         // Purchase Orders, Bills, Purchase Receives). Separate refresh token
         // because it needs Inventory-scoped access; same OAuth client as CRM
         // above unless the client registers a dedicated one. Inactive (and
@@ -67,7 +67,7 @@ return [
             'write_enabled' => env('ZOHO_INVENTORY_WRITE_ENABLED', true),
 
             // Master kill switch. Set false to make every Zoho Inventory call a
-            // no-op without removing credentials — the fastest way to stop a
+            // no-op without removing credentials â€” the fastest way to stop a
             // runaway quota drain in production.
             'sync_enabled' => env('ZOHO_INVENTORY_SYNC_ENABLED', true),
 
@@ -78,7 +78,7 @@ return [
 
             // --- Rate limiting / quota budget (see App\Services\Zoho\ZohoApiGate) ---
             // Every Inventory HTTP call is gated by all three of these. Confirm the
-            // real numbers against the org's Zoho subscription page — Zoho reports
+            // real numbers against the org's Zoho subscription page â€” Zoho reports
             // both a short-window rate and a per-day cap, and both surface as code 45.
             'rate_limit' => [
                 // Per-minute ceiling, smoothed with GCRA so calls are spaced evenly
@@ -89,7 +89,7 @@ return [
                 // Working daily budget. Deliberately below the real plan cap so there
                 // is headroom for webhooks, manual retries and OAuth refreshes.
                 'per_day' => (int) env('ZOHO_INVENTORY_CALLS_PER_DAY', 800),
-                // Zoho resets the daily counter on its own clock — match it or the
+                // Zoho resets the daily counter on its own clock â€” match it or the
                 // ceiling will be wrong either side of midnight.
                 'day_timezone' => env('ZOHO_INVENTORY_QUOTA_TIMEZONE', 'Asia/Kolkata'),
                 // Max calls a single cron run may spend, so one run cannot drain the
@@ -117,7 +117,7 @@ return [
             // its line items) collapses into one push instead of one per save.
             'coalesce_seconds' => (int) env('ZOHO_INVENTORY_COALESCE_SECONDS', 30),
 
-            // HTTP timeouts — without these a hung Zoho connection blocks a queue
+            // HTTP timeouts â€” without these a hung Zoho connection blocks a queue
             // worker or a web request indefinitely.
             'timeout' => (int) env('ZOHO_INVENTORY_HTTP_TIMEOUT', 15),
             'connect_timeout' => (int) env('ZOHO_INVENTORY_HTTP_CONNECT_TIMEOUT', 5),
@@ -130,6 +130,24 @@ return [
         'redirect_uri' => env('CLAUDE_REDIRECT_URI', 'http://localhost:8000/oauth/claude/callback'),
         'api_key' => env('CLAUDE_API_KEY'),
         'api_url' => env('CLAUDE_API_URL', 'https://api.anthropic.com/v1'),
+    ],
+
+    // Zoho -> ERP item pull (Zoho is the source of truth for Items). READ-ONLY:
+    // only GET calls. Uses the ZOHO_DISCOVERY_* key when present (the client's
+    // real org, kept apart from the push integration), else the Inventory key.
+    'zoho_items_pull' => [
+        'sales_schedule_enabled' => env('ZOHO_SALES_PULL_ENABLED', false),
+        'organization_id' => env('ZOHO_DISCOVERY_ORGANIZATION_ID', env('ZOHO_INVENTORY_ORGANIZATION_ID')),
+        'refresh_token' => env('ZOHO_DISCOVERY_REFRESH_TOKEN', env('ZOHO_INVENTORY_REFRESH_TOKEN')),
+        'client_id' => env('ZOHO_DISCOVERY_CLIENT_ID', env('ZOHO_INVENTORY_CLIENT_ID', env('ZOHO_CLIENT_ID'))),
+        'client_secret' => env('ZOHO_DISCOVERY_CLIENT_SECRET', env('ZOHO_INVENTORY_CLIENT_SECRET', env('ZOHO_CLIENT_SECRET'))),
+        'accounts_url' => env('ZOHO_ACCOUNTS_BASE_URL', 'https://accounts.zoho.in'),
+        'api_base_url' => env('ZOHO_DISCOVERY_API_BASE_URL', env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1')),
+        // Off until approved: when true the item pull runs hourly.
+        'schedule_enabled' => env('ZOHO_ITEMS_PULL_ENABLED', false),
+        // Vendor / customer addresses from Zoho (on PO pick + nightly). Off until
+        // the client has checked the Zoho contact data.
+        'address_pull_enabled' => env('ZOHO_ADDRESS_PULL_ENABLED', false),
     ],
 
 ];

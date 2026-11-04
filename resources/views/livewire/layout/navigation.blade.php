@@ -102,6 +102,7 @@ new class extends Component
                 ['label' => 'Command Centre', 'route' => 'flow.dashboard', 'permission' => 'flow.dashboard.view'],
                 ['label' => 'FG Inventory & Ledger', 'route' => 'flow.inventory.index', 'permission' => 'flow.inventory.view'],
                 ['label' => 'Customer Orders', 'route' => 'flow.orders.index', 'permission' => 'flow.order.view'],
+            ['label' => 'Zoho Sales / Packages / Invoices', 'route' => 'flow.zoho-sales', 'permission' => 'flow.order.view'],
                 ['label' => 'Wave Builder & Picking', 'route' => 'flow.waves.index', 'permission' => 'flow.wave.manage'],
                 ['label' => 'Packing', 'route' => 'flow.packing.index', 'permission' => 'flow.pack.manage'],
                 ['label' => 'Dispatch', 'route' => 'flow.dispatch.index', 'permission' => 'flow.dispatch.manage'],

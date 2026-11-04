@@ -57,12 +57,12 @@ Route::post('logout', function (Logout $logout) {
     return redirect('/login');
 })->middleware('auth')->name('logout');
 
-// Demo login shortcuts — every route below logs a browser in as an
+// Demo login shortcuts â€” every route below logs a browser in as an
 // arbitrary seeded account with zero credentials. Deliberately reachable
 // even in production: this deployment (tan.bookmytimes.in) only ever
 // holds seeded demo/reference data, never real client data, and the
 // client needs one-click access to every role for weekly walkthroughs.
-// Explicit, informed decision — do not re-add an isProduction() gate
+// Explicit, informed decision â€” do not re-add an isProduction() gate
 // here without checking with the project owner first.
 Route::get('role-login/{role}', function (string $role) {
     $role = Role::from($role);
@@ -359,6 +359,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::prefix('flow')->name('flow.')->group(function () {
+        Route::get('zoho-sales', function (\Illuminate\Http\Request $request, \App\Services\Access\AccessControlService $access) {
+            abort_unless($access->can($request->user(), 'flow.order.view'), 403);
+            $type = $request->query('type', 'salesorder');
+            abort_unless(in_array($type, ['salesorder', 'package', 'invoice'], true), 404);
+            $filters = $request->validate(['q' => ['nullable', 'string', 'max:255']]);
+            $search = trim((string) ($filters['q'] ?? ''));
+
+            return view('flow.zoho-sales', [
+                'type' => $type,
+                'search' => $search,
+                'documents' => \App\Models\ZohoSalesDocument::where('organization_id', (string) config('services.zoho_items_pull.organization_id'))
+                    ->where('type', $type)->when($search !== '', fn ($query) => $query->where(function ($query) use ($search) {
+                        $query->where('number', 'like', '%'.$search.'%')->orWhere('salesorder_number', 'like', '%'.$search.'%')->orWhere('customer_name', 'like', '%'.$search.'%');
+                    }))->orderByDesc('document_date')->orderByDesc('id')->paginate(50)->withQueryString(),
+            ]);
+        })->name('zoho-sales');
         Route::get('/', [FlowDashboardController::class, 'index'])->name('dashboard');
 
         Route::prefix('inventory')->name('inventory.')->group(function () {
