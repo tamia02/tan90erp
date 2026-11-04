@@ -1,0 +1,33 @@
+.tan90-login-shell{grid-template-columns:minmax(0,1.05fr) minmax(420px,.95fr);background:#f6f9f8}
+.tan90-login-hero{position:relative;overflow:hidden;justify-content:flex-start;padding:36px clamp(30px,5vw,84px);background:radial-gradient(ellipse at 15% 80%,#e4eee9 0,transparent 65%),#f1f6f3;color:#17392f}
+.tan90-login-brand{display:flex;align-items:center;gap:16px;text-decoration:none;width:fit-content}
+.tan90-login-brand img{width:96px;height:96px;padding:12px;object-fit:contain;border-radius:50%;background:#fff;box-shadow:0 8px 26px #17392f1a}
+.tan90-login-brand>span{font-size:24px;font-weight:700;letter-spacing:.04em;color:#263b35}
+.tan90-login-brand small{display:block;font-size:9px;letter-spacing:.16em;font-weight:600;color:#647a70;margin-top:4px}
+.tan90-hero-copy{position:relative;z-index:2;margin-top:38px;animation:tan90-arrive .8s both}
+.tan90-login-hero .tan90-eyebrow{margin:0 0 14px;color:#537267;font-size:clamp(12px,1vw,15px);font-weight:700;letter-spacing:.11em}
+.tan90-login-hero h1{color:#17392f;font-size:clamp(38px,3.8vw,62px);letter-spacing:-.055em;line-height:1.1;margin:0}
+.tan90-login-hero h1 span{color:#6670ab}
+.tan90-login-hero .tan90-lead{color:#60756b;font-size:15px;line-height:1.8;margin-top:20px}
+.tan90-penguin-scene{position:relative;display:grid;place-items:center;min-height:330px;flex:1;width:100%;margin-top:20px}
+.tan90-penguin{position:relative;z-index:1;width:220px;height:322px;object-fit:cover;border-radius:110px 110px 42px 42px;box-shadow:0 25px 60px -25px #48635e80;animation:tan90-float 7s ease-in-out infinite}
+.tan90-orbit{position:absolute;width:330px;height:330px;border:1px solid #b8ccc2;border-radius:50%;transform:rotate(-25deg) scaleY(.68)}
+.tan90-orbit-two{width:400px;height:400px;border-style:dashed;opacity:.5;transform:rotate(25deg) scaleY(.75)}
+.tan90-scene-note{position:absolute;z-index:2;bottom:15px;right:0;background:#fff;padding:13px 18px;border-radius:14px;box-shadow:0 8px 30px #19392e0d;font-size:12px;font-weight:600;color:#365c4c;animation:tan90-arrive 1s .2s both}
+.tan90-scene-note i{display:inline-block;width:7px;height:7px;background:#42a76a;border-radius:50%;margin-right:8px}
+.tan90-hero-footer{font-size:11px;color:#789084;letter-spacing:.04em;margin-top:24px;position:relative}
+.tan90-login-panel{padding:clamp(32px,5vw,80px);min-height:100svh;border-left:1px solid #e5ece8;background:#fff;animation:tan90-arrive .7s both}
+.tan90-panel-heading h2{font-size:30px;letter-spacing:-.04em;color:#203b30}
+.tan90-panel-heading p{color:#617b6d}
+.tan90-auth-tabs{background:#f2f5f3;border-radius:12px;padding:5px;margin-top:26px}
+.tan90-auth-tabs button{border-radius:9px;transition:background .2s,box-shadow .2s}
+.tan90-auth-tabs button.is-active{background:#fff;color:#314b3e;box-shadow:0 2px 8px #203b3010}
+.tan90-manual-form input:not([type=checkbox]){min-height:50px;border-radius:10px;border-color:#dce5df;background:#fbfcfb;transition:border-color .2s,box-shadow .2s}
+.tan90-manual-form input:focus{border-color:#6576a9;--tw-ring-color:#6576a9}
+.tan90-manual-form button[type=submit],.tan90-code-actions button{border-radius:10px;min-height:44px}
+.tan90-role-card{transition:transform .2s,box-shadow .2s}.tan90-role-card:hover{transform:translateY(-2px)}
+@keyframes tan90-arrive{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes tan90-float{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-9px) rotate(1deg)}}
+@media(min-width:900px){.tan90-login-hero{position:sticky;top:0;height:100svh;min-height:740px}.tan90-login-panel{justify-content:center}}
+@media(max-width:899px){.tan90-login-shell{grid-template-columns:1fr}.tan90-login-hero{min-height:0;padding:24px 28px 30px}.tan90-login-brand img{width:76px;height:76px;padding:9px}.tan90-hero-copy{margin-top:24px;max-width:68%}.tan90-login-hero h1{font-size:clamp(29px,6vw,38px)}.tan90-login-hero .tan90-eyebrow{font-size:10px;letter-spacing:.08em}.tan90-login-hero .tan90-lead{font-size:13px}.tan90-penguin-scene{position:absolute;right:14px;bottom:25px;width:28%;min-height:0;margin:0}.tan90-penguin{width:112px;height:164px;border-radius:65px 65px 24px 24px}.tan90-orbit{width:150px;height:150px}.tan90-orbit-two{width:180px;height:180px}.tan90-scene-note,.tan90-hero-footer{display:none}.tan90-login-panel{min-height:0;padding:34px 28px;border:0}.tan90-panel-heading h2{font-size:27px}}
+@media(prefers-reduced-motion:reduce){.tan90-penguin,.tan90-hero-copy,.tan90-scene-note,.tan90-login-panel{animation:none}.tan90-role-card{transition:none}}
