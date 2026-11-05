@@ -206,6 +206,12 @@ new #[Layout('layouts.guest')] class extends Component
             </form>
         @endif
 
+        @production
+            <p class="mt-5 text-sm text-slate-600">
+                <a href="https://stage.tan90.xyz/login" class="tan90-link-button">Open staging demo</a>
+            </p>
+        @endproduction
+
         @if (config('app.demo_logins') && app()->environment(['local', 'staging', 'testing']))
         @php
             $coreDemoRoles = collect(\App\Enums\Role::cases())
