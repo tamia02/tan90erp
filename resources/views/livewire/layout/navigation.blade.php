@@ -218,7 +218,7 @@ new class extends Component
     {
         return array_map(fn ($item) => $item + ['icon' => 'truck'], $this->permitted($user, $access, [
             ['label' => 'Command Centre', 'route' => 'flow.dashboard', 'permission' => 'flow.dashboard.view'],
-            ['label' => 'Logistics · RTD to Delivery', 'route' => 'logistics.index', 'permission' => 'flow.order.view'],
+            ['label' => 'Logistics · RTD to Delivery', 'route' => 'logistics.index', 'permission' => ['flow.order.view', 'flow.dispatch.manage', 'flow.delivery.manage', 'flow.order.create', 'forge.workorder.release']],
             ['label' => 'FG Inventory & Ledger', 'route' => 'flow.inventory.index', 'permission' => 'flow.inventory.view'],
             ['label' => 'Customer Orders', 'route' => 'flow.orders.index', 'permission' => 'flow.order.view'],
             ['label' => 'Zoho Sales / Packages / Invoices', 'route' => 'flow.zoho-sales', 'permission' => 'flow.order.view'],
@@ -240,7 +240,10 @@ new class extends Component
 
         $allowed = [];
         foreach ($items as $item) {
-            if ($bypass || ! isset($item['permission']) || $access->can($user, $item['permission'])) {
+            $permission = $item['permission'] ?? null;
+            if ($bypass || $permission === null || (is_array($permission)
+                ? collect($permission)->contains(fn ($key) => $access->can($user, $key))
+                : $access->can($user, $permission))) {
                 unset($item['permission']);
                 $allowed[] = $item;
             }
