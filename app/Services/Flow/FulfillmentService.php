@@ -435,30 +435,45 @@ class FulfillmentService
 
     public function createShipment(array $data): Shipment
     {
-        return Shipment::create($data + [
-            'shipment_number' => 'SHP-'.now()->format('Y').'-'.str_pad((string) (Shipment::count() + 1), 4, '0', STR_PAD_LEFT),
-            'status' => 'planned',
-        ]);
+        return DB::transaction(function () use ($data) {
+            $year = (int) now()->format('Y');
+            $sequence = DB::table('flow_shipment_sequences')->where('year', $year);
+            if (!$sequence->exists()) {
+                $last = Shipment::where('shipment_number', 'like', "SHP-{$year}-%")
+                    ->pluck('shipment_number')->max(fn ($number) => (int) substr($number, 9)) ?? 0;
+                DB::table('flow_shipment_sequences')->insertOrIgnore(['year' => $year, 'last_number' => $last]);
+            }
+            $number = (int) $sequence->lockForUpdate()->value('last_number') + 1;
+            $sequence->update(['last_number' => $number]);
+            return Shipment::create($data + ['shipment_number' => "SHP-{$year}-".str_pad((string) $number, 4, '0', STR_PAD_LEFT), 'status' => 'planned']);
+        }, 3);
     }
 
     public function loadHandlingUnit(Shipment $shipment, HandlingUnit $hu, ?User $actor = null): HandlingUnit
     {
-        $this->assertHuStatus($hu, ['sealed']);
-        if ($hu->order->site_id) {
-            abort_unless($actor, 403);
-            SiteLocation::assertCanAccessSiteRecord($actor, (int) $hu->order->site_id);
-        }
-        if ($hu->order->site_id && ($hu->order->status !== 'packed' && $hu->order->status !== 'dispatch_planned')) {
-            throw ValidationException::withMessages(['status' => 'Full order must be packed and sealed before loading.']);
-        }
-        if ($hu->shipment_id !== null) {
-            throw ValidationException::withMessages(['status' => 'Handling unit is already assigned to a shipment.']);
-        }
-        $hu->update(['shipment_id' => $shipment->id]);
-        $hu->order()->where('status', 'packed')->update(['status' => 'dispatch_planned']);
-        $shipment->update(['status' => 'loading']);
+        return DB::transaction(function () use ($shipment, $hu, $actor) {
+            $shipment = Shipment::whereKey($shipment->id)->lockForUpdate()->firstOrFail();
+            $hu = HandlingUnit::whereKey($hu->id)->lockForUpdate()->firstOrFail();
+            if (!in_array($shipment->status, ['planned', 'loading'], true)) {
+                throw ValidationException::withMessages(['status' => 'A released or closed shipment cannot be loaded again.']);
+            }
+            $this->assertHuStatus($hu, ['sealed']);
+            if ($hu->order->site_id) {
+                abort_unless($actor, 403);
+                SiteLocation::assertCanAccessSiteRecord($actor, (int) $hu->order->site_id);
+            }
+            if ($hu->order->site_id && ($hu->order->status !== 'packed' && $hu->order->status !== 'dispatch_planned')) {
+                throw ValidationException::withMessages(['status' => 'Full order must be packed and sealed before loading.']);
+            }
+            if ($hu->shipment_id !== null) {
+                throw ValidationException::withMessages(['status' => 'Handling unit is already assigned to a shipment.']);
+            }
+            $hu->update(['shipment_id' => $shipment->id]);
+            $hu->order()->where('status', 'packed')->update(['status' => 'dispatch_planned']);
+            $shipment->update(['status' => 'loading']);
 
-        return $hu;
+            return $hu;
+        });
     }
 
     public function releaseShipment(Shipment $shipment, User $actor): Shipment
@@ -545,35 +560,58 @@ class FulfillmentService
 
     public function recordDelivery(Shipment $shipment, CustomerOrder $order, array $data, User $actor): Delivery
     {
-        if ($shipment->hasOpenExcursion()) {
-            throw ValidationException::withMessages(['status' => 'Shipment has an undispositioned temperature excursion.']);
-        }
+        return DB::transaction(function () use ($shipment, $order, $data, $actor) {
+            $shipment = Shipment::whereKey($shipment->id)->lockForUpdate()->firstOrFail();
+            SiteLocation::assertCanAccessSiteRecord($actor, $order->site_id === null ? null : (int) $order->site_id);
+            if (!in_array($shipment->status, ['released', 'in_transit'], true)
+                || !$shipment->handlingUnits()->where('customer_order_id', $order->id)->exists()) {
+                throw ValidationException::withMessages(['status' => 'Record delivery only for an order carried by this dispatched shipment.']);
+            }
+            if ($shipment->deliveries()->where('customer_order_id', $order->id)->exists()) {
+                throw ValidationException::withMessages(['status' => 'This order already has a delivery record on this shipment.']);
+            }
+            if ($shipment->hasOpenExcursion()) {
+                throw ValidationException::withMessages(['status' => 'Shipment has an undispositioned temperature excursion.']);
+            }
 
-        $delivery = Delivery::create($data + ['shipment_id' => $shipment->id, 'customer_order_id' => $order->id]);
-        $order->update(['status' => 'pod_received']);
+            $delivery = Delivery::create($data + ['shipment_id' => $shipment->id, 'customer_order_id' => $order->id]);
+            $order->update(['status' => 'pod_received']);
 
-        AuditLogger::log('POD received', $order->order_number, $delivery);
+            AuditLogger::log('POD received', $order->order_number, $delivery);
 
-        return $delivery;
+            return $delivery;
+        });
     }
 
     public function closeDelivery(Delivery $delivery, User $actor): Delivery
     {
-        if (! $delivery->pod_reference) {
-            throw ValidationException::withMessages(['status' => 'POD reference is required before delivery can be closed.']);
-        }
+        return DB::transaction(function () use ($delivery, $actor) {
+            $shipment = Shipment::whereKey($delivery->shipment_id)->lockForUpdate()->firstOrFail();
+            $delivery = Delivery::whereKey($delivery->id)->lockForUpdate()->firstOrFail();
+            SiteLocation::assertCanAccessSiteRecord($actor, $delivery->order->site_id === null ? null : (int) $delivery->order->site_id);
+            if ($delivery->closed_at) return $delivery;
+            if (!in_array($shipment->status, ['released', 'in_transit'], true)
+                || !$shipment->handlingUnits()->where('customer_order_id', $delivery->customer_order_id)->exists()) {
+                throw ValidationException::withMessages(['status' => 'Delivery does not belong to a dispatched order on this shipment.']);
+            }
+            if (! $delivery->pod_reference) {
+                throw ValidationException::withMessages(['status' => 'POD reference is required before delivery can be closed.']);
+            }
 
-        $delivery->update(['closed_by' => $actor->id, 'closed_at' => now()]);
-        $delivery->order->update(['status' => 'closed']);
+            $delivery->update(['closed_by' => $actor->id, 'closed_at' => now()]);
+            $delivery->order->update(['status' => 'closed']);
 
-        $allDelivered = $delivery->shipment->deliveries()->whereNull('closed_at')->doesntExist();
-        if ($allDelivered) {
-            $delivery->shipment->update(['status' => 'closed']);
-        }
+            $completedOrders = Delivery::where('shipment_id', $shipment->id)->whereNotNull('closed_at')->select('customer_order_id');
+            $allDelivered = !$shipment->handlingUnits()->whereNotIn('customer_order_id', $completedOrders)->exists()
+                && !$shipment->deliveries()->whereNull('closed_at')->exists();
+            if ($allDelivered) {
+                $delivery->shipment->update(['status' => 'closed']);
+            }
 
-        AuditLogger::log('Delivery closed', $delivery->order->order_number, $delivery);
+            AuditLogger::log('Delivery closed', $delivery->order->order_number, $delivery);
 
-        return $delivery;
+            return $delivery;
+        });
     }
 
     public function requestReturn(array $data, User $actor): \App\Models\Flow\ReturnRequest

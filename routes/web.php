@@ -792,6 +792,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         });
 
         Route::prefix('dispatch')->name('dispatch.')->group(function () {
+            Route::post('assign-unit', [DispatchController::class, 'assignUnit'])->name('assign-unit');
             Route::get('/', [DispatchController::class, 'index'])->name('index');
             Route::post('/', [DispatchController::class, 'store'])->name('store');
             Route::post('{shipment}/load/{handlingUnit}', [DispatchController::class, 'loadUnit'])->name('load');
@@ -815,3 +816,5 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 require __DIR__.'/auth.php';
+
+require __DIR__.'/logistics.php';

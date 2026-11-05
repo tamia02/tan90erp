@@ -218,6 +218,7 @@ new class extends Component
     {
         return array_map(fn ($item) => $item + ['icon' => 'truck'], $this->permitted($user, $access, [
             ['label' => 'Command Centre', 'route' => 'flow.dashboard', 'permission' => 'flow.dashboard.view'],
+            ['label' => 'Logistics · RTD to Delivery', 'route' => 'logistics.index', 'permission' => 'flow.order.view'],
             ['label' => 'FG Inventory & Ledger', 'route' => 'flow.inventory.index', 'permission' => 'flow.inventory.view'],
             ['label' => 'Customer Orders', 'route' => 'flow.orders.index', 'permission' => 'flow.order.view'],
             ['label' => 'Zoho Sales / Packages / Invoices', 'route' => 'flow.zoho-sales', 'permission' => 'flow.order.view'],

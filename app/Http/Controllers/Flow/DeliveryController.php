@@ -23,8 +23,8 @@ class DeliveryController extends Controller
         return view('flow.deliveries.index', [
             'deliveries' => Delivery::with('order', 'shipment')->latest()->paginate(20),
             'inTransitShipments' => Shipment::whereIn('status', ['released', 'in_transit'])
-                ->with('handlingUnits.order')
-                ->get(),
+                ->with('handlingUnits.order', 'deliveries:id,shipment_id,customer_order_id')
+                ->latest('id')->paginate(15, ['*'], 'shipment_page')->withQueryString(),
         ]);
     }
 

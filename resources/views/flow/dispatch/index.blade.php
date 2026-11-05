@@ -33,13 +33,26 @@
 
         <div class="access-card p-5">
             <h2 class="font-bold mb-3">Sealed Handling Units Awaiting Load</h2>
-            <div class="space-y-2">
-                @forelse ($sealedUnits as $hu)
-                    <div class="text-sm border rounded p-2" style="border-color:#dfe7e2">{{ $hu->hu_number }} — {{ $hu->order?->order_number }} — {{ $hu->order?->customer_name }}</div>
-                @empty
-                    <p class="access-muted text-sm">Nothing sealed and unassigned right now.</p>
-                @endforelse
-            </div>
+            <form method="get" class="access-grid mb-3">
+                <label class="dispatch-field">Search unit/order<input class="access-input" name="unit_q" value="{{ request('unit_q') }}" maxlength="100"></label>
+                <label class="dispatch-field">Search shipment<input class="access-input" name="shipment_q" value="{{ request('shipment_q') }}" maxlength="100"></label>
+                <button class="access-btn">Find units and shipments</button>
+            </form>
+            @if($sealedUnits->isNotEmpty() && $loadableShipments->isNotEmpty())
+                <form method="post" action="{{ route('flow.dispatch.assign-unit') }}" class="access-grid">
+                    @csrf
+                    <label class="dispatch-field">Sealed handling unit<select class="access-input" name="handling_unit_id" required>
+                        @foreach($sealedUnits as $hu)<option value="{{ $hu->id }}">{{ $hu->hu_number }} — {{ $hu->order?->order_number }} — {{ $hu->order?->customer_name }}</option>@endforeach
+                    </select></label>
+                    <label class="dispatch-field">Shipment<select class="access-input" name="shipment_id" required>
+                        @foreach($loadableShipments as $available)<option value="{{ $available->id }}">{{ $available->shipment_number }}</option>@endforeach
+                    </select></label>
+                    <button class="access-btn access-btn-primary">Load onto this shipment</button>
+                </form>
+            @else
+                <p class="access-muted text-sm">No matching sealed units or loadable shipments.</p>
+            @endif
+            {{ $sealedUnits->links() }}
         </div>
 
         <div class="access-card p-5">
@@ -52,19 +65,6 @@
                             <span class="access-chip">{{ str($shipment->status)->headline() }}</span>
                         </div>
                         <div class="access-muted text-sm">{{ $shipment->dock_number }} · {{ $shipment->transporter }} · {{ $shipment->vehicle_number }}</div>
-
-                        @if ($shipment->status === 'planned' || $shipment->status === 'loading')
-                            <div class="mt-2 space-y-1">
-                                @forelse ($sealedUnits as $hu)
-                                        <form method="post" action="{{ route('flow.dispatch.load', [$shipment, $hu]) }}" class="flex items-center gap-2 flex-wrap text-sm">
-                                        @csrf
-                                        <span>{{ $hu->hu_number }} — {{ $hu->order?->order_number }}</span>
-                                        <button class="access-btn">Load onto this shipment</button>
-                                    </form>
-                                @empty
-                                @endforelse
-                            </div>
-                        @endif
 
                         @if (in_array($shipment->status, ['planned', 'loading']))
                             <form method="post" action="{{ route('flow.dispatch.release', $shipment) }}" class="mt-2">
