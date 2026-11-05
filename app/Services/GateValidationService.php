@@ -7,6 +7,7 @@ use App\Models\PurchaseOrder;
 use App\Models\SkuMaster;
 use App\Models\VendorMaster;
 use App\Models\VendorSubmission;
+use Illuminate\Support\Facades\DB;
 
 // Ports the React prototype's inline validation in GuardBillScan.tsx —
 // same rules, same severities. Runs against real PO Master / Vendor Master
@@ -35,54 +36,128 @@ class GateValidationService
         $primaryLine = $po?->primaryLine();
         $vendorOnFile = $po ? VendorMaster::where('vendor_name', $po->vendor_name)->first() : null;
 
+        if ($po?->location_id && filled($form['location'] ?? null)) {
+            $gateSiteId = \App\Support\SiteLocation::idForName((string) $form['location']);
+            if ($gateSiteId && (int) $po->location_id !== (int) $gateSiteId) {
+                $raise('PO_SITE_MISMATCH', 'PO Location Mismatch', 'This PO belongs to '.(\App\Support\SiteLocation::nameForId((int) $po->location_id) ?: 'another site').'. Create the gate pass at that PO site.', 'hardFail');
+            }
+        }
+
         if (! $form['po_number']) {
-            $raise('PO_MISSING', 'PO Missing', 'PO number not found for this inward entry', 'hardFail');
+            $raise('PO_MISSING', 'No PO Linked', 'This inward entry is unlinked to a PO. Verify the vendor, mapped SKU, invoice, quantity, and unit price during approval and QC before posting a GRN.', 'warning');
         }
 
         if (empty($form['vendor_name'])) {
             $raise('VENDOR_MISSING', 'Vendor Missing', 'No vendor name entered for this inward entry', 'hardFail');
         }
 
-        if (! empty($form['invoice_number']) && GateEntry::whereRaw('LOWER(invoice_number) = ?', [strtolower($form['invoice_number'])])->exists()) {
+        if (! empty($form['invoice_number']) && GateEntry::withoutSiteScope()->whereRaw('LOWER(invoice_number) = ?', [strtolower($form['invoice_number'])])->exists()) {
             $raise('DUP_INVOICE', 'Duplicate Invoice', 'Possible duplicate invoice detected', 'hardFail');
         }
 
-        if (GateEntry::where('status', '!=', 'closed')->whereRaw('LOWER(vehicle_number) = ?', [strtolower($form['vehicle_number'])])->exists()) {
+        if (GateEntry::withoutSiteScope()->where('status', '!=', 'closed')->whereRaw('LOWER(vehicle_number) = ?', [strtolower($form['vehicle_number'])])->exists()) {
             $raise('DUP_VEHICLE', 'Duplicate Vehicle', 'This vehicle already has an open, unclosed gate entry', 'warning');
         }
 
-        $skuEntry = ! empty($form['material'])
-            ? SkuMaster::whereRaw('LOWER(sku) = ?', [strtolower($form['material'])])->first()
-            : null;
+        $productLines = is_array($form['product_lines'] ?? null) ? $form['product_lines'] : [];
+        $skuNames = collect($productLines)
+            ->map(fn ($line) => is_array($line) ? trim((string) ($line['sku'] ?? '')) : '')
+            ->filter()
+            ->unique(fn ($sku) => mb_strtolower($sku))
+            ->values();
+        if ($skuNames->isEmpty() && ! empty($form['material'])) {
+            // Older/single-SKU gate entries only carry the display material.
+            // For multi-SKU entries, validate the individual selected lines
+            // instead of treating their joined display label as one SKU.
+            $skuNames = collect([trim((string) $form['material'])]);
+        }
 
-        if (empty($form['material'])) {
+        if ($skuNames->isEmpty()) {
             $raise('PRODUCT_LINE_MISSING', 'Product Line Missing', 'No material/SKU line entered for this inward entry', 'hardFail');
-        } elseif (! $skuEntry?->mapped) {
-            $raise('SKU_NOT_MAPPED', 'SKU Not Mapped', "\"{$form['material']}\" is not in the mapped SKU master — map it before GRN", 'hardFail');
+        } else {
+            $normalizedSkuNames = $skuNames->map(fn ($sku) => mb_strtolower($sku));
+            $mappedSkuNames = SkuMaster::query()
+                ->whereIn(DB::raw('LOWER(sku)'), $normalizedSkuNames->all())
+                ->where('mapped', true)
+                ->pluck('sku')
+                ->map(fn ($sku) => mb_strtolower($sku))
+                ->all();
+            $unmappedSkuNames = $skuNames
+                ->reject(fn ($sku) => in_array(mb_strtolower($sku), $mappedSkuNames, true))
+                ->values();
+
+            if ($unmappedSkuNames->isNotEmpty()) {
+                $raise('SKU_NOT_MAPPED', 'SKU Not Mapped', '"'.implode('", "', $unmappedSkuNames->all()).'" is not in the mapped SKU master — map it before GRN', 'hardFail');
+            }
         }
 
         if ($form['po_number'] && ! $po) {
             $raise('PO_NOT_FOUND', 'PO Not Found', "{$form['po_number']} was not found in PO master data", 'hardFail');
         }
 
-        if ($primaryLine && ! empty($form['rate']) && (float) $form['rate'] !== (float) $primaryLine->list_price) {
+        $amountCalculator = app(PurchaseOrderAmountCalculator::class);
+        $invoiceQty = is_numeric($form['invoice_qty'] ?? null) ? (float) $form['invoice_qty'] : null;
+        $allocations = $po && $invoiceQty !== null
+            ? $amountCalculator->allocations($po, $productLines, $invoiceQty)
+            : null;
+
+        if ($primaryLine && $po?->lines->count() === 1 && ! empty($form['rate']) && (float) $form['rate'] !== (float) $primaryLine->list_price) {
             $raise('RATE_MISMATCH', 'Rate Mismatch', "Entered rate ₹{$form['rate']}/unit does not match PO rate ₹{$primaryLine->list_price}/unit", 'redFlag');
         }
 
-        if ($primaryLine && ! empty($form['invoice_qty']) && (int) $form['invoice_qty'] !== (int) $primaryLine->quantity) {
-            $raise('QTY_MISMATCH', 'Quantity Mismatch', "Invoice qty {$form['invoice_qty']} does not match PO qty {$primaryLine->quantity}", 'redFlag');
+        if ($po && $invoiceQty !== null) {
+            if ($allocations === null) {
+                $raise('PO_LINE_ALLOCATION_MISSING', 'PO Line Allocation Missing', 'This multi-item shipment cannot be safely matched to the PO lines. Fetch the PO or vendor submission again so every shipped SKU and quantity is included.', 'hardFail');
+            } else {
+                $receivedByLine = [];
+                $unallocatedPreviousQty = 0.0;
+                foreach (GateEntry::where('po_number', $po->po_number)->where('entry_type', 'inward')->get(['invoice_qty', 'product_lines']) as $previousGate) {
+                    $previousAllocations = $amountCalculator->allocations(
+                        $po,
+                        is_array($previousGate->product_lines) ? $previousGate->product_lines : [],
+                        is_numeric($previousGate->invoice_qty) ? (float) $previousGate->invoice_qty : null,
+                    );
+                    if ($previousAllocations === null) {
+                        $unallocatedPreviousQty += (float) ($previousGate->invoice_qty ?? 0);
+
+                        continue;
+                    }
+                    foreach ($previousAllocations as $lineId => $quantity) {
+                        $receivedByLine[$lineId] = ($receivedByLine[$lineId] ?? 0) + $quantity;
+                    }
+                }
+
+                foreach ($allocations as $lineId => $quantity) {
+                    $poLine = $po->lines->firstWhere('id', $lineId);
+                    if (! $poLine) {
+                        continue;
+                    }
+                    if ($quantity > (float) $poLine->quantity) {
+                        $raise('QTY_MISMATCH', 'Quantity Mismatch', "Invoice quantity {$quantity} for {$poLine->product} exceeds PO quantity {$poLine->quantity}", 'redFlag');
+                    }
+                    $projectedQty = ($receivedByLine[$lineId] ?? 0) + $quantity;
+                    if ($projectedQty > (float) $poLine->quantity) {
+                        $raise('QTY_OVER_RECEIPT', 'Quantity Exceeds PO', "This bill would take cumulative inward quantity for {$poLine->product} to {$projectedQty}, above PO qty {$poLine->quantity}", 'redFlag');
+                    }
+                }
+
+                $totalOrdered = (float) $po->lines->sum('quantity');
+                $totalAlreadyReceived = array_sum($receivedByLine) + $unallocatedPreviousQty;
+                $currentTotal = array_sum($allocations);
+                if ($unallocatedPreviousQty > 0 && $totalAlreadyReceived + $currentTotal > $totalOrdered) {
+                    $raise('QTY_OVER_RECEIPT', 'Quantity Exceeds PO', 'The new bill would take total inward quantity above the PO quantity after including earlier legacy receipts.', 'redFlag');
+                }
+            }
         }
 
-        // Confirmed live: GATE-5717 was saved with invoice_amount ₹888.66
-        // against 700 units at the PO's own ₹42 rate (₹29,400 expected) --
-        // nothing compared the two. A modest tolerance (₹5 or 1%, whichever
-        // is larger) avoids flagging ordinary rounding/GST rounding noise.
-        if (! empty($form['invoice_amount']) && ! empty($form['invoice_qty']) && ! empty($form['rate'])) {
-            $expectedAmount = (float) $form['invoice_qty'] * (float) $form['rate'];
-            $tolerance = max(5.0, $expectedAmount * 0.01);
-
-            if (abs((float) $form['invoice_amount'] - $expectedAmount) > $tolerance) {
-                $raise('INVOICE_AMOUNT_MISMATCH', 'Invoice Amount Mismatch', "Entered amount ₹{$form['invoice_amount']} does not match qty × rate (₹".number_format($expectedAmount, 2).')', 'redFlag');
+        if (! empty($form['invoice_amount']) && $invoiceQty !== null && $po) {
+            if ($allocations !== null) {
+                $expected = $amountCalculator->amounts($po, $allocations);
+                $tolerance = max(5.0, $expected['net'] * 0.01);
+                if (abs((float) $form['invoice_amount'] - $expected['net']) > $tolerance
+                    && abs((float) $form['invoice_amount'] - $expected['total']) > $tolerance) {
+                    $raise('INVOICE_AMOUNT_MISMATCH', 'Invoice Amount Mismatch', 'Entered amount ₹'.number_format((float) $form['invoice_amount'], 2).' does not match the allocated PO net ₹'.number_format($expected['net'], 2).' or tax-inclusive ₹'.number_format($expected['total'], 2), 'redFlag');
+                }
             }
         }
 

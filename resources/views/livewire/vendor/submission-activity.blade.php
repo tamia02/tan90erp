@@ -46,7 +46,7 @@ new #[Layout('layouts.app')] class extends Component
     <div>
         <a href="{{ route('vendor.submissions') }}" wire:navigate class="text-sm" style="color: var(--text-secondary);">&larr; Back to My Submissions</a>
         <h1 class="text-xl font-semibold mt-1" style="color: var(--text-primary);">Activity — {{ $submission->po_number }}</h1>
-        <p class="text-sm" style="color: var(--text-secondary);">Full history for this submission, from your upload through to finance closure.</p>
+        <p class="text-sm" style="color: var(--text-secondary);">Live PO history from acknowledgement and dispatch through gate entry, QC, GRN, putaway, and finance closure.</p>
     </div>
 
     <section class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
@@ -65,14 +65,27 @@ new #[Layout('layouts.app')] class extends Component
                 <div style="color: var(--text-primary);">{{ $submission->invoice_qty ?? '-' }}</div>
             </div>
             <div>
+                <div class="text-xs" style="color: var(--text-muted);">Invoice Amount</div>
+                <div style="color: var(--text-primary);">{{ $submission->invoice_amount !== null ? '₹'.number_format($submission->invoice_amount, 2) : '-' }}</div>
+            </div>
+            <div>
                 <div class="text-xs" style="color: var(--text-muted);">Status</div>
                 <div style="color: {{ $submission->status == 'submitted' || $submission->status == 'acknowledged' ? 'var(--status-good)' : 'var(--status-critical)' }};">{{ ucfirst(str_replace('_', ' ', $submission->status)) }}</div>
             </div>
         </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs mt-3" style="color: var(--text-secondary);">
+            <div>Invoice date: {{ $submission->invoice_date?->format('d M, Y') ?? '—' }}</div>
+            <div>Production started: {{ $submission->production_started_at?->format('d M, Y H:i') ?? '—' }}</div>
+            <div>Dispatched: {{ $submission->dispatched_at?->format('d M, Y H:i') ?? '—' }}</div>
+            <div>TAT: {{ $submission->tat_due_at?->format('d M, Y') ?? 'Not set' }}</div>
+        </div>
         <div class="flex gap-1.5 text-xs mt-3">
-            @if($submission->has_invoice)<span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">Invoice</span>@endif
-            @if($submission->has_eway_bill)<span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">E-way Bill</span>@endif
-            @if($submission->has_lr_pod)<span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-800">LR/POD</span>@endif
+            @if($submission->invoice_document_path)<a href="{{ route('vendor.submission.document', [$submission, 'invoice']) }}" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">Invoice</a>@endif
+            @if($submission->eway_bill_document_path)<a href="{{ route('vendor.submission.document', [$submission, 'eway']) }}" class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">E-way Bill</a>@endif
+            @if($submission->lr_pod_document_path)<a href="{{ route('vendor.submission.document', [$submission, 'lr']) }}" class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-800">LR/POD</a>@endif
+            <a href="{{ route('vendor.submission.pdf', $submission) }}" class="px-1.5 py-0.5 rounded" style="background: var(--brand-bg); color: var(--brand);">Bill PDF</a>
+            <a href="{{ route('vendor.submission.excel', $submission) }}" class="px-1.5 py-0.5 rounded" style="background: var(--surface-2); color: var(--brand);">Bill Excel</a>
+            <a href="{{ \Illuminate\Support\Facades\URL::temporarySignedRoute('vendor.bill.share', now()->addDay(), ['submission' => $submission->id]) }}" target="_blank" rel="noopener" class="px-1.5 py-0.5 rounded" style="background: var(--surface-2); color: var(--text-primary);">Open share link</a>
         </div>
         <div class="text-xs mt-3" style="color: var(--text-muted);">Submitted {{ $submission->created_at->format('d M, Y H:i') }}</div>
     </section>

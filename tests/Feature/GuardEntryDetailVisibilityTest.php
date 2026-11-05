@@ -7,6 +7,7 @@ use App\Models\GateEntry;
 use App\Models\GrnRecord;
 use App\Models\QcResult;
 use App\Models\User;
+use App\Models\ValidationIssue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Volt\Volt;
 use Tests\TestCase;
@@ -28,6 +29,15 @@ class GuardEntryDetailVisibilityTest extends TestCase
     {
         $guard = User::factory()->create(['role' => 'guard']);
         $gate = GateEntry::factory()->create(['status' => 'closed', 'gate_no' => 'GATE-VIS-1']);
+
+        ValidationIssue::create([
+            'gate_entry_id' => $gate->id,
+            'code' => 'SKU_NOT_MAPPED',
+            'title' => 'SKU Not Mapped',
+            'description' => 'This issue was reviewed before the entry was closed.',
+            'severity' => 'hardFail',
+            'status' => 'approved',
+        ]);
 
         QcResult::create([
             'gate_entry_id' => $gate->id, 'sku' => 'Test SKU',
@@ -57,6 +67,40 @@ class GuardEntryDetailVisibilityTest extends TestCase
         $this->assertStringNotContainsString('QC result', $html);
         $this->assertStringNotContainsString('GRN record', $html);
         $this->assertStringNotContainsString('Finance record', $html);
+        $this->assertStringNotContainsString('accepted_qty', $html);
+        $this->assertStringNotContainsString('suggested_bin', $html);
         $this->assertStringContainsString('GATE-VIS-1', $html);
+        $this->assertStringContainsString('Current entry status: Closed.', $html);
+        $this->assertStringContainsString('SKU Not Mapped', $html);
+        $this->assertStringNotContainsString('held at "Pending Validation"', $html);
+    }
+
+    public function test_visitor_status_is_not_reported_as_waiting_for_a_dock_and_refreshes_live(): void
+    {
+        $guard = User::factory()->create(['role' => 'guard']);
+        $gate = GateEntry::factory()->create([
+            'entry_type' => 'visitor',
+            'status' => 'checked_in',
+            'dock_assigned_at' => null,
+            'visitor_checked_in_at' => now(),
+            'po_number' => 'VISITOR-TEST-28',
+        ]);
+
+        $this->actingAs($guard);
+
+        $component = Volt::test('guard.entry-detail', ['entry' => $gate])
+            ->assertOk()
+            ->assertSee('Visitor checked in')
+            ->assertDontSee('Gate pass pending · dock not assigned')
+            ->assertDontSee('PO reference:')
+            ->assertDontSee('VISITOR-TEST-28')
+            ->assertSee('Visitor status: Visitor checked in');
+
+        // Simulate another role updating the same record while this browser
+        // remains on the Guard detail page; a Livewire refresh must reload it.
+        $gate->update(['status' => 'closed', 'visitor_checked_out_at' => now()]);
+
+        $component->call('$refresh')
+            ->assertSee('Visitor checked out · pass complete');
     }
 }

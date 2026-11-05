@@ -11,6 +11,7 @@ use App\Enums\Role;
 class RoleNavigation
 {
     private const SHARED_SCREENS = [
+        ['label' => 'Global Search & PO Tracker', 'route' => 'po.tracker', 'icon' => 'search'],
         ['label' => 'Notifications', 'route' => 'notifications', 'icon' => 'bell'],
         ['label' => 'Visitor Approvals', 'route' => 'visitor-approvals', 'icon' => 'check-circle'],
         ['label' => 'Activity Log', 'route' => 'activity', 'icon' => 'history'],
@@ -34,7 +35,48 @@ class RoleNavigation
             ? array_values(array_filter(self::SHARED_SCREENS, fn ($screen) => $screen['route'] !== 'activity'))
             : self::SHARED_SCREENS;
 
-        return [...self::ownScreens($role), ...$shared];
+        return [...self::ownScreens($role), ['heading' => 'General'], ...$shared];
+    }
+
+    /**
+     * A role's own module screens without the shared utility screens - used
+     * to add an extra role's section under a person's main-role menu.
+     *
+     * @return array<int, array{label: string, route: string, icon: string}>
+     */
+    public static function ownScreensFor(Role $role): array
+    {
+        return self::ownScreens($role);
+    }
+
+    /**
+     * Remove links the signed-in user cannot open, while leaving section
+     * headings in place for the navigation renderer to skip when empty.
+     * Permission metadata is internal and should never reach the view.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    public static function filterAuthorizedItems(array $items, callable $can): array
+    {
+        $visible = [];
+
+        foreach ($items as $item) {
+            if (isset($item['heading'])) {
+                $visible[] = $item;
+
+                continue;
+            }
+
+            if (isset($item['permission']) && ! $can($item['permission'])) {
+                continue;
+            }
+
+            unset($item['permission']);
+            $visible[] = $item;
+        }
+
+        return $visible;
     }
 
     /**
@@ -45,27 +87,33 @@ class RoleNavigation
         return match ($role) {
             Role::Guard => [
                 ['label' => 'Guard Dashboard', 'route' => 'guard.dashboard', 'icon' => 'gauge'],
-                ['label' => 'Bill Scan', 'route' => 'guard.scan', 'icon' => 'scan-line'],
-                ['label' => 'Guard Entries', 'route' => 'guard.entries', 'icon' => 'clipboard-list'],
+                ['heading' => 'Gate Pass'],
+                ['label' => 'New Gate Pass', 'route' => 'guard.scan', 'icon' => 'scan-line'],
+                ['label' => 'Vehicles Inside (Truck Out)', 'route' => 'guard.inside', 'icon' => 'log-out'],
+                ['label' => 'Past Gate Entries', 'route' => 'guard.entries', 'icon' => 'clipboard-list'],
             ],
             Role::Vendor => [
                 ['label' => 'Vendor Dashboard', 'route' => 'vendor.dashboard', 'icon' => 'gauge'],
+                ['heading' => 'Orders & Dispatch'],
                 ['label' => 'Purchase Orders', 'route' => 'vendor.purchase-orders', 'icon' => 'file-text'],
                 ['label' => 'My Submissions', 'route' => 'vendor.submissions', 'icon' => 'search'],
+                ['heading' => 'Claims & Stock'],
+                ['label' => 'Claims', 'route' => 'vendor.claims', 'icon' => 'receipt'],
                 ['label' => 'Stock Update', 'route' => 'vendor.stock', 'icon' => 'boxes'],
             ],
             Role::StoreExec => [
                 ['label' => 'Dashboard', 'route' => 'unloading.dashboard', 'icon' => 'gauge'],
+                ['heading' => 'Loading & Unloading'],
                 ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
-                ['label' => 'Loading Desk', 'route' => 'unloading.loading-desk', 'icon' => 'truck'],
-                ['label' => 'Unloading Desk', 'route' => 'unloading.desk', 'icon' => 'warehouse'],
-                ['label' => 'Putaway', 'route' => 'unloading.putaway', 'icon' => 'package'],
-                ['label' => 'Outward Loading', 'route' => 'unloading.outward', 'icon' => 'truck'],
+                ['label' => 'Loading & Unloading', 'route' => 'unloading.desk', 'icon' => 'warehouse'],
                 ['label' => 'Dock Scheduling', 'route' => 'unloading.dock-scheduling', 'icon' => 'calendar-clock'],
+                ['heading' => 'Putaway & History'],
+                ['label' => 'Putaway', 'route' => 'unloading.putaway', 'icon' => 'package'],
                 ['label' => 'History', 'route' => 'unloading.history', 'icon' => 'history'],
             ],
             Role::Qc => [
                 ['label' => 'Dashboard', 'route' => 'qc.dashboard', 'icon' => 'gauge'],
+                ['heading' => 'Quality Check'],
                 ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'QC Queue', 'route' => 'qc.queue', 'icon' => 'package-search'],
                 ['label' => 'History', 'route' => 'qc.history', 'icon' => 'history'],
@@ -73,36 +121,72 @@ class RoleNavigation
             ],
             Role::StoreManager => [
                 ['label' => 'Dashboard', 'route' => 'grn.dashboard', 'icon' => 'gauge'],
+                ['heading' => 'Purchase'],
+                ['label' => 'PO Control Tower', 'route' => 'grn.po-control-tower', 'icon' => 'search'],
+                ['label' => 'Purchase Orders', 'route' => 'admin.po', 'icon' => 'file-text'],
+                ['label' => 'Terms & Notes', 'route' => 'terms-templates.index', 'icon' => 'file-text'],
+                ['heading' => 'Gate & Approvals'],
                 ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Entry Approvals', 'route' => 'store-manager.entry-approvals', 'icon' => 'check-circle'],
-                ['label' => 'PO Master', 'route' => 'admin.po', 'icon' => 'file-text'],
-                ['label' => 'GRN Check', 'route' => 'grn.check', 'icon' => 'clipboard-check'],
-                ['label' => 'GRN Register', 'route' => 'grn.register', 'icon' => 'layout-list'],
-                ['label' => 'Stock Balance', 'route' => 'grn.stock-balance', 'icon' => 'package-search'],
-                ['label' => 'Stock Ledger', 'route' => 'grn.ledger', 'icon' => 'book-open'],
-                ['label' => 'Shelf & Bin', 'route' => 'grn.bins', 'icon' => 'warehouse'],
                 ['label' => 'Validation Issues', 'route' => 'validation.issues', 'icon' => 'list-checks'],
+                ['heading' => 'GRN & Stock'],
+                ['label' => 'Purchase Receive (GRN)', 'route' => 'grn.check', 'icon' => 'clipboard-check'],
+                ['label' => 'Purchase Receives (GRN Register)', 'route' => 'grn.register', 'icon' => 'layout-list'],
+                ['label' => 'Stock Balance', 'route' => 'grn.stock-balance', 'icon' => 'package-search'],
+                ['label' => 'Shelf & Bin', 'route' => 'grn.bins', 'icon' => 'warehouse'],
+                // Inventory module: SKU Master / GRN stock -> production -> dispatch.
+                ['heading' => 'Inventory'],
+                ['label' => 'Inventory Summary', 'route' => 'inventory.stock', 'icon' => 'boxes'],
+                ['label' => 'Items', 'route' => 'inventory.items', 'icon' => 'list'],
+                ['label' => 'Composite Items (Recipes)', 'route' => 'inventory.recipes', 'icon' => 'clipboard-list'],
+                ['label' => 'Bundle', 'route' => 'inventory.production', 'icon' => 'factory'],
+                ['label' => 'Outward Shipment', 'route' => 'inventory.dispatch', 'icon' => 'truck'],
+                ['heading' => 'Production Modules'],
+                ['label' => 'Production Overview', 'route' => 'forge.dashboard', 'icon' => 'factory', 'permission' => 'forge.dashboard.view'],
+                ['label' => 'Production Flow', 'route' => 'forge.production-flow', 'icon' => 'route', 'permission' => 'forge.dashboard.view'],
+                ['label' => 'Tutorial', 'route' => 'forge.tutorial', 'icon' => 'book-open', 'permission' => 'forge.dashboard.view'],
+                ['label' => 'Start · RM & PM Issue', 'route' => 'forge.modules.show', 'icon' => 'package', 'params' => ['step' => 'materials'], 'permission' => 'forge.step.materials.view'],
+                ['label' => 'PCM Making · Manual + Mixing', 'route' => 'forge.modules.show', 'icon' => 'beaker', 'params' => ['step' => 'mixing'], 'permission' => 'forge.step.mixing.view'],
+                ['label' => 'Production · Filling & Sealing', 'route' => 'forge.modules.show', 'icon' => 'package-check', 'params' => ['step' => 'filling-sealing'], 'permission' => 'forge.step.filling-sealing.view'],
+                ['label' => 'QC · Pressure & Leak Test', 'route' => 'forge.modules.show', 'icon' => 'shield-check', 'params' => ['step' => 'quality'], 'permission' => 'forge.step.quality.view'],
+                ['label' => 'Bundle · Consumption & FG Records', 'route' => 'forge.modules.show', 'icon' => 'clipboard-list', 'params' => ['step' => 'consumption-fg'], 'permission' => 'forge.step.consumption-fg.view'],
+                ['label' => 'FG Store · Stored Bins', 'route' => 'forge.modules.show', 'icon' => 'warehouse', 'params' => ['step' => 'finished-goods'], 'permission' => 'forge.step.finished-goods.view'],
+                ['heading' => 'Production Tools'],
+                ['label' => 'Machines & OEE', 'route' => 'forge.machines.index', 'icon' => 'settings', 'permission' => 'forge.machine.view'],
+                ['label' => 'Wastage & Scrap', 'route' => 'forge.wastage.index', 'icon' => 'trash-2', 'permission' => 'forge.wastage.record'],
+                ['label' => 'Production Plans', 'route' => 'forge.plans.index', 'icon' => 'calendar', 'permission' => 'forge.plan.view'],
+                ['label' => 'Work Orders', 'route' => 'forge.workorders.index', 'icon' => 'clipboard-list', 'permission' => 'forge.workorder.view'],
+                ['label' => 'Batch Genealogy', 'route' => 'forge.batches.index', 'icon' => 'git-branch', 'permission' => 'forge.batch.trace'],
+                ['label' => 'Customer Orders', 'route' => 'flow.orders.index', 'icon' => 'shopping-cart', 'permission' => 'flow.order.view'],
             ],
             Role::Finance => [
                 ['label' => 'Dashboard', 'route' => 'finance.dashboard', 'icon' => 'gauge'],
+                ['heading' => 'Bills & Claims'],
                 ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
-                ['label' => 'Finance Review', 'route' => 'finance.review', 'icon' => 'file-text'],
+                ['label' => 'Bills (Finance Review)', 'route' => 'finance.review', 'icon' => 'file-text'],
                 ['label' => 'Vendor Claims', 'route' => 'finance.claims', 'icon' => 'receipt'],
                 ['label' => 'Reports', 'route' => 'finance.reports', 'icon' => 'trending-up'],
             ],
             Role::Admin => [
                 ['label' => 'Command Center', 'route' => 'command-center', 'icon' => 'layout-grid'],
                 ['label' => 'Overview', 'route' => 'admin.dashboard', 'icon' => 'gauge'],
-                ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
-                ['label' => 'Users', 'route' => 'admin.users', 'icon' => 'users'],
-                ['label' => 'SKU Master', 'route' => 'admin.sku', 'icon' => 'package'],
-                ['label' => 'Vendor Master', 'route' => 'admin.vendors', 'icon' => 'truck'],
-                ['label' => 'Supplier Scorecards', 'route' => 'admin.vendor-scorecard', 'icon' => 'bar-chart-2'],
-                ['label' => 'PO Master', 'route' => 'admin.po', 'icon' => 'file-text'],
+                ['heading' => 'Purchasing'],
+                ['label' => 'Purchase Orders', 'route' => 'admin.po', 'icon' => 'file-text'],
                 ['label' => 'RFQs', 'route' => 'admin.rfq', 'icon' => 'file-question'],
                 ['label' => 'Quote Comparison', 'route' => 'admin.quote-comparison', 'icon' => 'scale'],
-                ['label' => 'Integrations', 'route' => 'admin.integrations', 'icon' => 'link'],
+                ['label' => 'Terms & Notes', 'route' => 'terms-templates.index', 'icon' => 'file-text'],
+                ['heading' => 'Vendors'],
+                ['label' => 'Vendors', 'route' => 'admin.vendors', 'icon' => 'truck'],
+                ['label' => 'Supplier Scorecards', 'route' => 'admin.vendor-scorecard', 'icon' => 'bar-chart-2'],
+                ['label' => 'Supplier Claims', 'route' => 'admin.supplier-claims', 'icon' => 'receipt'],
+                ['heading' => 'Gate & Reports'],
+                ['label' => 'All Gate Entries', 'route' => 'gate-entries.index', 'icon' => 'clipboard-list'],
                 ['label' => 'Reports', 'route' => 'admin.reports', 'icon' => 'trending-up'],
+                ['heading' => 'Setup'],
+                ['label' => 'Users', 'route' => 'admin.users', 'icon' => 'users'],
+                ['label' => 'Master Data', 'route' => 'tan90.master-data.dashboard', 'icon' => 'boxes'],
+                ['label' => 'Custom Fields', 'route' => 'custom-fields.index', 'icon' => 'settings'],
+                ['label' => 'Integrations', 'route' => 'admin.integrations', 'icon' => 'link'],
             ],
         };
     }

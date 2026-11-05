@@ -11,6 +11,14 @@ class Role extends Model
 {
     use IsMasterRecord;
 
+    private const BRC_DASHBOARD_ROLE_CODES = [
+        'ROLE-RND',
+        'ROLE-FORMULATION',
+        'ROLE-COSTING',
+        'ROLE-PRODUCTION-ENG',
+        'ROLE-QA-APPROVER',
+    ];
+
     protected $table = 'tan90_roles';
 
     protected $fillable = ['code', 'name', 'type', 'data_scope', 'status'];
@@ -33,5 +41,12 @@ class Role extends Model
             ->where('tan90_permissions.key', $permissionKey)
             ->wherePivot('allowed', true)
             ->exists();
+    }
+
+    public function homeRouteName(): string
+    {
+        return in_array($this->code, self::BRC_DASHBOARD_ROLE_CODES, true)
+            ? 'tan90.brc.dashboard'
+            : 'tan90.master-data.dashboard';
     }
 }

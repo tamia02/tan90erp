@@ -14,6 +14,8 @@
             <h2 class="font-bold">Create Customer Order</h2>
             <div class="access-grid">
                 <input class="access-input" name="customer_name" placeholder="Customer name" required>
+                <select class="access-input" name="site_id" id="order-site-select" required><option value="">Fulfilment site</option>@foreach($locations as $location)<option value="{{ $location->id }}">{{ $location->name }}</option>@endforeach</select>
+                <select class="access-input" name="fg_warehouse_id" id="order-fg-warehouse-select" required><option value="">FG warehouse</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}" data-site="{{ $warehouse->tan90_location_id }}">{{ $warehouse->code }} · {{ $warehouse->name }}</option>@endforeach</select>
                 <input class="access-input" name="destination" placeholder="Destination">
                 <select class="access-input" name="temperature_requirement">
                     <option value="">Temperature requirement</option>
@@ -24,8 +26,10 @@
                 <input class="access-input" name="min_shelf_life_days" type="number" min="0" placeholder="Min shelf life (days)">
                 <input class="access-input" name="requested_date" type="date">
             </div>
+            @if($warehouses->isEmpty())<p class="text-sm text-amber-800">No active Finished Goods warehouse is configured for your site. Ask an administrator to confirm the site warehouse setup before creating an order.</p>@endif
             <button class="access-btn access-btn-primary">Create Order</button>
         </form>
+        <script>document.querySelector('[name="site_id"]')?.addEventListener('change', e => { const site=e.target.value; document.querySelectorAll('[name="fg_warehouse_id"] option[data-site]').forEach(o => {o.hidden=o.dataset.site!==site;}); document.querySelector('[name="fg_warehouse_id"]').value=''; });</script>
 
         <div class="access-card p-5">
             <h2 class="font-bold mb-3">Orders</h2>
@@ -50,4 +54,13 @@
             {{ $orders->links() }}
         </div>
     </div>
+    <script>
+        document.getElementById('order-site-select')?.addEventListener('change', function (event) {
+            var select = document.getElementById('order-fg-warehouse-select');
+            select.value = '';
+            select.querySelectorAll('option[data-site]').forEach(function (option) {
+                option.hidden = option.dataset.site !== event.target.value;
+            });
+        });
+    </script>
 </x-app-layout>

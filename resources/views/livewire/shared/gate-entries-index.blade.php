@@ -2,6 +2,7 @@
 
 use App\Enums\Role;
 use App\Models\GateEntry;
+use App\Support\VendorIdentity;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Volt\Component;
@@ -29,16 +30,16 @@ new #[Layout('layouts.app')] class extends Component
         return GateEntry::query()
             // Same ownership boundary as shared.gate-entry-detail and
             // shared.activity-detail: a vendor only ever sees their own.
-            ->when($user->role === Role::Vendor, fn ($query) => $query->where('vendor_name', $user->name))
-            ->when($this->search !== '', function ($query) {
+            ->when($user->role === Role::Vendor, fn ($query) => VendorIdentity::apply($query, $user))
+            ->when($this->search !== '', function ($query) use ($user) {
                 $term = '%'.$this->search.'%';
-                $query->where(function ($query) use ($term) {
+                $query->where(function ($query) use ($term, $user) {
                     $query->where('gate_no', 'like', $term)
                         ->orWhere('vendor_name', 'like', $term)
                         ->orWhere('driver_name', 'like', $term)
                         ->orWhere('vehicle_number', 'like', $term)
                         ->orWhere('invoice_number', 'like', $term)
-                        ->orWhere('po_number', 'like', $term);
+                        ->when($user->role !== Role::Guard, fn ($nested) => $nested->orWhere('po_number', 'like', $term));
                 });
             })
             ->when($this->status !== '', fn ($query) => $query->where('status', $this->status));
@@ -50,6 +51,19 @@ new #[Layout('layouts.app')] class extends Component
             'entries' => $this->searchQuery()->orderByDesc('created_at')->limit(200)->get(),
             'suggestions' => $this->search !== '' ? $this->searchQuery()->orderByDesc('created_at')->limit(6)->get() : collect(),
         ];
+    }
+
+    private function maskedPoNumber(?string $poNumber): string
+    {
+        $reference = preg_replace('/\s+/', '', trim((string) $poNumber));
+        if ($reference === '') {
+            return '—';
+        }
+
+        preg_match_all('/\d/', $reference, $matches);
+        $lastVisible = $matches[0] ? end($matches[0]) : substr($reference, -1);
+
+        return str_repeat('*', max(strlen($reference) - 1, 1)).$lastVisible;
     }
 }; ?>
 
@@ -100,12 +114,13 @@ new #[Layout('layouts.app')] class extends Component
         @forelse ($entries as $entry)
             <a href="{{ route('gate-entries.show', $entry) }}" wire:navigate class="block rounded-lg border p-4 hover:opacity-80" style="background: var(--surface-3); border-color: var(--border);">
                 <div class="flex items-center justify-between flex-wrap gap-2">
-                    <span class="text-sm font-medium" style="color: var(--text-primary);">{{ $entry->gate_no }} <span class="text-xs" style="color: var(--text-muted); font-weight: normal; margin-left: 4px;">&bull; Type: {{ ucfirst($entry->entry_type) }}</span></span>
+                            <span class="text-sm font-medium" style="color: var(--text-primary);">{{ $entry->gate_no }} <span class="text-xs" style="color: var(--text-muted); font-weight: normal; margin-left: 4px;">&bull; Type: {{ ucfirst($entry->entry_type) }}</span></span>
                     <span class="text-xs font-medium" style="color: var(--text-muted);">{{ \App\Support\GateStatusLabels::label($entry->status) }}</span>
                 </div>
                 <div class="text-xs mt-1" style="color: var(--text-secondary);">
                     {{ $entry->vendor_name ?? $entry->vehicle_number }} · {{ $entry->material ?? 'No material set' }} · {{ $entry->invoice_qty ?? '—' }} qty
                 </div>
+                <div class="text-xs mt-2" style="color: var(--text-secondary);">PO reference: <span class="font-semibold" style="color: var(--text-primary);">{{ auth()->user()->role === \App\Enums\Role::Guard ? $this->maskedPoNumber($entry->po_number) : ($entry->po_number ?: '—') }}</span></div>
                 <div class="text-xs mt-2" style="color: var(--text-muted);">
                     {{ $entry->vehicle_number }} · {{ $entry->driver_name }} · {{ $entry->created_at->format('d M Y, H:i') }}
                 </div>

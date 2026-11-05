@@ -16,6 +16,7 @@
                     <div class="border rounded p-3" style="border-color:#dfe7e2">
                         <strong>{{ $shipment->shipment_number }}</strong>
                         @foreach ($shipment->handlingUnits->pluck('order')->unique('id') as $order)
+                            @if($shipment->deliveries->contains('customer_order_id', $order->id)) @continue @endif
                             <form method="post" action="{{ route('flow.deliveries.store', $shipment) }}" class="mt-2 space-y-2">
                                 @csrf
                                 <input type="hidden" name="customer_order_id" value="{{ $order->id }}">
@@ -34,6 +35,7 @@
                     <p class="access-muted text-sm">No shipments in transit.</p>
                 @endforelse
             </div>
+            {{ $inTransitShipments->links() }}
         </div>
 
         <div class="access-card p-5">

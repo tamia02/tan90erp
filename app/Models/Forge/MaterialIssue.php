@@ -12,7 +12,7 @@ class MaterialIssue extends Model
 
     protected $fillable = [
         'work_order_id', 'item_code', 'item_name', 'lot_number', 'qty', 'uom',
-        'movement_type', 'posted_by', 'posted_at',
+        'movement_type', 'posted_by', 'posted_at', 'inventory_item_id', 'inventory_movement_id', 'material_request_line_id',
     ];
 
     protected function casts(): array

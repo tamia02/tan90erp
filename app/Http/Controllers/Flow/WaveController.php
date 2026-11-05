@@ -8,6 +8,7 @@ use App\Models\Flow\PickingWave;
 use App\Models\Flow\PickTask;
 use App\Services\Access\AccessControlService;
 use App\Services\Flow\FulfillmentService;
+use App\Support\SiteLocation;
 use Illuminate\Http\Request;
 
 class WaveController extends Controller
@@ -24,7 +25,8 @@ class WaveController extends Controller
         return view('flow.waves.index', [
             'waves' => PickingWave::with('pickTasks.allocation.orderLine.finishedGood', 'pickTasks.allocation.orderLine.order')->latest()->paginate(20),
             'reservedAllocations' => Allocation::with('orderLine.finishedGood', 'orderLine.order')->where('status', 'reserved')
-                ->whereDoesntHave('pickTask')->get(),
+                ->whereDoesntHave('pickTask')
+                ->when(SiteLocation::forUser($request->user()), fn ($q, $site) => $q->whereHas('orderLine.order', fn ($o) => $o->where('site_id', $site)))->get(),
         ]);
     }
 

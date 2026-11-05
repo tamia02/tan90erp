@@ -41,7 +41,7 @@ class PurchaseOrderObserver
         }
 
         // CRM stays the PO sync until Zoho Inventory is active.
-        if (! config('services.zoho.write_enabled', true)) {
+        if (! config('services.zoho.write_enabled', true) || ! app(ZohoService::class)->isConfigured()) {
             return;
         }
 

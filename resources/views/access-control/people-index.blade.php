@@ -3,7 +3,7 @@
     <div class="access-shell max-w-7xl mx-auto space-y-5">
         <div class="access-top p-5 flex items-center justify-between gap-4">
             <div><div class="text-sm access-muted">Access Control / People</div><h1 class="text-2xl font-bold">Manage Users</h1></div>
-            <a href="{{ route('access.people.create') }}" class="access-btn access-btn-primary">Add User</a>
+            <a href="{{ route('admin.users') }}" class="access-btn access-btn-primary">Open Users</a>
         </div>
         @if(session('status'))<div class="access-card p-3 text-sm">{{ session('status') }}</div>@endif
         <form class="access-card p-4 grid md:grid-cols-5 gap-3">
@@ -20,8 +20,8 @@
                         <div><h2 class="font-bold">{{ $person->name }}</h2><div class="access-muted text-sm">{{ $person->email }} @if($person->phone) / {{ $person->phone }} @endif</div></div>
                     </div>
                     <div class="flex flex-wrap gap-2">@forelse($person->accessRoles as $role)<span class="access-chip">{{ $role->label }}</span>@empty<span class="access-muted text-sm">No new access assignment</span>@endforelse</div>
-                    <div class="text-sm access-muted">Status: {{ $person->is_active ? 'Active' : 'Inactive' }}. Legacy role: {{ $person->role?->label() ?? 'None' }}</div>
-                    <a class="access-btn" href="{{ route('access.people.show', $person) }}">View access</a>
+                    <div class="text-sm access-muted">Status: {{ $person->is_active ? 'Active' : 'Inactive' }}. Job roles: {{ $person->role ? collect([$person->role->label().' (main)', ...array_map(fn ($role) => $role->label(), $person->extraRoles())])->join(', ') : 'None' }}</div>
+                    <a class="access-btn" href="{{ route('access.people.show', $person) }}">View / edit roles</a>
                     @if($canManageUser($person))
                         <form method="post" action="{{ route('access.people.assign-role',$person) }}" class="flex gap-2">
                             @csrf

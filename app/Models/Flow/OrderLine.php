@@ -13,7 +13,7 @@ class OrderLine extends Model
 
     protected $fillable = [
         'customer_order_id', 'finished_good_id', 'qty_ordered', 'qty_allocated',
-        'qty_picked', 'qty_packed', 'uom',
+        'qty_picked', 'qty_packed', 'uom', 'inventory_fg_item_id',
     ];
 
     public function order(): BelongsTo

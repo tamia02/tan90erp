@@ -16,14 +16,14 @@ new #[Layout('layouts.app')] class extends Component
         $activity = CombinedActivityFeed::forUser(auth()->user(), self::ACTIVITY_KEYWORDS);
 
         return [
-            'awaiting' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->count(),
+            'awaiting' => GateEntry::where('status', 'pending_validation')->where('entry_type', 'inward')->count(),
             'onDock' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'inward')->count(),
             'allotted' => GateEntry::where('status', 'allotted')->where('entry_type', 'inward')->count(),
             'inProgress' => GateEntry::where('status', 'unloading')->where('entry_type', 'inward')->count(),
             'readyForQc' => GateEntry::where('status', 'grn')->where('entry_type', 'inward')->count(),
-            'queue' => GateEntry::where('status', 'validated')->where('entry_type', 'inward')->orderBy('created_at')->limit(5)->get(),
+            'queue' => GateEntry::where('status', 'pending_validation')->where('entry_type', 'inward')->orderByDesc('created_at')->limit(5)->get(),
             'outwardReady' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'outward')->count(),
-            'outwardQueue' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'outward')->orderBy('dock_assigned_at')->limit(5)->get(),
+            'outwardQueue' => GateEntry::where('status', 'dock_assigned')->where('entry_type', 'outward')->orderByDesc('dock_assigned_at')->limit(5)->get(),
             'activityTotal' => $activity->count(),
             'recentActivity' => $this->showAllActivity ? $activity : $activity->take(5),
         ];
@@ -34,13 +34,18 @@ new #[Layout('layouts.app')] class extends Component
     <section class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
         <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Store Executive Module</div>
         <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Dashboard</h1>
-        <p class="text-sm mt-1" style="color: var(--text-secondary);">Vehicles cleared by Guard and waiting to be unloaded.</p>
+        <p class="text-sm mt-1" style="color: var(--text-secondary);">Follow inward unloading and outward loading from one work area. Each count shows the next handoff clearly.</p>
+        <div class="flex flex-wrap gap-2 mt-4">
+            <a href="{{ route('unloading.desk') }}#inward-unloading" class="rounded-lg px-3.5 py-2 text-sm font-semibold text-white" style="background: var(--brand);">Open inward unloading</a>
+            <a href="{{ route('unloading.desk') }}#outward-loading" class="rounded-lg px-3.5 py-2 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Open outward loading</a>
+            <a href="{{ route('unloading.outward') }}" wire:navigate class="rounded-lg px-3.5 py-2 text-sm font-semibold border" style="border-color: var(--border); color: var(--text-primary);">Dispatch queue</a>
+        </div>
     </section>
 
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--border);">
             <x-icon name="calendar-clock" class="w-5 h-5 mb-2 text-[var(--text-muted)]" />
-            <div class="text-xs" style="color: var(--text-muted);">Awaiting Dock</div>
+            <div class="text-xs" style="color: var(--text-muted);">Awaiting manager approval</div>
             <div class="text-2xl font-bold mt-1" style="color: var(--text-primary);">{{ $awaiting }}</div>
         </div>
         <div class="rounded-2xl border p-4" style="background: var(--surface-3); border-color: var(--border);">
@@ -67,23 +72,20 @@ new #[Layout('layouts.app')] class extends Component
 
     <div class="rounded-2xl border p-5" style="background: var(--surface-3); border-color: var(--border);">
         <div class="flex items-center justify-between mb-3">
-            <h2 class="font-semibold text-sm" style="color: var(--text-primary);">Cleared vehicles awaiting a loading dock</h2>
-            @if ($awaiting > $queue->count())
-                <a href="{{ route('unloading.loading-desk') }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">View all {{ $awaiting }} →</a>
-            @endif
+            <h2 class="font-semibold text-sm" style="color: var(--text-primary);">Inward entries awaiting Store Manager approval and dock</h2>
         </div>
         @if ($queue->isEmpty())
             <p class="text-sm py-4" style="color: var(--text-muted);">Nothing waiting — cleared vehicles will show up here.</p>
         @else
             <div class="flex flex-col divide-y" style="border-color: var(--border);">
                 @foreach ($queue as $g)
-                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
+                    <div class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                         <div>
-                            <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
+                            <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="text-sm font-medium hover:opacity-80" style="color: var(--text-primary);">{{ $g->gate_no }}</a>
                             <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name ?? $g->vehicle_number }} · {{ $g->material }}</div>
                         </div>
-                        <span class="text-xs font-medium shrink-0" style="color: var(--brand);">View →</span>
-                    </a>
+                        <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="text-xs font-semibold shrink-0" style="color: var(--brand);">View entry →</a>
+                    </div>
                 @endforeach
             </div>
         @endif
@@ -93,7 +95,7 @@ new #[Layout('layouts.app')] class extends Component
         <div class="flex items-center justify-between mb-3">
             <h2 class="font-semibold text-sm" style="color: var(--text-primary);">Outward dispatches ready to load</h2>
             @if ($outwardReady > $outwardQueue->count())
-                <a href="{{ route('unloading.outward') }}" wire:navigate class="text-xs font-medium" style="color: var(--brand);">View all {{ $outwardReady }} →</a>
+                <a href="{{ route('unloading.desk') }}#outward-loading" class="text-xs font-medium" style="color: var(--brand);">View all {{ $outwardReady }} →</a>
             @endif
         </div>
         @if ($outwardQueue->isEmpty())
@@ -101,13 +103,13 @@ new #[Layout('layouts.app')] class extends Component
         @else
             <div class="flex flex-col divide-y" style="border-color: var(--border);">
                 @foreach ($outwardQueue as $g)
-                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
+                    <div class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                         <div>
-                            <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
+                            <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="text-sm font-medium hover:opacity-80" style="color: var(--text-primary);">{{ $g->gate_no }}</a>
                             <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->vendor_name }} · {{ $g->material }} · {{ $g->loading_dock }}</div>
                         </div>
-                        <span class="text-xs font-medium shrink-0" style="color: var(--brand);">View →</span>
-                    </a>
+                        <a href="{{ route('unloading.desk') }}#outward-loading" class="text-xs font-semibold shrink-0" style="color: var(--brand);">Open outward loading →</a>
+                    </div>
                 @endforeach
             </div>
         @endif

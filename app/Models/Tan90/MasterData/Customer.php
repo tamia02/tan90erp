@@ -16,8 +16,16 @@ class Customer extends Model
         'credit_limit', 'payment_terms', 'sales_owner', 'status', 'approval_status',
     ];
 
+    protected $casts = ['zoho_address_checked_at' => 'datetime'];
+
     public static function criticalFields(): array
     {
         return ['gstin', 'credit_limit'];
+    }
+
+    // Pickers (PO delivery, Outward Shipment) list only customers with an address.
+    public function scopeWithAddress($query)
+    {
+        return $query->whereNotNull('city')->where('city', '!=', '');
     }
 }

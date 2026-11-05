@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'access' => \App\Http\Middleware\EnsureAdvancedAccess::class,
             'role' => \App\Http\Middleware\EnsureRole::class,
+            'demo-logins' => \App\Http\Middleware\EnsureDemoLoginsEnabled::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [

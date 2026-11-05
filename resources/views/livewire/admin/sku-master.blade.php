@@ -23,7 +23,6 @@ new #[Layout('layouts.app')] class extends Component
     public string $description = '';
 
     public array $categories = ['PCM — Raw Material', 'PCM — Trial', 'Packaging & Structural', 'Safety & PPE', 'Equipment & Rental', 'Consumable', 'Other'];
-    public array $units = ['KG', 'LTR', 'MT', 'NOS', 'BOX'];
 
     public function addSku(): void
     {
@@ -54,13 +53,15 @@ new #[Layout('layouts.app')] class extends Component
     public function deleteSku(int $id): void
     {
         $entry = SkuMaster::findOrFail($id);
+        // Zoho is the source of truth: a Zoho item would only come back on the next sync.
+        abort_if($entry->zoho_item_id, 403, 'This item is managed in Zoho. Mark it inactive in Zoho instead.');
         AuditLogger::log('SKU removed from master', $entry->sku);
         $entry->delete();
     }
 
     public function with(): array
     {
-        return ['skus' => SkuMaster::orderByDesc('created_at')->get()];
+        return ['skus' => SkuMaster::orderByDesc('created_at')->get(), 'units' => \App\Support\Units::options()];
     }
 }; ?>
 
@@ -69,8 +70,8 @@ new #[Layout('layouts.app')] class extends Component
         <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
                 <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Admin Module</div>
-                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">SKU Master</h1>
-                <p class="text-sm mt-1" style="color: var(--text-secondary);">Every product, matching the client's Zoho CRM Products module — Guard Bill Scan checks mapped status against this list.</p>
+                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Items</h1>
+                <p class="text-sm mt-1" style="color: var(--text-secondary);">Items are managed in <b>Zoho Inventory</b> (the source of truth) and sync here automatically - create or edit them in Zoho. Guard Bill Scan checks mapped status against this list.</p>
             </div>
             <button wire:click="$toggle('adding')" class="inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
                 {{ $adding ? 'Cancel' : 'Add SKU' }}
@@ -142,6 +143,7 @@ new #[Layout('layouts.app')] class extends Component
                         <th class="px-2 py-2.5"></th>
                         <th class="px-4 py-2.5 font-medium">Product Name</th>
                         <th class="px-4 py-2.5 font-medium">Product Code</th>
+                        <th class="px-4 py-2.5 font-medium">Category</th>
                         <th class="px-4 py-2.5 font-medium">Mapped</th>
                         <th class="px-4 py-2.5 font-medium"></th>
                     </tr>
@@ -154,15 +156,16 @@ new #[Layout('layouts.app')] class extends Component
                             </td>
                             <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $s->sku }}</td>
                             <td class="px-4 py-2.5 text-xs font-mono" style="color: var(--text-secondary);">{{ $s->product_code ?? '—' }}</td>
+                            <td class="px-4 py-2.5 text-xs" style="color: var(--text-secondary);">{{ $s->category ?: '—' }}</td>
                             <td class="px-4 py-2.5">{{ $s->mapped ? 'Yes' : 'No' }}</td>
                             <td class="px-4 py-2.5 text-right">
-                                <button wire:click="deleteSku({{ $s->id }})" wire:confirm="Remove {{ $s->sku }}?" style="color: var(--status-critical);">Remove</button>
+                                @if ($s->zoho_item_id)<span class="text-xs font-semibold" style="color: var(--brand);" title="Managed in Zoho">Zoho</span>@else<button wire:click="deleteSku({{ $s->id }})" wire:confirm="Remove {{ $s->sku }}?" style="color: var(--status-critical);">Remove</button>@endif
                             </td>
                         </tr>
                         @if ($expanded === $s->id)
                             <tr style="background: var(--surface-2);">
                                 <td></td>
-                                <td colspan="4" class="px-4 py-3">
+                                <td colspan="5" class="px-4 py-3">
                                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Category</div><div style="color: var(--text-primary);">{{ $s->category }}</div></div>
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Vendor</div><div style="color: var(--text-primary);">{{ $s->vendor_name ?? '—' }}</div></div>
@@ -178,7 +181,7 @@ new #[Layout('layouts.app')] class extends Component
                             </tr>
                         @endif
                     @empty
-                        <tr><td colspan="5" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No SKUs mapped yet.</td></tr>
+                        <tr><td colspan="6" class="px-4 py-10 text-center text-sm" style="color: var(--text-muted);">No SKUs mapped yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

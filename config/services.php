@@ -47,6 +47,9 @@ return [
         'field_product_details' => env('ZOHO_FIELD_PRODUCT_DETAILS', 'Purchase_Items'),
         'webhook_secret' => env('ZOHO_WEBHOOK_SECRET'),
         'sync_minutes' => env('ZOHO_SYNC_MINUTES', 30),
+        // Staging shares the client's Zoho organization, so its scheduler is
+        // opt-in even after credentials are installed.
+        'staging_sync_enabled' => env('ZOHO_STAGING_SYNC_ENABLED', false),
         'write_enabled' => env('ZOHO_WRITE_ENABLED', true),
         'create_enabled' => env('ZOHO_CREATE_ENABLED', false),
         'write_vendor_name' => env('ZOHO_WRITE_VENDOR_NAME', false),
@@ -65,6 +68,20 @@ return [
             'client_secret' => env('ZOHO_INVENTORY_CLIENT_SECRET', env('ZOHO_CLIENT_SECRET')),
             'api_base_url' => env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1'),
             'write_enabled' => env('ZOHO_INVENTORY_WRITE_ENABLED', true),
+
+            // 'zoho' = Zoho is the source of truth for Items: the ERP never
+            // creates or updates items in Zoho (it pulls them instead) and a PO
+            // line must match an existing Zoho item. 'erp' = legacy behaviour.
+            'items_master' => env('ZOHO_ITEMS_MASTER', 'erp'),
+
+            // Moment the ERP was switched to this Zoho organization: records
+            // created earlier (old tests, data pulled from a previous org) are
+            // never pushed. e.g. ZOHO_PUSH_CUTOVER_AT="2026-10-08 18:00:00"
+            'push_cutover_at' => env('ZOHO_PUSH_CUTOVER_AT'),
+
+            // true = data only comes FROM Zoho; nothing is ever written to Zoho
+            // (blocked in every push method and again at the HTTP layer).
+            'read_only' => env('ZOHO_READ_ONLY', false),
 
             // Master kill switch. Set false to make every Zoho Inventory call a
             // no-op without removing credentials — the fastest way to stop a
@@ -130,6 +147,24 @@ return [
         'redirect_uri' => env('CLAUDE_REDIRECT_URI', 'http://localhost:8000/oauth/claude/callback'),
         'api_key' => env('CLAUDE_API_KEY'),
         'api_url' => env('CLAUDE_API_URL', 'https://api.anthropic.com/v1'),
+    ],
+
+    // Zoho -> ERP item pull (Zoho is the source of truth for Items). READ-ONLY:
+    // only GET calls. Uses the ZOHO_DISCOVERY_* key when present (the client's
+    // real org, kept apart from the push integration), else the Inventory key.
+    'zoho_items_pull' => [
+        'sales_schedule_enabled' => env('ZOHO_SALES_PULL_ENABLED', false),
+        'organization_id' => env('ZOHO_DISCOVERY_ORGANIZATION_ID', env('ZOHO_INVENTORY_ORGANIZATION_ID')),
+        'refresh_token' => env('ZOHO_DISCOVERY_REFRESH_TOKEN', env('ZOHO_INVENTORY_REFRESH_TOKEN')),
+        'client_id' => env('ZOHO_DISCOVERY_CLIENT_ID', env('ZOHO_INVENTORY_CLIENT_ID', env('ZOHO_CLIENT_ID'))),
+        'client_secret' => env('ZOHO_DISCOVERY_CLIENT_SECRET', env('ZOHO_INVENTORY_CLIENT_SECRET', env('ZOHO_CLIENT_SECRET'))),
+        'accounts_url' => env('ZOHO_ACCOUNTS_BASE_URL', 'https://accounts.zoho.in'),
+        'api_base_url' => env('ZOHO_DISCOVERY_API_BASE_URL', env('ZOHO_INVENTORY_API_BASE_URL', 'https://www.zohoapis.in/inventory/v1')),
+        // Off until approved: when true the item pull runs hourly.
+        'schedule_enabled' => env('ZOHO_ITEMS_PULL_ENABLED', false),
+        // Vendor / customer addresses from Zoho (on PO pick + nightly). Off until
+        // the client has checked the Zoho contact data.
+        'address_pull_enabled' => env('ZOHO_ADDRESS_PULL_ENABLED', false),
     ],
 
 ];

@@ -15,6 +15,25 @@
       </div>
     @endif
 
+    @if ($entity === 'roles')
+      <section class="rounded-xl border p-4 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3" style="background: var(--surface-3); border-color: var(--border);">
+        <div>
+          <h3 class="font-semibold text-sm" style="color: var(--text-primary);">Assign or remove application modules</h3>
+          <p class="text-sm mt-1" style="color: var(--text-secondary);">
+            This page manages the Master Data role record. Application module access is configured separately in Access Control Roles.
+            @if ($mode === 'create') Create this record first, then choose or create the app role whose permissions you want to manage. @endif
+          </p>
+        </div>
+        @if (app(\App\Services\Access\AccessControlService::class)->can(auth()->user(), 'access.roles.manage'))
+          <a href="{{ route('access.roles.index') }}" class="inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white shrink-0" style="background: var(--brand);">
+            Open Access Control Roles <span aria-hidden="true" class="ml-2">→</span>
+          </a>
+        @else
+          <span class="text-xs shrink-0" style="color: var(--text-muted);">Ask a Super Admin or authorized role manager to manage application module access.</span>
+        @endif
+      </section>
+    @endif
+
     <div class="rounded-lg border p-4" style="background: var(--surface-3); border-color: var(--border);">
       <form method="POST" action="{{ $mode === 'edit' ? route('tan90.master-data.update', [$entity, $record->id]) : route('tan90.master-data.store', $entity) }}">
         @csrf
@@ -34,6 +53,9 @@
 
               @if ($field['type'] === 'textarea')
                 <textarea name="{{ $field['name'] }}" rows="3" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" @if($isRequired) required @endif>{{ $value }}</textarea>
+              @elseif ($field['type'] === 'checkbox')
+                <input type="hidden" name="{{ $field['name'] }}" value="0">
+                <input type="checkbox" name="{{ $field['name'] }}" value="1" @checked((bool) $value) class="rounded border" @if($isRequired) required @endif>
               @elseif ($field['type'] === 'select')
                 <select name="{{ $field['name'] }}" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" @if($isRequired) required @endif>
                   <option value="">Select {{ $field['label'] }}</option>
@@ -48,6 +70,18 @@
               @error($field['name'])<span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span>@enderror
             </label>
           @endforeach
+
+          {{-- Fields the team added themselves (Master Data > Custom Fields) --}}
+          @foreach ($customFields ?? [] as $customField)
+            <label class="flex flex-col gap-1.5 text-sm {{ $customField->input_type === 'long_text' ? 'sm:col-span-2' : '' }}">
+              <span class="font-medium" style="color: var(--text-primary);">{{ $customField->label }}{{ $customField->required ? '' : ' (Optional)' }}</span>
+              @include('partials.custom-field-input', ['field' => $customField, 'name' => 'custom['.$customField->field_key.']', 'value' => old('custom.'.$customField->field_key, $customValues[$customField->field_key] ?? null)])
+              @error('custom.'.$customField->field_key)<span class="text-xs" style="color: var(--status-critical);">{{ $message }}</span>@enderror
+            </label>
+          @endforeach
+          @if (\App\Support\CustomFields::canManage(auth()->user()))
+            <div class="sm:col-span-2 text-xs" style="color: var(--text-muted);">Need another field here? <a href="{{ route('custom-fields.index', ['table' => \App\Support\CustomFields::masterEntity($entity)]) }}" class="underline" style="color: var(--brand);">Add it in Custom Fields</a>.</div>
+          @endif
 
           @if ($mode === 'edit')
             <label class="flex flex-col gap-1.5 text-sm sm:col-span-2">

@@ -10,7 +10,7 @@ class Batch extends Model
 {
     protected $table = 'forge_batches';
 
-    protected $fillable = ['work_order_id', 'batch_number', 'qty', 'uom', 'status', 'shelf_life_date', 'released_at'];
+    protected $fillable = ['work_order_id', 'batch_number', 'qty', 'uom', 'status', 'shelf_life_date', 'released_at', 'inventory_movement_id'];
 
     protected function casts(): array
     {

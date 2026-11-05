@@ -17,6 +17,8 @@ class InventoryLot extends Model
         'finished_good_id', 'forge_batch_id', 'lot_number', 'warehouse', 'zone', 'bin',
         'qty_received', 'qty_available', 'qty_allocated', 'qty_picked', 'uom',
         'quality_status', 'expiry_date', 'status', 'received_by', 'received_at',
+        'inventory_item_id', 'location_id', 'warehouse_id', 'bin_id',
+        'putaway_started_at', 'putaway_ended_at', 'putaway_manpower', 'putaway_by',
     ];
 
     protected function casts(): array
@@ -24,6 +26,8 @@ class InventoryLot extends Model
         return [
             'expiry_date' => 'date',
             'received_at' => 'datetime',
+            'putaway_started_at' => 'datetime',
+            'putaway_ended_at' => 'datetime',
         ];
     }
 

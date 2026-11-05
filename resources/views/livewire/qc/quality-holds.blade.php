@@ -9,7 +9,7 @@ new #[Layout('layouts.app')] class extends Component
     public function with(): array
     {
         return [
-            'holds' => QcResult::with('gateEntry')
+            'holds' => QcResult::with(['gateEntry', 'evidenceImageRecords'])
                 ->where(fn ($q) => $q->where('qc_hold_qty', '>', 0)->orWhere('defective_qty', '>', 0)->orWhere('rejected_qty', '>', 0))
                 ->orderByDesc('created_at')
                 ->get(),
@@ -46,6 +46,13 @@ new #[Layout('layouts.app')] class extends Component
                 </a>
                 @if ($r->hold_document_path)
                     <a href="{{ route('qc.hold-document', $r) }}" class="text-xs font-medium mt-1 inline-block" style="color: var(--brand);">View attached document →</a>
+                @endif
+                @if ($r->evidenceImageRecords->isNotEmpty())
+                    <div class="mt-3 flex flex-wrap gap-2" aria-label="QC line evidence images">
+                        @foreach ($r->evidenceImageRecords as $image)
+                            <a href="{{ route('qc.evidence-image', $image) }}" class="rounded-lg border px-3 py-2 text-xs font-medium" style="border-color: var(--border); color: var(--brand);">{{ $image->image_type }} {{ $loop->iteration }} · view</a>
+                        @endforeach
+                    </div>
                 @endif
             </div>
         @empty

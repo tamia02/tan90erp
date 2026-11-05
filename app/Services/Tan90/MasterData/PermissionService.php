@@ -2,6 +2,7 @@
 
 namespace App\Services\Tan90\MasterData;
 
+use App\Enums\Role;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -19,6 +20,16 @@ class PermissionService
 {
     public function can(?User $user, string $permissionKey): bool
     {
+        // The legacy Administrator account predates the Tan90 role matrix,
+        // but it is still the application's master-data owner. Without this
+        // bridge the Admin could open the control center yet received a 403
+        // on every entity list/create/edit route. Keep the grant limited to
+        // the generic master-data capabilities used by this module; all other
+        // application permissions remain on their existing access controls.
+        if ($user?->isAdmin() && in_array($permissionKey, ['view', 'create', 'edit', 'delete', 'approve', 'export', 'settings'], true)) {
+            return true;
+        }
+
         $role = $user?->tan90Profile?->role;
 
         return (bool) $role?->can($permissionKey);
@@ -31,7 +42,7 @@ class PermissionService
 
     public function isSuperAdmin(?User $user): bool
     {
-        return $user?->tan90Profile?->role?->code === 'ROLE-SUPER';
+        return $user?->isAdmin() ?? false;
     }
 
     /**

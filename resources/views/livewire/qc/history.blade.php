@@ -11,7 +11,7 @@ new #[Layout('layouts.app')] class extends Component
     {
         return [
             'results' => QcResult::with('gateEntry')->orderByDesc('created_at')->get(),
-            'entries' => LedgerEntry::orderByDesc('created_at')->limit(20)->get(),
+            'entries' => LedgerEntry::with('gateEntry')->orderByDesc('created_at')->limit(20)->get(),
         ];
     }
 }; ?>

@@ -25,12 +25,14 @@ class Tan90HouseRolesSeeder extends Seeder
     public function run(): void
     {
         foreach (GrnRole::cases() as $role) {
+            $code = $role === GrnRole::Admin ? 'ROLE-SUPER' : $role->value;
+
             Role::updateOrCreate(
-                ['code' => $role->value],
+                ['code' => $code],
                 [
                     'name' => $role->label(),
                     'type' => $role === GrnRole::Admin ? 'System' : 'Operational',
-                    'data_scope' => 'Inward to GRN Control Tower',
+                    'data_scope' => $role === GrnRole::Admin ? 'All Entities' : 'Inward to GRN Control Tower',
                     'status' => 'active',
                 ]
             );

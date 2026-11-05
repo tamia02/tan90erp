@@ -5,6 +5,8 @@ namespace App\Services\Tan90\MasterData;
 use App\Models\Tan90\MasterData\NotificationTemplate;
 use App\Models\Tan90\MasterData\Role;
 use App\Models\Tan90\MasterData\UserProfile;
+use App\Models\User;
+use App\Support\DeploymentIdentity;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
@@ -67,13 +69,27 @@ class NotificationDispatcher
     /** @param  string[]  $emails */
     private function dispatch(string $templateCode, array $context, array $emails): int
     {
+        if (! config('notifications.operational_email_enabled', false)) {
+            return 0;
+        }
+
         $template = NotificationTemplate::where('code', $templateCode)->where('status', 'active')->first();
         if (! $template || ! $emails) {
             return 0;
         }
 
+        $emails = User::query()->whereIn('email', $emails)->get(['email', 'preferences'])
+            ->filter(fn (User $user) => data_get($user->preferences, 'email_notifications', true) !== false)
+            ->pluck('email')->unique()->all();
+        if (! $emails) {
+            return 0;
+        }
+
         $subject = $template->renderSubject($context);
         $body = $context['summary'] ?? 'A master data record requires your review in the Tan90 Approval Queue.';
+        if (DeploymentIdentity::isStaging()) {
+            $body = "STAGING · https://stage.tan90.xyz\n\n".$body;
+        }
 
         $sent = 0;
         foreach (array_unique($emails) as $email) {
@@ -89,7 +105,7 @@ class NotificationDispatcher
     {
         try {
             Mail::raw($body, function ($message) use ($email, $subject) {
-                $message->to($email)->subject($subject);
+                $message->to($email)->subject(DeploymentIdentity::mailSubject($subject));
             });
 
             return true;

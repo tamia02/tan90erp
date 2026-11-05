@@ -5,6 +5,7 @@ use App\Models\Tan90\MasterData\BusinessUnit;
 use App\Models\Tan90\MasterData\ItemCategory;
 use App\Models\Tan90\MasterData\LegalEntity;
 use App\Models\Tan90\MasterData\Location;
+use App\Models\Tan90\MasterData\PackagingType;
 use App\Models\Tan90\MasterData\Plant;
 use App\Models\Tan90\MasterData\Rack;
 use App\Models\Tan90\MasterData\Role;
@@ -36,15 +37,35 @@ use App\Models\Tan90\MasterData\WarehouseZone;
 return [
 
     'nav_groups' => [
-        'Organization' => ['legal-entities', 'business-units', 'plants', 'locations', 'location-gst-registrations', 'warehouses'],
+        'Organization' => ['legal-entities', 'business-units', 'locations', 'location-gst-registrations'],
         'Warehouse Configuration' => ['warehouse-zones', 'racks', 'shelves', 'bins'],
-        'Products & Quality' => ['item-categories', 'items', 'item-uom-conversions', 'uoms', 'hsn-taxes', 'temperature-classes', 'quality-parameters'],
+        'Products & Quality' => ['item-categories', 'items', 'item-uom-conversions', 'uoms', 'hsn-taxes', 'temperature-classes', 'quality-parameters', 'packaging-types'],
         'Business Partners' => ['vendors', 'vendor-contacts', 'customers', 'transporters'],
         'Assets & Control' => ['machines', 'approval-workflows', 'approval-workflow-steps'],
         'Access & Configuration' => ['users', 'roles', 'number-series', 'sla-policies', 'document-rules', 'notification-templates', 'integration-connections'],
     ],
 
     'entities' => [
+
+        'packaging-types' => [
+            'model' => PackagingType::class,
+            'title' => 'Packaging Types',
+            'singular' => 'Packaging Type',
+            'eyebrow' => 'Outward Shipment Configuration',
+            'description' => 'Manage packaging choices used on outward shipment lines.',
+            'icon' => 'PK',
+            'primary' => 'name',
+            'code' => 'code',
+            'columns' => ['code', 'name', 'requires_box_size', 'approval_status', 'status'],
+            'searchable' => ['code', 'name'],
+            'critical_fields' => [],
+            'no_approval' => true,
+            'fields' => [
+                ['name' => 'code', 'label' => 'Packaging Code', 'type' => 'text', 'required' => true],
+                ['name' => 'name', 'label' => 'Packaging Type', 'type' => 'text', 'required' => true],
+                ['name' => 'requires_box_size', 'label' => 'Require box size selection', 'type' => 'checkbox', 'required' => false],
+            ],
+        ],
 
         'legal-entities' => [
             'model' => LegalEntity::class,
@@ -96,8 +117,8 @@ return [
 
         'plants' => [
             'model' => Plant::class,
-            'title' => 'Plants & Manufacturing Units',
-            'singular' => 'Plant / Unit',
+            'title' => 'Plant Locations',
+            'singular' => 'Plant Location',
             'eyebrow' => 'Organization Master',
             'description' => 'Configure manufacturing units, warehouses, plant capacity and shift models.',
             'icon' => 'PL',
@@ -122,7 +143,7 @@ return [
 
         'locations' => [
             'model' => Location::class,
-            'title' => 'Locations & GST Registrations',
+            'title' => 'Business Sites',
             'singular' => 'Location',
             'eyebrow' => 'Organization Master',
             'description' => 'Maintain business locations, addresses, GST registrations and GPS coordinates.',
@@ -173,8 +194,8 @@ return [
 
         'warehouses' => [
             'model' => Warehouse::class,
-            'title' => 'Warehouse Master',
-            'singular' => 'Warehouse',
+            'title' => 'Warehouse Locations',
+            'singular' => 'Warehouse Location',
             'eyebrow' => 'Warehouse Configuration',
             'description' => 'Define warehouse purpose, capacity, temperature zone and bin controls.',
             'icon' => 'WH',
@@ -790,7 +811,7 @@ return [
             'title' => 'Roles',
             'singular' => 'Role',
             'eyebrow' => 'Access Control',
-            'description' => 'Define functional roles and data scope. Capabilities are set on the Permission Matrix screen.',
+            'description' => 'Define functional roles and data scope. Master Data capabilities are set on the Permission Matrix; application module access is managed in Access Control Roles.',
             'icon' => 'RL',
             'primary' => 'name',
             'code' => 'code',

@@ -25,19 +25,29 @@ class NotificationCenter
      */
     public static function forRole(?Role $role): array
     {
-        $own = match ($role) {
-            Role::Guard => self::guard(),
-            Role::StoreExec => self::storeExec(),
-            Role::StoreManager => self::storeManager(),
-            Role::Finance => self::finance(),
-            Role::Qc => self::qc(),
-            Role::Vendor => self::vendor(),
-            Role::Admin => self::admin(),
-            null => self::tan90Fallback(),
-            default => [],
-        };
+        $userId = auth()->id();
+        $cacheKey = 'tan90:notifications:'.($userId ?: 'guest').':'.($role?->value ?? 'tan90');
 
-        return [...self::visitorApprovals(), ...$own];
+        // The navigation notification summary is rendered on every full and
+        // Livewire request. Keep it fresh, but avoid repeating the same
+        // dashboard counts several times while a page is loading.
+        $role = auth()->user()?->isAdmin() ? Role::Admin : $role;
+
+        return Cache::remember($cacheKey, now()->addSeconds(15), function () use ($role): array {
+            $own = match ($role) {
+                Role::Guard => self::guard(),
+                Role::StoreExec => self::storeExec(),
+                Role::StoreManager => self::storeManager(),
+                Role::Finance => self::finance(),
+                Role::Qc => self::qc(),
+                Role::Vendor => self::vendor(),
+                Role::Admin => self::admin(),
+                null => self::tan90Fallback(),
+                default => [],
+            };
+
+            return [...self::visitorApprovals(), ...$own];
+        });
     }
 
     // A Tan90-only user has no entry in the 7-role enum at all -- their
@@ -96,6 +106,21 @@ class NotificationCenter
             ];
         }
 
+        $outwardUpdates = GateEntry::where('entry_type', 'outward')
+            ->whereIn('status', ['dock_assigned', 'loaded', 'dispatched'])
+            ->where('updated_at', '>=', now()->subDay())
+            ->orderByDesc('updated_at')
+            ->limit(5)
+            ->get(['gate_no', 'vehicle_number', 'status', 'expected_delivery_date', 'updated_at']);
+        foreach ($outwardUpdates as $entry) {
+            $notices[] = [
+                'title' => 'Outward dispatch update',
+                'detail' => "{$entry->gate_no} · ".GateStatusLabels::label($entry->status).($entry->expected_delivery_date ? " · EDD {$entry->expected_delivery_date->format('d M Y')}" : '').($entry->vehicle_number ? " · {$entry->vehicle_number}" : ''),
+                'tone' => $entry->status === 'dispatched' ? 'good' : 'warning',
+                'url' => route('gate-entries.show', $entry),
+            ];
+        }
+
         return $notices;
     }
 
@@ -135,26 +160,16 @@ class NotificationCenter
         $notices = [];
 
         $breached = GateEntry::where('entry_type', 'inward')
-            ->whereIn('status', ['validated', 'dock_assigned', 'allotted', 'unloading'])
+            ->whereIn('status', ['dock_assigned', 'allotted', 'unloading'])
             ->where('sla_deadline', '<', now())
             ->count();
 
         if ($breached > 0) {
             $notices[] = [
                 'title' => 'SLA breached awaiting loading/unloading',
-                'detail' => "{$breached} inward entr".($breached === 1 ? 'y has' : 'ies have')." passed its SLA deadline still waiting on a dock or unloading step.",
+                'detail' => "{$breached} inward entr".($breached === 1 ? 'y has' : 'ies have')." passed its SLA deadline still waiting for physical unloading to finish.",
                 'tone' => 'critical',
-                'url' => route('unloading.loading-desk'),
-            ];
-        }
-
-        $awaitingDock = GateEntry::where('entry_type', 'inward')->where('status', 'validated')->count();
-        if ($awaitingDock > 0) {
-            $notices[] = [
-                'title' => 'Vehicles awaiting a dock',
-                'detail' => "{$awaitingDock} cleared vehicle".($awaitingDock === 1 ? '' : 's')." waiting to be assigned a dock.",
-                'tone' => 'warning',
-                'url' => route('unloading.loading-desk'),
+                'url' => route('unloading.desk'),
             ];
         }
 
@@ -168,11 +183,19 @@ class NotificationCenter
             ];
         }
 
-        $awaitingPutaway = GateEntry::where('status', 'grn_posted')->count();
+        $awaitingPutaway = GateEntry::whereNull('putaway_completed_at')
+            ->where(function ($query) {
+                $query->where(function ($query) {
+                    $query->where('status', 'grn_posted')->whereHas('grnRecord', fn ($q) => $q->where('posted', true));
+                })->orWhere(function ($query) {
+                    $query->where('status', 'qc_done')->whereHas('qcResult', fn ($q) => $q->where('qc_hold_qty', '>', 0));
+                });
+            })
+            ->count();
         if ($awaitingPutaway > 0) {
             $notices[] = [
                 'title' => 'Putaway pending',
-                'detail' => "{$awaitingPutaway} GRN-posted entr".($awaitingPutaway === 1 ? 'y is' : 'ies are')." waiting for goods to be put away to a bin.",
+                'detail' => "{$awaitingPutaway} entr".($awaitingPutaway === 1 ? 'y is' : 'ies are')." waiting for physical putaway; QC-held goods can proceed while GRN remains pending.",
                 'tone' => 'warning',
                 'url' => route('unloading.putaway'),
             ];
@@ -260,6 +283,16 @@ class NotificationCenter
             ];
         }
 
+        $awaitingInwardDock = GateEntry::where('entry_type', 'inward')->where('status', 'validated')->count();
+        if ($awaitingInwardDock > 0) {
+            $notices[] = [
+                'title' => 'Inward docks to assign',
+                'detail' => "{$awaitingInwardDock} approved inward entr".($awaitingInwardDock === 1 ? 'y is' : 'ies are')." waiting for your dock assignment.",
+                'tone' => 'warning',
+                'url' => route('store-manager.entry-approvals'),
+            ];
+        }
+
         $dispatchedToday = GateEntry::where('entry_type', 'outward')->where('status', 'dispatched')->whereDate('exited_at', today())->count();
         if ($dispatchedToday > 0) {
             $notices[] = [
@@ -277,6 +310,11 @@ class NotificationCenter
         $awaitingGrn = GateEntry::where('status', 'qc_done')->count();
         if ($awaitingGrn > 0) {
             $notices[] = ['title' => 'GRN pending', 'detail' => "{$awaitingGrn} QC-checked entr".($awaitingGrn === 1 ? 'y is' : 'ies are')." waiting to be posted.", 'tone' => 'good', 'url' => route('grn.check')];
+        }
+
+        $vendorEscalations = \App\Models\GrnRecord::where('vendor_response', 'escalated')->whereHas('gateEntry', fn ($q) => $q->where('status', '!=', 'closed'))->count();
+        if ($vendorEscalations > 0) {
+            $notices[] = ['title' => 'Vendor GRN escalations', 'detail' => "{$vendorEscalations} posted GRN".($vendorEscalations === 1 ? ' has' : 's have')." been escalated by a vendor and need your review.", 'tone' => 'critical', 'url' => route('grn.check')];
         }
 
         return $notices;
@@ -313,12 +351,13 @@ class NotificationCenter
     private static function vendor(): array
     {
         $notices = [];
-        $vendorName = auth()->user()?->name;
+        $vendor = auth()->user();
+        $vendorName = $vendor?->name;
 
         // Confirmed live: a vendor got no signal at all that a new PO had
         // been released to them -- they had to already know the PO number
         // and type it in by hand.
-        $newPos = \App\Models\PurchaseOrder::where('vendor_name', $vendorName)
+        $newPos = VendorIdentity::apply(\App\Models\PurchaseOrder::query(), $vendor)
             ->whereNotNull('released_at')
             ->where('released_at', '>=', now()->subDays(3))
             ->count();
@@ -338,7 +377,7 @@ class NotificationCenter
         // delivery that the vendor has no visibility into here at all.
         $pendingReturnResults = QcResult::whereHas(
             'gateEntry',
-            fn ($q) => $q->where('vendor_name', $vendorName),
+            fn ($q) => VendorIdentity::apply($q, $vendor),
         )->where('return_status', 'pending')->get();
 
         if ($pendingReturnResults->isNotEmpty()) {
@@ -358,12 +397,27 @@ class NotificationCenter
         // a normal, no-issue closure (GRN posted, goods put away) never
         // reached them at all, even though the flow calls for the vendor
         // to hear about closure either way.
-        $closedRecently = GateEntry::where('vendor_name', $vendorName)->where('status', 'closed')->where('updated_at', '>=', now()->subDay())->count();
+        $closedRecently = VendorIdentity::apply(GateEntry::query(), $vendor)->where('status', 'closed')->where('updated_at', '>=', now()->subDay())->count();
         if ($closedRecently > 0) {
             $notices[] = [
                 'title' => 'Delivery closed',
                 'detail' => "{$closedRecently} of your deliver".($closedRecently === 1 ? 'y has' : 'ies have')." been fully closed — GRN posted and goods put away.",
                 'tone' => 'good',
+            ];
+        }
+
+        $progress = VendorIdentity::apply(GateEntry::query(), $vendor)
+            ->whereIn('status', ['pending_validation', 'validated', 'dock_assigned', 'allotted', 'unloading', 'grn', 'qc_done', 'grn_posted'])
+            ->where('updated_at', '>=', now()->subDays(3))
+            ->orderByDesc('updated_at')
+            ->limit(5)
+            ->get(['gate_no', 'po_number', 'status', 'updated_at']);
+        foreach ($progress as $entry) {
+            $notices[] = [
+                'title' => 'PO progress update',
+                'detail' => "{$entry->po_number} · ".GateStatusLabels::label($entry->status)." (Gate {$entry->gate_no})",
+                'tone' => in_array($entry->status, ['pending_validation', 'qc_done'], true) ? 'warning' : 'good',
+                'url' => route('vendor.submissions'),
             ];
         }
 

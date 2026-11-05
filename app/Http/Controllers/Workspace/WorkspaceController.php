@@ -30,7 +30,26 @@ class WorkspaceController extends Controller
             ->sortBy(fn ($card) => $card['layout']['y'] ?? 999)
             ->values();
 
-        return view('workspace.index', ['widgets' => $cards, 'queues' => $this->queueSummary($user)]);
+        $shortcuts = $cards->isEmpty()
+            ? collect($this->access->navigationFor($user))
+                ->filter(function (array $item) {
+                    $route = \Illuminate\Support\Facades\Route::getRoutes()->getByName($item['route'] ?? '');
+
+                    return $route
+                        && in_array('GET', $route->methods(), true)
+                        && $route->parameterNames() === [];
+                })
+                ->unique('route')
+                ->take(8)
+                ->values()
+            : collect();
+
+        return view('workspace.index', [
+            'widgets' => $cards,
+            'queues' => $this->queueSummary($user),
+            'shortcuts' => $shortcuts,
+            'canCustomize' => $this->access->can($user, 'workspace.customise'),
+        ]);
     }
 
     /**

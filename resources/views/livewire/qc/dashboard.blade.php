@@ -142,19 +142,22 @@ new #[Layout('layouts.app')] class extends Component
     </div>
 
     <div class="rounded-lg border p-4 mb-6" style="background: var(--surface-3); border-color: var(--border);">
-        <h2 class="font-semibold text-sm mb-3" style="color: var(--text-primary);">QC queue</h2>
+        <div class="flex items-center justify-between gap-3 mb-3">
+            <h2 class="font-semibold text-sm" style="color: var(--text-primary);">QC queue</h2>
+            <a href="{{ route('qc.queue') }}" wire:navigate class="text-xs font-semibold" style="color: var(--brand);">Open QC queue →</a>
+        </div>
         @if ($queue->isEmpty())
             <p class="text-sm py-4" style="color: var(--text-muted);">Nothing waiting.</p>
         @else
             <div class="flex flex-col divide-y" style="border-color: var(--border);">
                 @foreach ($queue as $g)
-                    <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
+                    <div class="py-3 flex items-center justify-between gap-3 -mx-2 px-2 rounded-lg hover:bg-black/5">
                         <div>
-                            <div class="text-sm font-medium" style="color: var(--text-primary);">{{ $g->gate_no }}</div>
+                            <a href="{{ route('gate-entries.show', $g) }}" wire:navigate class="text-sm font-medium hover:opacity-80" style="color: var(--text-primary);">{{ $g->gate_no }}</a>
                             <div class="text-xs mt-0.5" style="color: var(--text-muted);">{{ $g->material }} · {{ $g->invoice_qty }} qty</div>
                         </div>
-                        <span class="text-xs font-medium shrink-0" style="color: var(--brand);">View →</span>
-                    </a>
+                        <a href="{{ route('qc.queue') }}" wire:navigate class="text-xs font-semibold shrink-0" style="color: var(--brand);">Open QC check →</a>
+                    </div>
                 @endforeach
             </div>
         @endif

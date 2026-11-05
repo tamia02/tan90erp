@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Forms;
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -30,11 +31,19 @@ class LoginForm extends Form
     {
         $this->ensureIsNotRateLimited();
 
-        // 'is_active' => true is folded into the credential check itself —
-        // a deactivated account just fails to authenticate, same as a wrong
-        // password, rather than leaking account status to whoever's asking.
+        // Fold active-account state into the credential check so inactive
+        // users cannot authenticate through the password path.
         if (! Auth::attempt([...$this->only(['email', 'password']), 'is_active' => true], $this->remember)) {
             RateLimiter::hit($this->throttleKey());
+
+            $email = mb_strtolower(trim($this->email));
+            $account = User::query()->where('email', $email)->first();
+
+            if (! $account || ! $account->is_active) {
+                throw ValidationException::withMessages([
+                    'form.email' => 'You do not have a Tan90 account with this email address.',
+                ]);
+            }
 
             throw ValidationException::withMessages([
                 'form.email' => trans('auth.failed'),

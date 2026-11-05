@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WorkspaceTask extends Model
 {
-    protected $fillable = ['title', 'description', 'module', 'linked_type', 'linked_id', 'assigned_to', 'created_by', 'status', 'priority', 'due_at', 'completed_at'];
+    protected $fillable = ['title', 'description', 'module', 'linked_type', 'linked_id', 'assigned_to', 'created_by', 'status', 'priority', 'due_at', 'completed_at', 'site_id', 'target_permission', 'event_key'];
 
     protected function casts(): array
     {

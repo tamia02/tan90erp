@@ -2,14 +2,21 @@
 
 namespace App\Models\Forge;
 
+use App\Models\Tan90\MasterData\Location;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Freezer extends Model
 {
     protected $table = 'forge_freezers';
 
-    protected $fillable = ['code', 'name', 'plant', 'capacity', 'threshold_temp_min', 'threshold_temp_max', 'state', 'status'];
+    protected $fillable = ['code', 'name', 'plant', 'site_id', 'capacity', 'threshold_temp_min', 'threshold_temp_max', 'state', 'status'];
+
+    public function site(): BelongsTo
+    {
+        return $this->belongsTo(Location::class, 'site_id');
+    }
 
     protected function casts(): array
     {

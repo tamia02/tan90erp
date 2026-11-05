@@ -91,52 +91,91 @@ class AppServiceProvider extends ServiceProvider
         CostSheet::observe(BomRecipeCostingObserver::class);
 
         $this->app->booted(function () {
-            $minutes = max(5, (int) config('services.zoho.sync_minutes', 30));
+            // Staging shares the live Zoho organization. Keep every scheduled
+            // Zoho job off there until the client explicitly enables it.
+            if (! app()->environment('staging') || config('services.zoho.staging_sync_enabled')) {
+                $minutes = max(5, (int) config('services.zoho.sync_minutes', 30));
 
-            $this->app->make(Schedule::class)
-                ->command(SyncZohoPurchaseOrders::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                $this->app->make(Schedule::class)
+                    ->command(SyncZohoPurchaseOrders::class)
+                    ->cron("*/{$minutes} * * * *")
+                    ->withoutOverlapping();
 
-            $this->app->make(Schedule::class)
-                ->command(PushZohoPurchaseOrders::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                $this->app->make(Schedule::class)
+                    ->command(PushZohoPurchaseOrders::class)
+                    ->cron("*/{$minutes} * * * *")
+                    ->withoutOverlapping();
 
-            $this->app->make(Schedule::class)
-                ->command(SyncZohoMasterData::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                $this->app->make(Schedule::class)
+                    ->command(SyncZohoMasterData::class)
+                    ->cron("*/{$minutes} * * * *")
+                    ->withoutOverlapping();
 
-            $this->app->make(Schedule::class)
-                ->command(PushZohoMasterData::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                $this->app->make(Schedule::class)
+                    ->command(PushZohoMasterData::class)
+                    ->cron("*/{$minutes} * * * *")
+                    ->withoutOverlapping();
 
-            $this->app->make(Schedule::class)
-                ->command(PushZohoWorkflowData::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                // These legacy CRM jobs scan and push every historical row. The staging
+                // database is a production clone, so running them there would replay
+                // copied records into the shared live Zoho organization on every tick.
+                if (! app()->environment('staging')) {
+                    $this->app->make(Schedule::class)
+                        ->command(PushZohoWorkflowData::class)
+                        ->cron("*/{$minutes} * * * *")
+                        ->withoutOverlapping();
 
-            $this->app->make(Schedule::class)
-                ->command(PushZohoOperationalData::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                    $this->app->make(Schedule::class)
+                        ->command(PushZohoOperationalData::class)
+                        ->cron("*/{$minutes} * * * *")
+                        ->withoutOverlapping();
+                }
 
-            $this->app->make(Schedule::class)
-                ->command(PushZohoInventoryData::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                $this->app->make(Schedule::class)
+                    ->command(PushZohoInventoryData::class)
+                    ->cron("*/{$minutes} * * * *")
+                    ->withoutOverlapping();
 
-            $this->app->make(Schedule::class)
-                ->command(SyncZohoInventoryMasterData::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                $this->app->make(Schedule::class)
+                    ->command(SyncZohoInventoryMasterData::class)
+                    ->cron("*/{$minutes} * * * *")
+                    ->withoutOverlapping();
 
-            $this->app->make(Schedule::class)
-                ->command(SyncZohoInventoryPurchaseOrders::class)
-                ->cron("*/{$minutes} * * * *")
-                ->withoutOverlapping();
+                $this->app->make(Schedule::class)
+                    ->command(SyncZohoInventoryPurchaseOrders::class)
+                    ->cron("*/{$minutes} * * * *")
+                    ->withoutOverlapping();
+
+                // Zoho is the source of truth for Items: hourly GET-only pull, off
+                // until ZOHO_ITEMS_PULL_ENABLED=true.
+                if (config('services.zoho_items_pull.schedule_enabled')) {
+                    $this->app->make(Schedule::class)
+                        ->command('zoho:pull-items')
+                        ->hourly()
+                        ->withoutOverlapping();
+                    $this->app->make(Schedule::class)
+                        ->command('zoho:pull-fields')
+                        ->hourly()
+                        ->withoutOverlapping();
+                    // Incremental: only composites changed in Zoho are re-fetched.
+                    $this->app->make(Schedule::class)
+                        ->command('zoho:pull-recipes')
+                        ->hourlyAt(20)
+                        ->withoutOverlapping();
+                    // Old Zoho POs not in the ERP yet, a daily batch at night until all are in.
+                    $this->app->make(Schedule::class)
+                        ->command('zoho:pull-all-pos --max=1500')
+                        ->dailyAt('01:30')
+                        ->withoutOverlapping();
+                    // Vendor / customer addresses (Zoho's contact list has none), a batch a night.
+                    if (config('services.zoho_items_pull.address_pull_enabled')) {
+                        $this->app->make(Schedule::class)
+                            ->command('zoho:pull-contact-addresses --max=1500')
+                            ->dailyAt('03:30')
+                            ->withoutOverlapping();
+                    }
+                }
+            }
         });
     }
 }

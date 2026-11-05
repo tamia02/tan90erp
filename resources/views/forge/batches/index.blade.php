@@ -1,9 +1,10 @@
 <x-app-layout>
     @include('access-control._style')
-    <div class="access-shell max-w-7xl mx-auto space-y-5">
+    <div class="access-shell max-w-7xl mx-auto space-y-5" data-listing-ignore>
         <div class="access-top p-5">
             <div class="text-sm access-muted">Forge / Batch Genealogy</div>
             <h1 class="text-2xl font-bold">Batch Genealogy</h1>
+            @include('forge._exports', ['permission'=>'forge.batch.export', 'exportRoute'=>'forge.batches.export'])
         </div>
 
         <div class="access-card p-5">

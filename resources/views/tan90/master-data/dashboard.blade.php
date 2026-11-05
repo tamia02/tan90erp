@@ -6,7 +6,12 @@
   <div class="max-w-5xl mx-auto">
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
       <p class="text-sm" style="color: var(--text-secondary);">One trusted workspace to control Tan90 organization, locations, products, vendors and governed changes.</p>
-      <a href="{{ route('tan90.master-data.approval-queue') }}" class="inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium text-white shrink-0" style="background: var(--brand);">Review Approvals</a>
+      <div class="flex flex-wrap gap-2">
+        @if (auth()->user()?->isAdmin())
+          <a href="{{ route('tan90.master-data.source-data') }}" class="inline-flex items-center justify-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-medium shrink-0" style="background: var(--surface-3); border-color: var(--border); color: var(--text-primary);">Imported contacts & addresses</a>
+        @endif
+        <a href="{{ route('tan90.master-data.approval-queue') }}" class="inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium text-white shrink-0" style="background: var(--brand);">Review Approvals</a>
+      </div>
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -29,7 +34,10 @@
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-      @foreach (['legal-entities', 'plants', 'warehouses', 'items', 'vendors', 'customers', 'roles'] as $slug)
+      <a href="{{ route('tan90.master-data.locations.index') }}" class="rounded-lg border p-4 hover:bg-black/5" style="background: var(--surface-3); border-color: var(--border);">
+        <div class="text-xs font-semibold" style="color: var(--brand);">LOC</div><div class="text-sm font-medium mt-1" style="color: var(--text-primary);">Locations</div><div class="text-xs mt-0.5" style="color: var(--text-muted);">Manage business sites, plants and warehouses in one directory.</div>
+      </a>
+      @foreach (['legal-entities', 'items', 'vendors', 'customers', 'roles'] as $slug)
         @php($entityConfig = config("tan90_master_data.entities.$slug"))
         @continue(! $entityConfig)
         <a href="{{ route('tan90.master-data.index', $slug) }}" class="rounded-lg border p-4 hover:bg-black/5" style="background: var(--surface-3); border-color: var(--border);">

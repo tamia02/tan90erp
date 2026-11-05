@@ -37,6 +37,23 @@ class AccessControlHierarchyTest extends TestCase
         $this->actingAs($user)->get(route('workspace.index'))->assertOk()->assertSee('Command Center');
     }
 
+    public function test_ananya_super_admin_is_recognized_by_legacy_admin_modules(): void
+    {
+        $user = User::where('email', 'superadmin@tan90.demo')->firstOrFail();
+
+        $this->assertTrue($user->isAdmin());
+        $this->actingAs($user)->get(route('admin.dashboard'))->assertOk();
+        $this->actingAs($user)->get(route('admin.po'))->assertOk()->assertSee('Purchase Orders');
+    }
+
+    public function test_operational_users_do_not_inherit_super_admin_legacy_routes(): void
+    {
+        $manager = User::where('email', 'manager.grn@tan90.demo')->firstOrFail();
+
+        $this->assertFalse($manager->isAdmin());
+        $this->actingAs($manager)->get(route('admin.dashboard'))->assertForbidden();
+    }
+
     public function test_head_cannot_create_head_or_super_role(): void
     {
         $head = User::where('email', 'head.store@tan90.demo')->firstOrFail();

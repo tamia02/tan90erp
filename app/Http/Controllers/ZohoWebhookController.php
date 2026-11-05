@@ -12,6 +12,10 @@ class ZohoWebhookController extends Controller
 {
     public function purchaseOrder(Request $request, ZohoService $zoho): JsonResponse
     {
+        if (config('app.env') === 'staging') {
+            return response()->json(['ok' => false, 'message' => 'Production webhooks are disabled on staging.'], 404);
+        }
+
         $configuredSecret = (string) config('services.zoho.webhook_secret');
         $providedSecret = (string) ($request->header('X-Zoho-Webhook-Secret') ?: $request->query('secret'));
 

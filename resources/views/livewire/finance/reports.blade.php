@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\FinanceRecord;
+use App\Support\RoleCapability;
 use Illuminate\Support\Facades\Response;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -13,6 +14,7 @@ new #[Layout('layouts.app')] class extends Component
 
     public function exportCsv()
     {
+        RoleCapability::requireExport('finance');
         $records = FinanceRecord::with('gateEntry')->orderBy('created_at')->get();
 
         return Response::streamDownload(function () use ($records) {

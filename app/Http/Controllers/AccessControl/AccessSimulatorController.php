@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\AccessControl;
 
+use App\Access\AccessDecision;
 use App\Http\Controllers\Controller;
 use App\Models\Access\AccessPermission;
 use App\Models\User;
 use App\Services\Access\AccessControlService;
+use App\Services\Access\RolePermissionMatrix;
 use Illuminate\Http\Request;
 
 // Answers "why can/can't this person do that" step by step, using the same
@@ -20,11 +22,11 @@ class AccessSimulatorController extends Controller
     {
         abort_unless($this->access->can($request->user(), 'access.simulator.view'), 403);
 
-        $people = User::where('access_mode', 'advanced')->orderBy('name')->get();
-        $permissions = AccessPermission::where('status', 'active')->orderBy('module')->orderBy('label')->get();
+        $people = User::where(fn ($query) => $query->where('access_mode', 'advanced')->orWhereNotNull('role'))->orderBy('name')->get();
+        $permissions = AccessPermission::where('status', 'active')->whereNotIn('key', RolePermissionMatrix::HIDDEN_PERMISSION_KEYS)->orderBy('module')->orderBy('label')->get();
 
         $subject = $request->filled('user_id') ? User::find($request->integer('user_id')) : null;
-        $permission = $request->filled('permission_key') ? AccessPermission::where('key', $request->string('permission_key'))->first() : null;
+        $permission = $request->filled('permission_key') ? AccessPermission::where('key', $request->string('permission_key'))->whereNotIn('key', RolePermissionMatrix::HIDDEN_PERMISSION_KEYS)->first() : null;
 
         return view('access-control.simulator', [
             'people' => $people,
@@ -58,13 +60,16 @@ class AccessSimulatorController extends Controller
             return $this->withFinal($steps, $this->access->explain($subject, $permission->key));
         }
 
-        if ($subject->access_mode === 'legacy') {
+        if ($subject->access_mode === 'legacy' && ! $this->access->hasNewAccess($subject)) {
             $steps[] = ['label' => 'Legacy account', 'detail' => 'access_mode is "legacy" - the Access Control engine is disabled for this user; they only use their GRN role, not this permission system.', 'status' => 'deny'];
 
             return $this->withFinal($steps, $this->access->explain($subject, $permission->key));
         }
 
-        $roles = $this->access->activeRoles($subject);
+        $roles = $this->access->permissionRoles($subject);
+        if ($subject->access_mode === 'legacy' && $roles->isNotEmpty()) {
+            $steps[] = ['label' => 'Job role policy', 'detail' => 'Uses the matching '.$roles->first()->name.' Access Control policy. Explicit grants add module access without replacing this person\'s existing job-role workflow.', 'status' => 'info'];
+        }
         if ($roles->isEmpty()) {
             $steps[] = ['label' => 'Roles held', 'detail' => 'No active Access Control roles assigned.', 'status' => 'info'];
         }
@@ -124,7 +129,7 @@ class AccessSimulatorController extends Controller
         };
     }
 
-    private function withFinal(array $steps, \App\Access\AccessDecision $decision): array
+    private function withFinal(array $steps, AccessDecision $decision): array
     {
         $steps[] = [
             'label' => 'Final decision',

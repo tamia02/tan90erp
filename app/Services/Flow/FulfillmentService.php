@@ -14,6 +14,14 @@ use App\Models\Flow\PickTask;
 use App\Models\Flow\Shipment;
 use App\Models\Flow\TemperatureEvent;
 use App\Models\Forge\Batch;
+use App\Models\Inventory\InventoryItem as StockItem;
+use App\Models\Inventory\InventoryMovement as StockMovement;
+use App\Models\Tan90\MasterData\Warehouse;
+use App\Models\Tan90\MasterData\Bin;
+use App\Services\Inventory\InventoryService;
+use App\Services\Forge\SalesProductionService;
+use App\Services\Forge\ProductionTaskService;
+use App\Support\SiteLocation;
 use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +30,7 @@ use Illuminate\Validation\ValidationException;
 // Owns Flow's order-to-delivery state machine (ARCHITECTURE.md #5) and the
 // append-only inventory ledger (ARCHITECTURE.md #4) - flow_inventory_lots
 // balances are only ever changed alongside a flow_inventory_movements row,
-// never edited bare. FEFO allocation only considers InventoryLot::isAtpEligible().
+// never edited bare. Allocation only considers InventoryLot::isAtpEligible().
 class FulfillmentService
 {
     public function receiveFinishedGoods(Batch $batch, array $data, User $actor): InventoryLot
@@ -36,19 +44,29 @@ class FulfillmentService
         }
 
         $lot = DB::transaction(function () use ($batch, $data, $actor) {
+            $wo = $batch->workOrder;
+            $managed = (int) ($wo->workflow_version ?? 1) >= 2;
+            $warehouse = $wo->inventory_fg_item_id ? Warehouse::findOrFail($wo->fg_warehouse_id) : null;
             $lot = InventoryLot::create([
                 'finished_good_id' => $batch->workOrder->finished_good_id,
                 'forge_batch_id' => $batch->id,
                 'lot_number' => $batch->batch_number,
-                'warehouse' => $data['warehouse'] ?? 'Bhiwandi FG Warehouse',
-                'zone' => $data['zone'] ?? null,
-                'bin' => $data['bin'] ?? null,
+                'warehouse' => $warehouse?->name ?? $data['warehouse'] ?? 'Bhiwandi FG Warehouse',
+                'inventory_item_id' => $wo->inventory_fg_item_id,
+                'location_id' => $wo->site_id,
+                'warehouse_id' => $wo->fg_warehouse_id,
+                'zone' => $managed ? null : ($data['zone'] ?? null),
+                'bin' => $managed ? null : ($data['bin'] ?? null),
+                'putaway_started_at' => $managed ? null : (! empty($data['bin']) ? ($data['putaway_started_at'] ?? null) : null),
+                'putaway_ended_at' => $managed ? null : (! empty($data['bin']) ? ($data['putaway_ended_at'] ?? null) : null),
+                'putaway_manpower' => $managed ? null : (! empty($data['bin']) ? ($data['putaway_manpower'] ?? null) : null),
+                'putaway_by' => $managed ? null : (! empty($data['bin']) ? $actor->id : null),
                 'qty_received' => $batch->qty,
                 'qty_available' => $batch->qty,
                 'uom' => $batch->uom,
                 'quality_status' => 'released',
                 'expiry_date' => $batch->shelf_life_date,
-                'status' => $data['bin'] ?? null ? 'available' : 'staged',
+                'status' => $managed ? 'staged' : ($data['bin'] ?? null ? 'available' : 'staged'),
                 'received_by' => $actor->id,
                 'received_at' => now(),
             ]);
@@ -59,26 +77,67 @@ class FulfillmentService
         });
 
         AuditLogger::log('FG received into Flow', $lot->lot_number, $lot);
+        if ((int) ($batch->workOrder?->workflow_version ?? 1) >= 2) {
+            app(ProductionTaskService::class)->done('batch:'.$batch->id.':receive', $actor->id);
+            app(ProductionTaskService::class)->open('lot:'.$lot->id.':putaway', 'Put FG lot '.$lot->lot_number.' in a master bin',
+                'flow.inventory.putaway', (int) $lot->location_id, $actor->id, $lot);
+        }
 
         return $lot;
     }
 
-    public function putaway(InventoryLot $lot, string $zone, string $bin, User $actor): InventoryLot
+    public function putaway(InventoryLot $lot, array $data, User $actor): InventoryLot
     {
-        if ($lot->status !== 'staged') {
-            throw ValidationException::withMessages(['status' => 'Only a staged lot can be put away.']);
-        }
+        DB::transaction(function () use ($lot, $data, $actor): void {
+            $lot = InventoryLot::whereKey($lot->id)->lockForUpdate()->firstOrFail();
+            if ($lot->status !== 'staged') {
+                throw ValidationException::withMessages(['status' => 'Only a staged lot can be put away.']);
+            }
+            $managed = (int) ($lot->forgeBatch?->workOrder?->workflow_version ?? 1) >= 2;
+            if ($managed) {
+                $bin = Bin::with('shelf.rack.zone')->whereKey($data['bin_id'] ?? 0)
+                    ->where('status', 'active')->where('approval_status', 'approved')->first();
+                if (! $bin || (int) $bin->shelf?->rack?->zone?->tan90_warehouse_id !== (int) $lot->warehouse_id) {
+                    throw ValidationException::withMessages(['bin_id' => 'Choose an active master bin in the mapped FG warehouse.']);
+                }
+                $data['bin'] = $bin->code;
+                $data['zone'] = $bin->shelf->rack->zone->code;
+            }
+            $lot->update([
+                'zone' => $data['zone'], 'bin' => $data['bin'], 'bin_id' => $managed ? $data['bin_id'] : null, 'status' => 'available',
+                'putaway_started_at' => $data['putaway_started_at'], 'putaway_ended_at' => $data['putaway_ended_at'],
+                'putaway_manpower' => $data['putaway_manpower'], 'putaway_by' => $actor->id,
+            ]);
+            $this->postMovement($lot, 'putaway', $lot->qty_available, $actor, null, null, [
+                'zone' => $data['zone'], 'bin' => $data['bin'], 'started_at' => $data['putaway_started_at'],
+                'ended_at' => $data['putaway_ended_at'], 'manpower' => $data['putaway_manpower'],
+            ]);
+            if ($managed) {
+                app(ProductionTaskService::class)->done('lot:'.$lot->id.':putaway', $actor->id);
+                $orders = CustomerOrder::where('site_id', $lot->location_id)->where('fg_warehouse_id', $lot->warehouse_id)
+                    ->whereIn('status', ['released', 'atp_partial'])
+                    ->whereHas('lines', fn ($q) => $q->where('inventory_fg_item_id', $lot->inventory_item_id))
+                    ->orderByRaw('requested_date IS NULL, requested_date ASC')->orderBy('id')->get();
+                foreach ($orders as $order) {
+                    $this->runAtpAndAllocate($order);
+                    app(SalesProductionService::class)->ensureShortagePlans($order->fresh());
+                    if ($order->fresh()->status === 'allocated') {
+                        app(ProductionTaskService::class)->open('order:'.$order->id.':logistics', 'Pick, pack and dispatch '.$order->order_number,
+                            'flow.dispatch.manage', (int) $order->site_id, $actor->id, $order);
+                    }
+                }
+            }
+        });
 
-        $lot->update(['zone' => $zone, 'bin' => $bin, 'status' => 'available']);
-        $this->postMovement($lot, 'putaway', $lot->qty_available, $actor, null, null, ['zone' => $zone, 'bin' => $bin]);
-
-        AuditLogger::log('FG lot put away', $lot->lot_number.' -> '.$bin, $lot);
+        AuditLogger::log('FG lot put away', $lot->lot_number.' -> '.$lot->fresh()->bin, $lot);
 
         return $lot;
     }
 
     public function createOrder(array $data, User $actor): CustomerOrder
     {
+        $data['min_shelf_life_days'] ??= 0;
+
         $order = CustomerOrder::create($data + [
             'order_number' => 'SO-'.now()->format('Y').'-'.str_pad((string) (CustomerOrder::count() + 1), 4, '0', STR_PAD_LEFT),
             'status' => 'draft',
@@ -119,7 +178,14 @@ class FulfillmentService
         $order->update(['status' => 'released']);
         AuditLogger::log('Order released', $order->order_number, $order);
 
-        return $this->runAtpAndAllocate($order);
+        $allocated = $this->runAtpAndAllocate($order);
+        app(SalesProductionService::class)->ensureShortagePlans($allocated);
+        if ($allocated->site_id && $allocated->status === 'allocated') {
+            app(ProductionTaskService::class)->open('order:'.$allocated->id.':logistics', 'Pick, pack and dispatch '.$allocated->order_number,
+                'flow.dispatch.manage', (int) $allocated->site_id, (int) $allocated->created_by, $allocated);
+        }
+
+        return $allocated;
     }
 
     /**
@@ -139,15 +205,27 @@ class FulfillmentService
                     continue;
                 }
 
-                $lots = InventoryLot::where('finished_good_id', $line->finished_good_id)
+                $pcmMapped = $order->site_id !== null && DB::table('production_fg_mappings')
+                    ->where('site_id', $order->site_id)
+                    ->where('finished_good_id', $line->finished_good_id)
+                    ->where('status', 'approved')
+                    ->whereNotNull('reusable_pcm_item_id')
+                    ->exists();
+                $lotQuery = InventoryLot::where('finished_good_id', $line->finished_good_id)
+                    ->when($order->site_id, fn ($q) => $q->where('location_id', $order->site_id),
+                        fn ($q) => $q->when(SiteLocation::forUser(auth()->user()), fn ($q, $site) => $q->where('location_id', $site)))
+                    ->when($order->fg_warehouse_id, fn ($q) => $q->where('warehouse_id', $order->fg_warehouse_id))
+                    ->when($line->inventory_fg_item_id, fn ($q) => $q->where('inventory_item_id', $line->inventory_fg_item_id))
                     ->where('status', 'available')
                     ->where('quality_status', 'released')
                     ->where('qty_available', '>', 0)
-                    ->when($order->min_shelf_life_days > 0, fn ($q) => $q->where('expiry_date', '>=', now()->addDays($order->min_shelf_life_days)))
-                    ->orderByRaw('expiry_date IS NULL, expiry_date ASC')
-                    ->lockForUpdate()
-                    ->get()
-                    ->filter->isAtpEligible();
+                    ->when($order->min_shelf_life_days > 0, fn ($q) => $q->where('expiry_date', '>=', now()->addDays($order->min_shelf_life_days)));
+                if ($pcmMapped) {
+                    $lotQuery->orderBy('received_at')->orderBy('id');
+                } else {
+                    $lotQuery->orderByRaw('expiry_date IS NULL, expiry_date ASC')->orderBy('received_at')->orderBy('id');
+                }
+                $lots = $lotQuery->lockForUpdate()->get()->filter->isAtpEligible();
 
                 foreach ($lots as $lot) {
                     if ($remaining <= 0) {
@@ -174,17 +252,32 @@ class FulfillmentService
         });
 
         $order->refresh();
-        if (in_array($order->status, ['atp_confirmed', 'atp_partial'], true) && $order->allocations()->exists()) {
+        if (($fullyCovered || ! $order->site_id) && $order->allocations()->exists()) {
             $order->update(['status' => 'allocated']);
         }
 
-        AuditLogger::log('ATP run and FEFO allocation complete', $order->order_number.' -> '.$order->status, $order);
+        AuditLogger::log('ATP run and FIFO/FEFO allocation complete', $order->order_number.' -> '.$order->status, $order);
 
         return $order;
     }
 
     public function buildWave(array $orderLineIds, string $warehouse, User $actor): PickingWave
     {
+        $lines = OrderLine::whereIn('id', $orderLineIds)->with('order')->get();
+        foreach ($lines->pluck('order')->unique('id') as $order) {
+            if ($order->site_id) {
+                SiteLocation::assertCanAccessSiteRecord($actor, (int) $order->site_id);
+                if ($order->status !== 'allocated' || $order->lines()->whereNotIn('id', $orderLineIds)->exists()
+                    || $order->lines()->whereRaw('qty_allocated < qty_ordered')->exists()) {
+                    throw ValidationException::withMessages(['lines' => 'Select every line of a fully allocated sales order before picking.']);
+                }
+                $valid = Allocation::whereIn('order_line_id', $order->lines()->pluck('id'))->where('status', 'reserved')
+                    ->whereHas('inventoryLot', fn ($q) => $q->where('location_id', $order->site_id)->where('warehouse_id', $order->fg_warehouse_id))->exists();
+                if (! $valid) {
+                    throw ValidationException::withMessages(['warehouse' => 'No reserved mapped FG stock at this order site and warehouse.']);
+                }
+            }
+        }
         $wave = PickingWave::create([
             'wave_number' => 'WV-'.now()->format('Y').'-'.str_pad((string) (PickingWave::count() + 1), 4, '0', STR_PAD_LEFT),
             'warehouse' => $warehouse,
@@ -241,11 +334,20 @@ class FulfillmentService
             $lot = $allocation->inventoryLot;
             $lot->decrement('qty_allocated', $qtyPicked);
             $lot->increment('qty_picked', $qtyPicked);
+            if ($short && $allocation->orderLine->order->site_id) {
+                $shortQty = (float) $task->qty_to_pick - $qtyPicked;
+                $lot->decrement('qty_allocated', $shortQty);
+                $lot->increment('qty_available', $shortQty);
+                $lot->update(['status' => 'blocked']);
+                $this->postMovement($lot, 'deallocation', $shortQty, $actor, PickTask::class, $task->id);
+                $allocation->orderLine->decrement('qty_allocated', $shortQty);
+                $allocation->update(['qty' => $qtyPicked]);
+            }
             $this->postMovement($lot, 'pick', $qtyPicked, $actor, PickTask::class, $task->id);
 
             $line = $allocation->orderLine;
             $line->increment('qty_picked', $qtyPicked);
-            $allocation->update(['status' => 'picked']);
+            $allocation->update(['status' => $qtyPicked > 0 ? 'picked' : 'deallocated']);
 
             $order = $line->order;
             if ($order->status === 'waved') {
@@ -254,17 +356,31 @@ class FulfillmentService
 
             $orderTaskStatuses = PickTask::whereHas('allocation.orderLine', fn ($q) => $q->where('customer_order_id', $order->id))->pluck('status');
             if ($orderTaskStatuses->every(fn ($s) => in_array($s, ['picked', 'short'], true))) {
-                $order->update(['status' => 'picked']);
+                $allPicked = $order->lines()->whereRaw('qty_picked < qty_ordered')->doesntExist();
+                $order->update(['status' => $order->site_id && ! $allPicked ? 'atp_partial' : 'picked']);
             }
         });
 
         AuditLogger::log('Pick confirmed', 'task #'.$task->id.' qty '.$qtyPicked, $task);
+
+        $order = $task->allocation->orderLine->order->fresh();
+        if ($order->site_id && $order->status === 'atp_partial') {
+            $this->runAtpAndAllocate($order);
+            app(SalesProductionService::class)->ensureShortagePlans($order->fresh());
+        }
 
         return $task;
     }
 
     public function packIntoHandlingUnit(CustomerOrder $order, array $data, User $actor): HandlingUnit
     {
+        if ($order->site_id) {
+            SiteLocation::assertCanAccessSiteRecord($actor, (int) $order->site_id);
+            if (! in_array($order->status, ['picked', 'packing'], true) || $order->lines()->whereRaw('qty_picked < qty_ordered')->exists()) {
+                throw ValidationException::withMessages(['status' => 'All order lines must be fully picked before packing.']);
+            }
+        }
+        return DB::transaction(function () use ($order, $data, $actor): HandlingUnit {
         $hu = HandlingUnit::create([
             'customer_order_id' => $order->id,
             'hu_number' => 'HU-'.now()->format('Y').'-'.str_pad((string) (HandlingUnit::count() + 1), 5, '0', STR_PAD_LEFT),
@@ -272,12 +388,34 @@ class FulfillmentService
             'status' => 'packed',
         ]);
 
-        $order->lines()->increment('qty_packed', $data['qty_packed'] ?? 0);
+        if ($order->site_id) {
+            $packedAny = false;
+            foreach ($data['lines'] ?? [] as $input) {
+                $qty = (float) ($input['qty'] ?? 0);
+                if ($qty <= 0) continue;
+                $line = $order->lines()->whereKey($input['order_line_id'])->lockForUpdate()->firstOrFail();
+                if ((float) $line->qty_packed + $qty > (float) $line->qty_picked + 0.0005) {
+                    throw ValidationException::withMessages(['lines' => 'Carton quantity exceeds picked quantity for an order line.']);
+                }
+                DB::table('flow_handling_unit_lines')->insert([
+                    'handling_unit_id' => $hu->id, 'order_line_id' => $line->id,
+                    'qty' => $qty, 'created_at' => now(), 'updated_at' => now(),
+                ]);
+                $line->increment('qty_packed', $qty);
+                $packedAny = true;
+            }
+            if (! $packedAny) {
+                throw ValidationException::withMessages(['lines' => 'Enter packed quantity for at least one order line.']);
+            }
+        } else {
+            $order->lines()->increment('qty_packed', $data['qty_packed'] ?? 0);
+        }
         $order->update(['status' => 'packing']);
 
         AuditLogger::log('Handling unit packed', $hu->hu_number, $hu);
 
         return $hu;
+        });
     }
 
     public function sealHandlingUnit(HandlingUnit $hu): HandlingUnit
@@ -285,7 +423,8 @@ class FulfillmentService
         $this->assertHuStatus($hu, ['packed']);
         $hu->update(['status' => 'sealed', 'sealed_at' => now()]);
 
-        if ($hu->order->handlingUnits()->where('status', '!=', 'sealed')->doesntExist()) {
+        if ($hu->order->handlingUnits()->where('status', '!=', 'sealed')->doesntExist()
+            && (! $hu->order->site_id || $hu->order->lines()->whereRaw('qty_packed < qty_ordered')->doesntExist())) {
             $hu->order->update(['status' => 'packed']);
         }
 
@@ -296,39 +435,104 @@ class FulfillmentService
 
     public function createShipment(array $data): Shipment
     {
-        return Shipment::create($data + [
-            'shipment_number' => 'SHP-'.now()->format('Y').'-'.str_pad((string) (Shipment::count() + 1), 4, '0', STR_PAD_LEFT),
-            'status' => 'planned',
-        ]);
+        return DB::transaction(function () use ($data) {
+            $year = (int) now()->format('Y');
+            $sequence = DB::table('flow_shipment_sequences')->where('year', $year);
+            if (!$sequence->exists()) {
+                $last = Shipment::where('shipment_number', 'like', "SHP-{$year}-%")
+                    ->pluck('shipment_number')->max(fn ($number) => (int) substr($number, 9)) ?? 0;
+                DB::table('flow_shipment_sequences')->insertOrIgnore(['year' => $year, 'last_number' => $last]);
+            }
+            $number = (int) $sequence->lockForUpdate()->value('last_number') + 1;
+            $sequence->update(['last_number' => $number]);
+            return Shipment::create($data + ['shipment_number' => "SHP-{$year}-".str_pad((string) $number, 4, '0', STR_PAD_LEFT), 'status' => 'planned']);
+        }, 3);
     }
 
-    public function loadHandlingUnit(Shipment $shipment, HandlingUnit $hu): HandlingUnit
+    public function loadHandlingUnit(Shipment $shipment, HandlingUnit $hu, ?User $actor = null): HandlingUnit
     {
-        $this->assertHuStatus($hu, ['sealed']);
-        $hu->update(['shipment_id' => $shipment->id]);
-        $hu->order()->where('status', 'packed')->update(['status' => 'dispatch_planned']);
-        $shipment->update(['status' => 'loading']);
+        return DB::transaction(function () use ($shipment, $hu, $actor) {
+            $shipment = Shipment::whereKey($shipment->id)->lockForUpdate()->firstOrFail();
+            $hu = HandlingUnit::whereKey($hu->id)->lockForUpdate()->firstOrFail();
+            if (!in_array($shipment->status, ['planned', 'loading'], true)) {
+                throw ValidationException::withMessages(['status' => 'A released or closed shipment cannot be loaded again.']);
+            }
+            $this->assertHuStatus($hu, ['sealed']);
+            if ($hu->order->site_id) {
+                abort_unless($actor, 403);
+                SiteLocation::assertCanAccessSiteRecord($actor, (int) $hu->order->site_id);
+            }
+            if ($hu->order->site_id && ($hu->order->status !== 'packed' && $hu->order->status !== 'dispatch_planned')) {
+                throw ValidationException::withMessages(['status' => 'Full order must be packed and sealed before loading.']);
+            }
+            if ($hu->shipment_id !== null) {
+                throw ValidationException::withMessages(['status' => 'Handling unit is already assigned to a shipment.']);
+            }
+            $hu->update(['shipment_id' => $shipment->id]);
+            $hu->order()->where('status', 'packed')->update(['status' => 'dispatch_planned']);
+            $shipment->update(['status' => 'loading']);
 
-        return $hu;
+            return $hu;
+        });
     }
 
     public function releaseShipment(Shipment $shipment, User $actor): Shipment
     {
-        if ($shipment->handlingUnits()->count() === 0) {
-            throw ValidationException::withMessages(['status' => 'Shipment has no handling units loaded.']);
-        }
-
-        $shipment->update(['status' => 'released', 'released_by' => $actor->id, 'released_at' => now()]);
-        CustomerOrder::whereIn('id', $shipment->handlingUnits()->pluck('customer_order_id'))
-            ->where('status', 'dispatch_planned')->update(['status' => 'in_transit']);
-
-        foreach ($shipment->handlingUnits as $hu) {
-            foreach ($hu->order->lines as $line) {
-                foreach ($line->allocations as $allocation) {
-                    $this->postMovement($allocation->inventoryLot, 'dispatch', $allocation->qty, $actor, Shipment::class, $shipment->id);
+        DB::transaction(function () use ($shipment, $actor): void {
+            $shipment = Shipment::whereKey($shipment->id)->lockForUpdate()->firstOrFail();
+            if ($shipment->status !== 'loading' || $shipment->handlingUnits()->count() === 0) {
+                throw ValidationException::withMessages(['status' => 'Only a loaded shipment can be released once.']);
+            }
+            $orderIds = $shipment->handlingUnits()->pluck('customer_order_id')->unique();
+            foreach (CustomerOrder::whereIn('id', $orderIds)->get() as $order) {
+                if (! $order->site_id) continue;
+                SiteLocation::assertCanAccessSiteRecord($actor, (int) $order->site_id);
+                if ($order->status !== 'dispatch_planned' || $order->lines()->whereRaw('qty_packed < qty_ordered OR qty_picked < qty_ordered')->exists()
+                    || $order->handlingUnits()->where('shipment_id', '!=', $shipment->id)->exists()) {
+                    throw ValidationException::withMessages(['status' => 'Shipment must contain every sealed handling unit of each fully packed sales order.']);
                 }
             }
-        }
+            $allocations = Allocation::whereHas('orderLine', fn ($q) => $q->whereIn('customer_order_id', $orderIds))
+                ->with(['inventoryLot', 'pickTask'])->orderBy('id')->get();
+            foreach ($allocations as $allocation) {
+                $lot = $allocation->inventoryLot;
+                $actorSite = SiteLocation::forUser($actor);
+                if ($actorSite !== null && ($lot->location_id === null || (int) $lot->location_id !== $actorSite)) {
+                    throw ValidationException::withMessages(['status' => 'This shipment contains stock from another site.']);
+                }
+                $qty = (float) ($allocation->pickTask?->qty_picked ?? $allocation->qty);
+                if ($qty <= 0) {
+                    continue;
+                }
+                if ($lot->inventory_item_id) {
+                    StockItem::whereKey($lot->inventory_item_id)->lockForUpdate()->firstOrFail();
+                    $item = StockItem::findOrFail($lot->inventory_item_id);
+                    $stock = app(InventoryService::class)->atWarehouse((int) $lot->warehouse_id)->balances(collect([$item]))[$item->id]['final'];
+                    if ($qty > $stock + 0.0005) {
+                        throw ValidationException::withMessages(['status' => 'Insufficient FG stock in the mapped warehouse for dispatch.']);
+                    }
+                    StockMovement::create([
+                        'item_id' => $item->id, 'type' => 'dispatched', 'qty' => $qty,
+                        'location_id' => $lot->location_id, 'warehouse_id' => $lot->warehouse_id,
+                        'source_key' => 'flow-dispatch:'.$shipment->id.':'.$allocation->id,
+                        'note' => $shipment->shipment_number, 'created_by' => $actor->id,
+                    ]);
+                }
+                $this->postMovement($lot, 'dispatch', $qty, $actor, Shipment::class, $shipment->id);
+                $lot->decrement('qty_picked', min($qty, (float) $lot->qty_picked));
+                if ((float) $lot->fresh()->qty_available <= 0 && (float) $lot->fresh()->qty_allocated <= 0 && (float) $lot->fresh()->qty_picked <= 0) {
+                    $lot->update(['status' => 'depleted']);
+                }
+            }
+            $shipment->update(['status' => 'released', 'released_by' => $actor->id, 'released_at' => now()]);
+            CustomerOrder::whereIn('id', $orderIds)->where('status', 'dispatch_planned')->update(['status' => 'in_transit']);
+            foreach (CustomerOrder::whereIn('id', $orderIds)->whereNotNull('site_id')->get() as $order) {
+                app(ProductionTaskService::class)->done('order:'.$order->id.':logistics', $actor->id);
+                app(ProductionTaskService::class)->open('shipment:'.$shipment->id.':order:'.$order->id.':finance',
+                    'Finance review for '.$order->order_number.' / '.$shipment->shipment_number,
+                    'finance.review.view', (int) $order->site_id, $actor->id, $shipment);
+            }
+        });
 
         AuditLogger::log('Shipment released', $shipment->shipment_number, $shipment);
 
@@ -356,35 +560,58 @@ class FulfillmentService
 
     public function recordDelivery(Shipment $shipment, CustomerOrder $order, array $data, User $actor): Delivery
     {
-        if ($shipment->hasOpenExcursion()) {
-            throw ValidationException::withMessages(['status' => 'Shipment has an undispositioned temperature excursion.']);
-        }
+        return DB::transaction(function () use ($shipment, $order, $data, $actor) {
+            $shipment = Shipment::whereKey($shipment->id)->lockForUpdate()->firstOrFail();
+            SiteLocation::assertCanAccessSiteRecord($actor, $order->site_id === null ? null : (int) $order->site_id);
+            if (!in_array($shipment->status, ['released', 'in_transit'], true)
+                || !$shipment->handlingUnits()->where('customer_order_id', $order->id)->exists()) {
+                throw ValidationException::withMessages(['status' => 'Record delivery only for an order carried by this dispatched shipment.']);
+            }
+            if ($shipment->deliveries()->where('customer_order_id', $order->id)->exists()) {
+                throw ValidationException::withMessages(['status' => 'This order already has a delivery record on this shipment.']);
+            }
+            if ($shipment->hasOpenExcursion()) {
+                throw ValidationException::withMessages(['status' => 'Shipment has an undispositioned temperature excursion.']);
+            }
 
-        $delivery = Delivery::create($data + ['shipment_id' => $shipment->id, 'customer_order_id' => $order->id]);
-        $order->update(['status' => 'pod_received']);
+            $delivery = Delivery::create($data + ['shipment_id' => $shipment->id, 'customer_order_id' => $order->id]);
+            $order->update(['status' => 'pod_received']);
 
-        AuditLogger::log('POD received', $order->order_number, $delivery);
+            AuditLogger::log('POD received', $order->order_number, $delivery);
 
-        return $delivery;
+            return $delivery;
+        });
     }
 
     public function closeDelivery(Delivery $delivery, User $actor): Delivery
     {
-        if (! $delivery->pod_reference) {
-            throw ValidationException::withMessages(['status' => 'POD reference is required before delivery can be closed.']);
-        }
+        return DB::transaction(function () use ($delivery, $actor) {
+            $shipment = Shipment::whereKey($delivery->shipment_id)->lockForUpdate()->firstOrFail();
+            $delivery = Delivery::whereKey($delivery->id)->lockForUpdate()->firstOrFail();
+            SiteLocation::assertCanAccessSiteRecord($actor, $delivery->order->site_id === null ? null : (int) $delivery->order->site_id);
+            if ($delivery->closed_at) return $delivery;
+            if (!in_array($shipment->status, ['released', 'in_transit'], true)
+                || !$shipment->handlingUnits()->where('customer_order_id', $delivery->customer_order_id)->exists()) {
+                throw ValidationException::withMessages(['status' => 'Delivery does not belong to a dispatched order on this shipment.']);
+            }
+            if (! $delivery->pod_reference) {
+                throw ValidationException::withMessages(['status' => 'POD reference is required before delivery can be closed.']);
+            }
 
-        $delivery->update(['closed_by' => $actor->id, 'closed_at' => now()]);
-        $delivery->order->update(['status' => 'closed']);
+            $delivery->update(['closed_by' => $actor->id, 'closed_at' => now()]);
+            $delivery->order->update(['status' => 'closed']);
 
-        $allDelivered = $delivery->shipment->deliveries()->whereNull('closed_at')->doesntExist();
-        if ($allDelivered) {
-            $delivery->shipment->update(['status' => 'closed']);
-        }
+            $completedOrders = Delivery::where('shipment_id', $shipment->id)->whereNotNull('closed_at')->select('customer_order_id');
+            $allDelivered = !$shipment->handlingUnits()->whereNotIn('customer_order_id', $completedOrders)->exists()
+                && !$shipment->deliveries()->whereNull('closed_at')->exists();
+            if ($allDelivered) {
+                $delivery->shipment->update(['status' => 'closed']);
+            }
 
-        AuditLogger::log('Delivery closed', $delivery->order->order_number, $delivery);
+            AuditLogger::log('Delivery closed', $delivery->order->order_number, $delivery);
 
-        return $delivery;
+            return $delivery;
+        });
     }
 
     public function requestReturn(array $data, User $actor): \App\Models\Flow\ReturnRequest

@@ -16,6 +16,7 @@ new #[Layout('layouts.app')] class extends Component
     public string $contactPhone = '';
     public string $contactEmail = '';
     public string $category = 'Raw Material — PCM Compound';
+    public string $paymentTerms = '';
     public bool $active = true;
     public string $website = '';
     public string $glAccount = 'Raw Materials — COGS';
@@ -24,6 +25,21 @@ new #[Layout('layouts.app')] class extends Component
     public string $description = '';
 
     public array $glAccounts = ['Raw Materials — COGS', 'Packaging — COGS', 'Consumables — Expense', 'Freight & Logistics', 'Other Purchases'];
+
+    // 3,000+ Zoho vendors: list 50 at a time with search (the full list was ~4 MB per click).
+    public string $vendorSearch = '';
+
+    public int $vendorLimit = 50;
+
+    public function updatedVendorSearch(): void
+    {
+        $this->vendorLimit = 50;
+    }
+
+    public function showMoreVendors(): void
+    {
+        $this->vendorLimit += 100;
+    }
 
     public function addVendor(): void
     {
@@ -38,6 +54,7 @@ new #[Layout('layouts.app')] class extends Component
             'contact_phone' => $this->contactPhone,
             'contact_email' => $this->contactEmail ?: null,
             'category' => $this->category,
+            'payment_terms' => $this->paymentTerms ?: null,
             'active' => $this->active,
             'website' => $this->website ?: null,
             'gl_account' => $this->glAccount,
@@ -49,10 +66,61 @@ new #[Layout('layouts.app')] class extends Component
 
         AuditLogger::log('Vendor added to master', "{$entry->vendor_name} · {$entry->gst_number}", $entry);
 
-        $this->reset(['vendorName', 'gstNumber', 'contactPhone', 'contactEmail', 'website', 'addressCity', 'addressState', 'description', 'adding']);
+        $this->reset(['vendorName', 'gstNumber', 'contactPhone', 'contactEmail', 'website', 'addressCity', 'addressState', 'description', 'paymentTerms', 'adding']);
         $this->category = 'Raw Material — PCM Compound';
         $this->glAccount = 'Raw Materials — COGS';
         $this->active = true;
+    }
+
+    // Bulk delete (2026-10-13): vendors used on a PO or a bill are kept (history).
+    public array $selected = [];
+
+    public array $exportCategories = [];
+    public string $exportStatus = 'active';
+    public string $exportAddress = 'any';
+    public array $exportColumns = ['vendor_name', 'gst_number', 'contact_phone', 'contact_email', 'category', 'address_city', 'address_state'];
+
+    public function bulkDelete(): void
+    {
+        $vendors = VendorMaster::whereIn('id', array_map('intval', $this->selected))->get();
+        $used = \App\Models\PurchaseOrder::withoutSiteScope()->whereIn('vendor_name', $vendors->pluck('vendor_name'))->distinct()->pluck('vendor_name')
+            ->merge(\App\Models\VendorSubmission::withoutSiteScope()->whereIn('vendor_name', $vendors->pluck('vendor_name'))->distinct()->pluck('vendor_name'))
+            ->map(fn ($n) => mb_strtolower($n))->flip();
+        $deleted = 0;
+        $kept = [];
+        foreach ($vendors as $vendor) {
+            if ($used->has(mb_strtolower($vendor->vendor_name))) {
+                $kept[] = $vendor->vendor_name;
+
+                continue;
+            }
+            AuditLogger::log('Vendor removed from master', $vendor->vendor_name);
+            $vendor->delete();
+            $deleted++;
+        }
+        $this->selected = [];
+        session()->flash('success', "{$deleted} vendors deleted.".($kept ? ' Kept '.count($kept).' that are used on POs or bills: '.implode(', ', array_slice($kept, 0, 8)).(count($kept) > 8 ? '...' : '').'.' : ''));
+    }
+
+    public function exportFiltered()
+    {
+        $all = ['vendor_name' => 'Vendor Name', 'gst_number' => 'GST', 'contact_phone' => 'Phone', 'contact_email' => 'Email', 'category' => 'Category',
+            'payment_terms' => 'Payment Terms', 'address_building' => 'Building', 'address_street' => 'Street', 'address_city' => 'City',
+            'address_state' => 'State', 'address_zip' => 'PIN', 'active' => 'Active'];
+        $columns = array_values(array_intersect(array_keys($all), $this->exportColumns)) ?: ['vendor_name'];
+        $vendors = $this->vendorQuery()
+            ->when($this->exportCategories, fn ($q) => $q->whereIn('category', $this->exportCategories))
+            ->when($this->exportStatus !== 'all', fn ($q) => $q->where('active', $this->exportStatus === 'active'))
+            ->when($this->exportAddress === 'with', fn ($q) => $q->withAddress())
+            ->when($this->exportAddress === 'without', fn ($q) => $q->where(fn ($w) => $w->whereNull('address_city')->orWhere('address_city', '')))
+            ->orderBy('vendor_name')->get();
+        $rows = [array_map(fn ($c) => $all[$c], $columns)];
+        foreach ($vendors as $v) {
+            $rows[] = array_map(fn ($c) => $c === 'active' ? ($v->active ? 'Yes' : 'No') : (string) ($v->{$c} ?? ''), $columns);
+        }
+        $bytes = \App\Support\HtmlToXlsx::fromRows($rows);
+
+        return response()->streamDownload(fn () => print ($bytes), 'vendors-export-'.now()->format('Ymd-His').'.xlsx', ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
     }
 
     public function deleteVendor(int $id): void
@@ -62,10 +130,20 @@ new #[Layout('layouts.app')] class extends Component
         $entry->delete();
     }
 
+    private function vendorQuery()
+    {
+        $term = trim($this->vendorSearch);
+
+        return VendorMaster::when($term !== '', fn ($query) => $query->where(fn ($q) => $q
+            ->where('vendor_name', 'like', "%{$term}%")->orWhere('gst_number', 'like', "%{$term}%")->orWhere('address_city', 'like', "%{$term}%")));
+    }
+
     public function with(): array
     {
         return [
-            'vendors' => VendorMaster::orderByDesc('created_at')->get(),
+            'vendors' => $this->vendorQuery()->orderByDesc('created_at')->limit($this->vendorLimit)->get(),
+            'vendorsTotal' => $this->vendorQuery()->count(),
+            'vendorCategories' => VendorMaster::whereNotNull('category')->where('category', '!=', '')->distinct()->orderBy('category')->pluck('category'),
             'stockUpdates' => VendorStockUpdate::orderByDesc('created_at')->get(),
         ];
     }
@@ -76,7 +154,7 @@ new #[Layout('layouts.app')] class extends Component
         <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
                 <div class="text-xs font-semibold uppercase tracking-wide" style="color: var(--brand);">Admin Module</div>
-                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Vendor Master</h1>
+                <h1 class="text-2xl font-bold mt-1" style="color: var(--text-primary);">Vendors</h1>
                 <p class="text-sm mt-1" style="color: var(--text-secondary);">Every registered vendor, matching the client's Zoho CRM Vendors module, plus the GST our own gate check needs.</p>
             </div>
             <button wire:click="$toggle('adding')" class="inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold border shrink-0" style="background: var(--surface-1); color: var(--text-primary); border-color: var(--border);">
@@ -115,6 +193,12 @@ new #[Layout('layouts.app')] class extends Component
                 <input wire:model="category" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);" />
             </label>
             <label class="flex flex-col gap-1.5 text-sm">
+                <span class="font-medium" style="color: var(--text-primary);">Payment terms</span>
+                <select wire:model="paymentTerms" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
+                    <option value="">Select terms</option><option>Advance</option><option>15 Days</option><option>30 Days</option><option>45 Days</option><option>60 Days</option>
+                </select>
+            </label>
+            <label class="flex flex-col gap-1.5 text-sm">
                 <span class="font-medium" style="color: var(--text-primary);">GL Account</span>
                 <select wire:model="glAccount" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);">
                     @foreach ($glAccounts as $g) <option value="{{ $g }}">{{ $g }}</option> @endforeach
@@ -142,12 +226,48 @@ new #[Layout('layouts.app')] class extends Component
         </div>
     @endif
 
+    @if (session('success'))
+        <div class="rounded-lg border px-4 py-3 mb-3 text-sm" role="status" style="border-color: var(--status-good); background: var(--status-good-bg); color: var(--status-good);">{{ session('success') }}</div>
+    @endif
+    <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+        <input wire:model.live.debounce.400ms="vendorSearch" type="search" placeholder="Search vendor name, GST or city" aria-label="Search vendors" class="rounded-lg border px-3 py-2 text-sm sm:w-80" style="border-color: var(--border); background: var(--surface-1);" />
+        <span class="text-xs" style="color: var(--text-muted);">Showing {{ $vendors->count() }} of {{ $vendorsTotal }} vendors</span>
+    </div>
+    <details class="rounded-xl border p-4 mb-3" style="background: var(--surface-3); border-color: var(--border);">
+        <summary class="text-sm font-semibold cursor-pointer" style="color: var(--text-primary);">Export vendors (choose filters and columns)</summary>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-3 text-sm">
+            <div class="max-h-48 overflow-y-auto">
+                <div class="text-xs font-semibold mb-1" style="color: var(--text-muted);">Categories (none ticked = all)</div>
+                @foreach ($vendorCategories as $cat)<label class="flex items-center gap-2"><input type="checkbox" wire:model="exportCategories" value="{{ $cat }}"> {{ $cat }}</label>@endforeach
+            </div>
+            <div class="space-y-2">
+                <div class="text-xs font-semibold" style="color: var(--text-muted);">Status and address</div>
+                <select wire:model="exportStatus" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);"><option value="active">Active only</option><option value="inactive">Inactive only</option><option value="all">All</option></select>
+                <select wire:model="exportAddress" class="rounded-lg border px-3 py-2 text-sm" style="border-color: var(--border);"><option value="any">With or without address</option><option value="with">Only with an address</option><option value="without">Only without an address</option></select>
+                <div class="text-xs" style="color: var(--text-muted);">The search box above also applies.</div>
+            </div>
+            <div>
+                <div class="text-xs font-semibold mb-1" style="color: var(--text-muted);">Columns</div>
+                @foreach (['vendor_name' => 'Vendor Name', 'gst_number' => 'GST', 'contact_phone' => 'Phone', 'contact_email' => 'Email', 'category' => 'Category', 'payment_terms' => 'Payment Terms', 'address_building' => 'Building', 'address_street' => 'Street', 'address_city' => 'City', 'address_state' => 'State', 'address_zip' => 'PIN', 'active' => 'Active'] as $key => $label)
+                    <label class="flex items-center gap-2"><input type="checkbox" wire:model="exportColumns" value="{{ $key }}"> {{ $label }}</label>
+                @endforeach
+            </div>
+        </div>
+        <button type="button" wire:click="exportFiltered" wire:loading.attr="disabled" wire:target="exportFiltered" class="mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style="background: var(--brand);">Download Excel</button>
+    </details>
+    @if ($selected)
+        <div class="flex flex-wrap items-center gap-3 mb-3 rounded-lg border px-3 py-2 text-sm" style="border-color: var(--status-warning); background: var(--status-warning-bg);">
+            <span class="font-semibold">{{ count($selected) }} selected</span>
+            <button type="button" wire:click="bulkDelete" wire:confirm="Delete {{ count($selected) }} vendors? Vendors used on a PO or a bill are kept." class="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style="background: var(--status-critical);">Delete selected</button>
+            <button type="button" wire:click="$set('selected', [])" class="text-xs underline">Clear</button>
+        </div>
+    @endif
     <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
                     <tr class="text-left text-xs" style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
-                        <th class="px-2 py-2.5"></th>
+                        <th class="px-2 py-2.5"><input type="checkbox" aria-label="Select all shown" x-on:change="$wire.set('selected', $event.target.checked ? @js($vendors->pluck('id')->map(fn ($id) => (string) $id)->values()) : [])"></th>
                         <th class="px-4 py-2.5 font-medium">Vendor Name</th>
                         <th class="px-4 py-2.5 font-medium">Email</th>
                         <th class="px-4 py-2.5 font-medium">Phone</th>
@@ -158,8 +278,9 @@ new #[Layout('layouts.app')] class extends Component
                 </thead>
                 <tbody>
                     @forelse ($vendors as $v)
-                        <tr style="border-top: 1px solid var(--border);">
-                            <td class="px-2 py-2.5">
+                        <tr style="border-top: 1px solid var(--border);" wire:key="vendor-row-{{ $v->id }}">
+                            <td class="px-2 py-2.5 whitespace-nowrap">
+                                <input type="checkbox" wire:model.live="selected" value="{{ $v->id }}" aria-label="Select {{ $v->vendor_name }}" class="mr-1">
                                 <button wire:click="$set('expanded', {{ $expanded === $v->id ? 'null' : $v->id }})" style="color: var(--text-muted);">{{ $expanded === $v->id ? '▾' : '▸' }}</button>
                             </td>
                             <td class="px-4 py-2.5 font-medium" style="color: var(--text-primary);">{{ $v->vendor_name }}</td>
@@ -177,6 +298,7 @@ new #[Layout('layouts.app')] class extends Component
                                 <td colspan="6" class="px-4 py-3">
                                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Category</div><div style="color: var(--text-primary);">{{ $v->category }}</div></div>
+                                        <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Payment terms</div><div style="color: var(--text-primary);">{{ $v->payment_terms ?? 'Not set' }}</div></div>
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">GL Account</div><div style="color: var(--text-primary);">{{ $v->gl_account ?? '—' }}</div></div>
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Website</div><div style="color: var(--text-primary);">{{ $v->website ?? '—' }}</div></div>
                                         <div><div class="font-semibold mb-0.5" style="color: var(--text-muted);">Location</div><div style="color: var(--text-primary);">{{ $v->address_city ? "{$v->address_city}, {$v->address_state}" : '—' }}</div></div>
@@ -194,6 +316,11 @@ new #[Layout('layouts.app')] class extends Component
             </table>
         </div>
     </div>
+    @if ($vendors->count() < $vendorsTotal)
+        <div class="mt-3 text-center">
+            <button type="button" wire:click="showMoreVendors" wire:loading.attr="disabled" class="rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50" style="border-color: var(--border); color: var(--brand);">Show 100 more</button>
+        </div>
+    @endif
 
     <h2 class="font-semibold text-sm mt-8 mb-3" style="color: var(--text-primary);">Vendor stock updates</h2>
     <div class="rounded-lg border overflow-hidden" style="background: var(--surface-3); border-color: var(--border);">

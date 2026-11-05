@@ -1,9 +1,10 @@
 <x-app-layout>
     @include('access-control._style')
-    <div class="access-shell max-w-7xl mx-auto space-y-5">
+    <div class="access-shell max-w-7xl mx-auto space-y-5" data-listing-ignore>
         <div class="access-top p-5">
             <div class="text-sm access-muted">Forge / Wastage & Scrap</div>
             <h1 class="text-2xl font-bold">Wastage & Scrap</h1>
+            @include('forge._exports', ['permission'=>'forge.wastage.export', 'exportRoute'=>'forge.wastage.export'])
         </div>
 
         @if(session('status'))<div class="access-card p-3 text-sm">{{ session('status') }}</div>@endif

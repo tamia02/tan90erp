@@ -9,30 +9,24 @@
         @if(session('status'))<div class="access-card p-3 text-sm">{{ session('status') }}</div>@endif
         @if($errors->any())<div class="access-card p-3 text-sm text-red-700">{{ $errors->first() }}</div>@endif
 
-        <form class="access-card p-4 space-y-3" method="post" action="{{ route('forge.workorders.store') }}">
-            @csrf
-            <h2 class="font-bold">Create Work Order from an Approved Plan</h2>
-            <div class="access-grid">
-                <select class="access-input" name="production_plan_id" id="plan-select" required>
-                    <option value="">Approved production plan</option>
-                    @foreach ($plans as $plan)
-                        <option value="{{ $plan->id }}" data-finished-good="{{ $plan->finished_good_id }}" data-uom="{{ $plan->uom }}">
-                            {{ $plan->plan_number }} — {{ $plan->finishedGood?->name }}
-                        </option>
-                    @endforeach
-                </select>
-                <input class="access-input" name="batch_number" placeholder="Batch number (optional)">
-                <input class="access-input" name="target_qty" type="number" step="0.001" min="0.001" placeholder="Target quantity" required>
-                <input class="access-input" name="uom" placeholder="UOM" required>
-                <input class="access-input" name="plant" placeholder="Plant">
-            </div>
-            <p class="access-muted text-sm">BOM/Recipe/Routing snapshot: pick the plan's finished good below to auto-load its released definitions (leave blank to create a bare work order for now).</p>
-            <input type="hidden" name="finished_good_id" id="finished-good-input">
-            <button class="access-btn access-btn-primary">Create Work Order</button>
-        </form>
+        @include('forge.work-orders.partials.create-form')
 
         <div class="access-card p-5">
-            <h2 class="font-bold mb-3">Work Orders</h2>
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                    <h2 class="font-bold">Work Orders</h2>
+                    @if($phaseLabel)<p class="access-muted text-sm">{{ $phaseLabel }}</p>@endif
+                </div>
+                @if($canExportWorkOrders)
+                    <a class="access-btn" href="{{ route('forge.workorders.export', $filters) }}">Export ({{ $workOrders->count() }} shown)</a>
+                @endif
+            </div>
+            <form method="get" class="flex flex-wrap gap-2 mb-4">
+                @if(request('phase'))<input type="hidden" name="phase" value="{{ request('phase') }}">@endif
+                <input class="access-input" type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search work order or finished good">
+                <select class="access-input" name="status"><option value="">All statuses</option>@foreach($statuses as $status)<option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ str($status)->replace('_', ' ')->headline() }}</option>@endforeach</select>
+                <button class="access-btn">Filter</button>
+            </form>
             <div style="overflow-x:auto">
                 <table class="access-table">
                     <thead><tr><th>WO</th><th>Finished Good</th><th>Target Qty</th><th>Good/Rework/Rejected</th><th>Status</th><th></th></tr></thead>
@@ -44,7 +38,8 @@
                                 <td>{{ $wo->target_qty }} {{ $wo->uom }}</td>
                                 <td>{{ $wo->good_qty }} / {{ $wo->rework_qty }} / {{ $wo->rejected_qty }}</td>
                                 <td><span class="access-chip">{{ str($wo->status)->replace('_', ' ')->headline() }}</span></td>
-                                <td><a class="access-btn" href="{{ route('forge.workorders.show', $wo) }}">Open</a></td>
+                                @php($activeStep = match($wo->status) { 'draft', 'released', 'material_reserved' => 'materials', 'material_issued', 'in_progress', 'rework' => 'mixing', 'reconciliation' => 'filling-sealing', 'final_qc_pending' => 'quality', 'bundle_pending' => 'consumption-fg', default => 'finished-goods' })
+                                <td><a class="access-btn" href="{{ route('forge.modules.workorder', ['step' => $activeStep, 'workOrder' => $wo]) }}">Open current step</a></td>
                             </tr>
                         @empty
                             <tr><td colspan="6" class="access-muted text-center py-6">No work orders yet.</td></tr>
@@ -56,10 +51,5 @@
         </div>
     </div>
 
-    <script>
-        document.getElementById('plan-select')?.addEventListener('change', function (e) {
-            var opt = e.target.selectedOptions[0];
-            document.getElementById('finished-good-input').value = opt?.dataset.finishedGood || '';
-        });
-    </script>
+    @include('forge.work-orders.partials.create-script')
 </x-app-layout>

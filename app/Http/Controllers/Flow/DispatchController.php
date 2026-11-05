@@ -8,6 +8,7 @@ use App\Models\Flow\Shipment;
 use App\Models\Flow\TemperatureEvent;
 use App\Services\Access\AccessControlService;
 use App\Services\Flow\FulfillmentService;
+use App\Support\SiteLocation;
 use Illuminate\Http\Request;
 
 class DispatchController extends Controller
@@ -20,11 +21,23 @@ class DispatchController extends Controller
     public function index(Request $request)
     {
         abort_unless($this->access->can($request->user(), 'flow.dispatch.manage'), 403);
+        $filters = $request->validate(['unit_q' => ['nullable', 'string', 'max:100'], 'shipment_q' => ['nullable', 'string', 'max:100']]);
 
         return view('flow.dispatch.index', [
             'shipments' => Shipment::with('handlingUnits.order', 'temperatureEvents')->latest()->paginate(20),
-            'sealedUnits' => HandlingUnit::where('status', 'sealed')->whereNull('shipment_id')->with('order')->get(),
+            'sealedUnits' => HandlingUnit::where('status', 'sealed')->whereNull('shipment_id')->with('order')
+                ->when(SiteLocation::forUser($request->user()), fn ($q, $site) => $q->whereHas('order', fn ($o) => $o->where('site_id', $site)))
+                ->when($filters['unit_q'] ?? null, fn ($q, $term) => $q->where(fn ($q) => $q->where('hu_number', 'like', $term.'%')->orWhereHas('order', fn ($q) => $q->where('order_number', 'like', $term.'%'))))
+                ->latest('id')->paginate(20, ['*'], 'unit_page')->withQueryString(),
+            'loadableShipments' => Shipment::whereIn('status', ['planned', 'loading'])->when($filters['shipment_q'] ?? null, fn ($q, $term) => $q->where('shipment_number', 'like', $term.'%'))->latest('id')->limit(50)->get(['id', 'shipment_number']),
         ]);
+    }
+
+    public function assignUnit(Request $request)
+    {
+        abort_unless($this->access->can($request->user(), 'flow.dispatch.manage'), 403);
+        $data = $request->validate(['shipment_id' => ['required', 'integer', 'exists:flow_shipments,id'], 'handling_unit_id' => ['required', 'integer', 'exists:flow_handling_units,id']]);
+        return $this->loadUnit($request, Shipment::findOrFail($data['shipment_id']), HandlingUnit::findOrFail($data['handling_unit_id']));
     }
 
     public function store(Request $request)
@@ -49,7 +62,7 @@ class DispatchController extends Controller
     public function loadUnit(Request $request, Shipment $shipment, HandlingUnit $handlingUnit)
     {
         abort_unless($this->access->can($request->user(), 'flow.dispatch.manage'), 403);
-        $this->service->loadHandlingUnit($shipment, $handlingUnit);
+        $this->service->loadHandlingUnit($shipment, $handlingUnit, $request->user());
 
         return back()->with('status', "{$handlingUnit->hu_number} loaded onto {$shipment->shipment_number}.");
     }
