@@ -210,6 +210,7 @@ new #[Layout('layouts.guest')] class extends Component
             <p class="mt-5 text-sm text-slate-600">
                 <a href="{{ route('grn.dashboard') }}" class="tan90-link-button">Open Store Manager workflow</a>
                 <span class="block">Sign in with your Store Manager account.</span>
+                <a href="/store-manager-demo.html" class="tan90-link-button">Open Store Manager demo</a>
             </p>
         @endproduction
 
