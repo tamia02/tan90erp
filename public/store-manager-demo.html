@@ -1,47 +1,7 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Store Manager demo | Tan90</title>
-<style>
-body{font:1rem/1.55 system-ui,sans-serif;background:#f1f5f9;color:#172033;margin:0}
-main{max-width:44rem;margin:3rem auto;padding:0 1rem}section{background:white;border:1px solid #cbd5e1;border-radius:12px;padding:1.5rem}button{font:inherit;padding:.45rem .8rem;margin:.4rem .4rem .4rem 0;cursor:pointer}a{color:#164295}small{color:#475569}li[aria-current=step]{font-weight:bold}
-</style>
-<main>
-<a href="/login">Back to ERP login</a>
-<h1>Store Manager demo</h1>
-<p>Walk through an example receipt. This demo uses sample data and does not save to the ERP.</p>
-<section aria-labelledby="receipt">
-<h2 id="receipt">Sample PO DEMO-001</h2>
-<p>Insulated boxes ? 24 units ? Gate entry and QC already completed</p>
-<ol id="steps"><li aria-current="step">GRN check</li><li>GRN register</li><li>Putaway</li><li>Stock balance</li></ol>
-<p id="status" role="status">Ready for GRN check. Confirm the quantity matches the sample PO.</p>
-<button id="next" type="button">Confirm 24 units</button>
-<button id="reset" type="button">Reset demo</button>
-</section>
-</main>
-<script>
-const steps = document.querySelectorAll('#steps li');
-const status = document.querySelector('#status');
-const next = document.querySelector('#next');
-const descriptions = [
-  'Ready for GRN check. Confirm the quantity matches the sample PO.',
-  'Quantity confirmed. Post a sample Goods Receipt Note.',
-  'Sample GRN posted. Confirm putaway to bin A-01.',
-  'Putaway complete. Sample stock balance: 24 units in bin A-01.'
-];
-const actions = ['Confirm 24 units', 'Post sample GRN', 'Confirm putaway', 'Complete'];
-let step = 0;
-function show() {
-  steps.forEach((item, index) => {
-    if (index === step) item.setAttribute('aria-current', 'step');
-    else item.removeAttribute('aria-current');
-  });
-  status.textContent = descriptions[step];
-  next.textContent = actions[step];
-  next.disabled = step === actions.length - 1;
-}
-next.addEventListener('click', () => { step++; show(); if (next.disabled) document.querySelector('#reset').focus(); });
-document.querySelector('#reset').addEventListener('click', () => { step = 0; show(); next.focus(); });
-</script>
+<meta http-equiv="refresh" content="0; url=/login">
+<title>Tan90 ERP sign in</title>
+<a href="/login">Open Tan90 ERP sign in</a>
 </html>
